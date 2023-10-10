@@ -24,7 +24,7 @@ const (
 	defaultTokenKey                   = "token key"
 )
 
-// Server config structure.
+// Config is server's config structure.
 type Config struct {
 	IP               string          `json:"ip"`                   // server's IP address
 	DSN              string          `json:"dsn"`                  // database connection string
@@ -57,7 +57,7 @@ func checkFileExist(path string) error {
 		},
 	)
 	if err = os.WriteFile(defaultPrivateKeyPath, prvPem, fBits); err != nil {
-		return fmt.Errorf("write private key error: %v", err)
+		return fmt.Errorf("write private key error: %w", err)
 	}
 
 	cfg := Config{

@@ -1,0 +1,1115 @@
+[
+    {
+        "FromLinter": "goconst",
+        "Text": "string `config error: %v` has 2 occurrences, make it a constant",
+        "Severity": "error",
+        "SourceLines": [
+            "\t\tlog.Fatalf(\"config error: %v\", err)"
+        ],
+        "Replacement": null,
+        "Pos": {
+            "Filename": "cmd/server/main.go",
+            "Offset": 477,
+            "Line": 22,
+            "Column": 14
+        },
+        "ExpectNoLint": false,
+        "ExpectedNoLintLinter": ""
+    },
+    {
+        "FromLinter": "stylecheck",
+        "Text": "ST1021: comment on exported type Config should be of the form \"Config ...\" (with optional leading article)",
+        "Severity": "error",
+        "SourceLines": [
+            "// Server config structure."
+        ],
+        "Replacement": null,
+        "Pos": {
+            "Filename": "internal/server/config.go",
+            "Offset": 605,
+            "Line": 27,
+            "Column": 1
+        },
+        "ExpectNoLint": false,
+        "ExpectedNoLintLinter": ""
+    },
+    {
+        "FromLinter": "errorlint",
+        "Text": "non-wrapping format verb for fmt.Errorf. Use `%w` to format errors",
+        "Severity": "error",
+        "SourceLines": [
+            "\t\treturn fmt.Errorf(\"write private key error: %v\", err)"
+        ],
+        "Replacement": null,
+        "Pos": {
+            "Filename": "internal/server/config.go",
+            "Offset": 2041,
+            "Line": 60,
+            "Column": 52
+        },
+        "ExpectNoLint": false,
+        "ExpectedNoLintLinter": ""
+    },
+    {
+        "FromLinter": "stylecheck",
+        "Text": "ST1021: comment on exported type LoginPassword should be of the form \"LoginPassword ...\" (with optional leading article)",
+        "Severity": "error",
+        "SourceLines": [
+            "\t// Struct for marshal regustration and authorization data."
+        ],
+        "Replacement": null,
+        "Pos": {
+            "Filename": "internal/server/handlers.go",
+            "Offset": 338,
+            "Line": 23,
+            "Column": 2
+        },
+        "ExpectNoLint": false,
+        "ExpectedNoLintLinter": ""
+    },
+    {
+        "FromLinter": "whitespace",
+        "Text": "unnecessary trailing newline",
+        "Severity": "error",
+        "SourceLines": [
+            "",
+            "}"
+        ],
+        "Replacement": {
+            "NeedOnlyDelete": false,
+            "NewLines": [
+                "}"
+            ],
+            "Inline": null
+        },
+        "LineRange": {
+            "From": 55,
+            "To": 56
+        },
+        "Pos": {
+            "Filename": "internal/server/handlers.go",
+            "Offset": 0,
+            "Line": 55,
+            "Column": 0
+        },
+        "ExpectNoLint": false,
+        "ExpectedNoLintLinter": ""
+    },
+    {
+        "FromLinter": "godot",
+        "Text": "Sentence should start with a capital letter",
+        "Severity": "error",
+        "SourceLines": [
+            "// func Login(ctx context.Context, body, key []byte, remoteAddr, ua string,"
+        ],
+        "Replacement": {
+            "NeedOnlyDelete": false,
+            "NewLines": [
+                "// Func Login(ctx context.Context, body, key []byte, remoteAddr, ua string,"
+            ],
+            "Inline": null
+        },
+        "Pos": {
+            "Filename": "internal/server/handlers.go",
+            "Offset": 3141,
+            "Line": 113,
+            "Column": 4
+        },
+        "ExpectNoLint": false,
+        "ExpectedNoLintLinter": ""
+    },
+    {
+        "FromLinter": "godot",
+        "Text": "Comment should end in a period",
+        "Severity": "error",
+        "SourceLines": [
+            "// }"
+        ],
+        "Replacement": {
+            "NeedOnlyDelete": false,
+            "NewLines": [
+                "// }."
+            ],
+            "Inline": null
+        },
+        "Pos": {
+            "Filename": "internal/server/handlers.go",
+            "Offset": 3141,
+            "Line": 136,
+            "Column": 5
+        },
+        "ExpectNoLint": false,
+        "ExpectedNoLintLinter": ""
+    },
+    {
+        "FromLinter": "godot",
+        "Text": "Sentence should start with a capital letter",
+        "Severity": "error",
+        "SourceLines": [
+            "// func AddOrder(args requestResponce) {"
+        ],
+        "Replacement": {
+            "NeedOnlyDelete": false,
+            "NewLines": [
+                "// Func AddOrder(args requestResponce) {"
+            ],
+            "Inline": null
+        },
+        "Pos": {
+            "Filename": "internal/server/handlers.go",
+            "Offset": 4848,
+            "Line": 153,
+            "Column": 4
+        },
+        "ExpectNoLint": false,
+        "ExpectedNoLintLinter": ""
+    },
+    {
+        "FromLinter": "godot",
+        "Text": "Comment should end in a period",
+        "Severity": "error",
+        "SourceLines": [
+            "// }"
+        ],
+        "Replacement": {
+            "NeedOnlyDelete": false,
+            "NewLines": [
+                "// }."
+            ],
+            "Inline": null
+        },
+        "Pos": {
+            "Filename": "internal/server/handlers.go",
+            "Offset": 4848,
+            "Line": 183,
+            "Column": 5
+        },
+        "ExpectNoLint": false,
+        "ExpectedNoLintLinter": ""
+    },
+    {
+        "FromLinter": "godot",
+        "Text": "Sentence should start with a capital letter",
+        "Severity": "error",
+        "SourceLines": [
+            "// func getListCommon(args *requestResponce, name string, f func(context.Context, int) ([]byte, error)) {"
+        ],
+        "Replacement": {
+            "NeedOnlyDelete": false,
+            "NewLines": [
+                "// Func getListCommon(args *requestResponce, name string, f func(context.Context, int) ([]byte, error)) {"
+            ],
+            "Inline": null
+        },
+        "Pos": {
+            "Filename": "internal/server/handlers.go",
+            "Offset": 6877,
+            "Line": 185,
+            "Column": 4
+        },
+        "ExpectNoLint": false,
+        "ExpectedNoLintLinter": ""
+    },
+    {
+        "FromLinter": "godot",
+        "Text": "Comment should end in a period",
+        "Severity": "error",
+        "SourceLines": [
+            "// }"
+        ],
+        "Replacement": {
+            "NeedOnlyDelete": false,
+            "NewLines": [
+                "// }."
+            ],
+            "Inline": null
+        },
+        "Pos": {
+            "Filename": "internal/server/handlers.go",
+            "Offset": 6877,
+            "Line": 209,
+            "Column": 5
+        },
+        "ExpectNoLint": false,
+        "ExpectedNoLintLinter": ""
+    },
+    {
+        "FromLinter": "godot",
+        "Text": "Sentence should start with a capital letter",
+        "Severity": "error",
+        "SourceLines": [
+            "// func GetOrdersList(args requestResponce) {"
+        ],
+        "Replacement": {
+            "NeedOnlyDelete": false,
+            "NewLines": [
+                "// Func GetOrdersList(args requestResponce) {"
+            ],
+            "Inline": null
+        },
+        "Pos": {
+            "Filename": "internal/server/handlers.go",
+            "Offset": 7727,
+            "Line": 223,
+            "Column": 4
+        },
+        "ExpectNoLint": false,
+        "ExpectedNoLintLinter": ""
+    },
+    {
+        "FromLinter": "godot",
+        "Text": "Comment should end in a period",
+        "Severity": "error",
+        "SourceLines": [
+            "// }"
+        ],
+        "Replacement": {
+            "NeedOnlyDelete": false,
+            "NewLines": [
+                "// }."
+            ],
+            "Inline": null
+        },
+        "Pos": {
+            "Filename": "internal/server/handlers.go",
+            "Offset": 7727,
+            "Line": 225,
+            "Column": 5
+        },
+        "ExpectNoLint": false,
+        "ExpectedNoLintLinter": ""
+    },
+    {
+        "FromLinter": "godot",
+        "Text": "Sentence should start with a capital letter",
+        "Severity": "error",
+        "SourceLines": [
+            "// func GetUserBalance(args requestResponce) {"
+        ],
+        "Replacement": {
+            "NeedOnlyDelete": false,
+            "NewLines": [
+                "// Func GetUserBalance(args requestResponce) {"
+            ],
+            "Inline": null
+        },
+        "Pos": {
+            "Filename": "internal/server/handlers.go",
+            "Offset": 8539,
+            "Line": 237,
+            "Column": 4
+        },
+        "ExpectNoLint": false,
+        "ExpectedNoLintLinter": ""
+    },
+    {
+        "FromLinter": "godot",
+        "Text": "Comment should end in a period",
+        "Severity": "error",
+        "SourceLines": [
+            "// }"
+        ],
+        "Replacement": {
+            "NeedOnlyDelete": false,
+            "NewLines": [
+                "// }."
+            ],
+            "Inline": null
+        },
+        "Pos": {
+            "Filename": "internal/server/handlers.go",
+            "Offset": 8539,
+            "Line": 256,
+            "Column": 5
+        },
+        "ExpectNoLint": false,
+        "ExpectedNoLintLinter": ""
+    },
+    {
+        "FromLinter": "godot",
+        "Text": "Sentence should start with a capital letter",
+        "Severity": "error",
+        "SourceLines": [
+            "// func AddWithdraw(args requestResponce) {"
+        ],
+        "Replacement": {
+            "NeedOnlyDelete": false,
+            "NewLines": [
+                "// Func AddWithdraw(args requestResponce) {"
+            ],
+            "Inline": null
+        },
+        "Pos": {
+            "Filename": "internal/server/handlers.go",
+            "Offset": 9767,
+            "Line": 273,
+            "Column": 4
+        },
+        "ExpectNoLint": false,
+        "ExpectedNoLintLinter": ""
+    },
+    {
+        "FromLinter": "godot",
+        "Text": "Comment should end in a period",
+        "Severity": "error",
+        "SourceLines": [
+            "// }"
+        ],
+        "Replacement": {
+            "NeedOnlyDelete": false,
+            "NewLines": [
+                "// }."
+            ],
+            "Inline": null
+        },
+        "Pos": {
+            "Filename": "internal/server/handlers.go",
+            "Offset": 9767,
+            "Line": 306,
+            "Column": 5
+        },
+        "ExpectNoLint": false,
+        "ExpectedNoLintLinter": ""
+    },
+    {
+        "FromLinter": "godot",
+        "Text": "Sentence should start with a capital letter",
+        "Severity": "error",
+        "SourceLines": [
+            "// func GetWithdrawsList(args requestResponce) {"
+        ],
+        "Replacement": {
+            "NeedOnlyDelete": false,
+            "NewLines": [
+                "// Func GetWithdrawsList(args requestResponce) {"
+            ],
+            "Inline": null
+        },
+        "Pos": {
+            "Filename": "internal/server/handlers.go",
+            "Offset": 12016,
+            "Line": 319,
+            "Column": 4
+        },
+        "ExpectNoLint": false,
+        "ExpectedNoLintLinter": ""
+    },
+    {
+        "FromLinter": "godot",
+        "Text": "Comment should end in a period",
+        "Severity": "error",
+        "SourceLines": [
+            "// }"
+        ],
+        "Replacement": {
+            "NeedOnlyDelete": false,
+            "NewLines": [
+                "// }."
+            ],
+            "Inline": null
+        },
+        "Pos": {
+            "Filename": "internal/server/handlers.go",
+            "Offset": 12016,
+            "Line": 321,
+            "Column": 5
+        },
+        "ExpectNoLint": false,
+        "ExpectedNoLintLinter": ""
+    },
+    {
+        "FromLinter": "stylecheck",
+        "Text": "ST1003: const ApplJson should be ApplJSON",
+        "Severity": "error",
+        "SourceLines": [
+            "\tApplJson    = \"application/json\""
+        ],
+        "Replacement": null,
+        "Pos": {
+            "Filename": "internal/server/routers.go",
+            "Offset": 359,
+            "Line": 24,
+            "Column": 2
+        },
+        "ExpectNoLint": false,
+        "ExpectedNoLintLinter": ""
+    },
+    {
+        "FromLinter": "godot",
+        "Text": "Sentence should start with a capital letter",
+        "Severity": "error",
+        "SourceLines": [
+            "\t// pb \"github.com/gostuding/go-metrics/internal/proto\""
+        ],
+        "Replacement": {
+            "NeedOnlyDelete": false,
+            "NewLines": [
+                "\t// Pb \"github.com/gostuding/go-metrics/internal/proto\""
+            ],
+            "Inline": null
+        },
+        "Pos": {
+            "Filename": "internal/server/server.go",
+            "Offset": 131,
+            "Line": 16,
+            "Column": 5
+        },
+        "ExpectNoLint": false,
+        "ExpectedNoLintLinter": ""
+    },
+    {
+        "FromLinter": "godot",
+        "Text": "Comment should end in a period",
+        "Severity": "error",
+        "SourceLines": [
+            "\t// \"google.golang.org/grpc\""
+        ],
+        "Replacement": {
+            "NeedOnlyDelete": false,
+            "NewLines": [
+                "\t// \"google.golang.org/grpc\"."
+            ],
+            "Inline": null
+        },
+        "Pos": {
+            "Filename": "internal/server/server.go",
+            "Offset": 131,
+            "Line": 18,
+            "Column": 29
+        },
+        "ExpectNoLint": false,
+        "ExpectedNoLintLinter": ""
+    },
+    {
+        "FromLinter": "godot",
+        "Text": "Sentence should start with a capital letter",
+        "Severity": "error",
+        "SourceLines": [
+            "// type RPCServer struct {"
+        ],
+        "Replacement": {
+            "NeedOnlyDelete": false,
+            "NewLines": [
+                "// Type RPCServer struct {"
+            ],
+            "Inline": null
+        },
+        "Pos": {
+            "Filename": "internal/server/server.go",
+            "Offset": 3216,
+            "Line": 121,
+            "Column": 4
+        },
+        "ExpectNoLint": false,
+        "ExpectedNoLintLinter": ""
+    },
+    {
+        "FromLinter": "dupword",
+        "Text": "Duplicate words (Storage) found",
+        "Severity": "error",
+        "SourceLines": [
+            "// \tStorage Storage            // Storage interface"
+        ],
+        "Replacement": null,
+        "Pos": {
+            "Filename": "internal/server/server.go",
+            "Offset": 3328,
+            "Line": 124,
+            "Column": 1
+        },
+        "ExpectNoLint": false,
+        "ExpectedNoLintLinter": ""
+    },
+    {
+        "FromLinter": "godot",
+        "Text": "Comment should end in a period",
+        "Severity": "error",
+        "SourceLines": [
+            "// }"
+        ],
+        "Replacement": {
+            "NeedOnlyDelete": false,
+            "NewLines": [
+                "// }."
+            ],
+            "Inline": null
+        },
+        "Pos": {
+            "Filename": "internal/server/server.go",
+            "Offset": 3216,
+            "Line": 128,
+            "Column": 5
+        },
+        "ExpectNoLint": false,
+        "ExpectedNoLintLinter": ""
+    },
+    {
+        "FromLinter": "godot",
+        "Text": "Sentence should start with a capital letter",
+        "Severity": "error",
+        "SourceLines": [
+            "// func (s *RPCServer) AddMetrics(ctx context.Context, in *pb.MetricsRequest) (*pb.MetricsResponse, error) {"
+        ],
+        "Replacement": {
+            "NeedOnlyDelete": false,
+            "NewLines": [
+                "// Func (s *RPCServer) AddMetrics(ctx context.Context, in *pb.MetricsRequest) (*pb.MetricsResponse, error) {"
+            ],
+            "Inline": null
+        },
+        "Pos": {
+            "Filename": "internal/server/server.go",
+            "Offset": 3532,
+            "Line": 130,
+            "Column": 4
+        },
+        "ExpectNoLint": false,
+        "ExpectedNoLintLinter": ""
+    },
+    {
+        "FromLinter": "godot",
+        "Text": "Comment should end in a period",
+        "Severity": "error",
+        "SourceLines": [
+            "// }"
+        ],
+        "Replacement": {
+            "NeedOnlyDelete": false,
+            "NewLines": [
+                "// }."
+            ],
+            "Inline": null
+        },
+        "Pos": {
+            "Filename": "internal/server/server.go",
+            "Offset": 3723,
+            "Line": 140,
+            "Column": 5
+        },
+        "ExpectNoLint": false,
+        "ExpectedNoLintLinter": ""
+    },
+    {
+        "FromLinter": "godot",
+        "Text": "Sentence should start with a capital letter",
+        "Severity": "error",
+        "SourceLines": [
+            "// func NewRPCServer(config *Config, logger *zap.SugaredLogger, storage Storage) *RPCServer {"
+        ],
+        "Replacement": {
+            "NeedOnlyDelete": false,
+            "NewLines": [
+                "// Func NewRPCServer(config *Config, logger *zap.SugaredLogger, storage Storage) *RPCServer {"
+            ],
+            "Inline": null
+        },
+        "Pos": {
+            "Filename": "internal/server/server.go",
+            "Offset": 3981,
+            "Line": 142,
+            "Column": 4
+        },
+        "ExpectNoLint": false,
+        "ExpectedNoLintLinter": ""
+    },
+    {
+        "FromLinter": "godot",
+        "Text": "Comment should end in a period",
+        "Severity": "error",
+        "SourceLines": [
+            "// }"
+        ],
+        "Replacement": {
+            "NeedOnlyDelete": false,
+            "NewLines": [
+                "// }."
+            ],
+            "Inline": null
+        },
+        "Pos": {
+            "Filename": "internal/server/server.go",
+            "Offset": 3981,
+            "Line": 148,
+            "Column": 5
+        },
+        "ExpectNoLint": false,
+        "ExpectedNoLintLinter": ""
+    },
+    {
+        "FromLinter": "godot",
+        "Text": "Sentence should start with a capital letter",
+        "Severity": "error",
+        "SourceLines": [
+            "// func (s *RPCServer) RunServer() error {"
+        ],
+        "Replacement": {
+            "NeedOnlyDelete": false,
+            "NewLines": [
+                "// Func (s *RPCServer) RunServer() error {"
+            ],
+            "Inline": null
+        },
+        "Pos": {
+            "Filename": "internal/server/server.go",
+            "Offset": 4177,
+            "Line": 150,
+            "Column": 4
+        },
+        "ExpectNoLint": false,
+        "ExpectedNoLintLinter": ""
+    },
+    {
+        "FromLinter": "godot",
+        "Text": "Comment should end in a period",
+        "Severity": "error",
+        "SourceLines": [
+            "// }"
+        ],
+        "Replacement": {
+            "NeedOnlyDelete": false,
+            "NewLines": [
+                "// }."
+            ],
+            "Inline": null
+        },
+        "Pos": {
+            "Filename": "internal/server/server.go",
+            "Offset": 4771,
+            "Line": 188,
+            "Column": 5
+        },
+        "ExpectNoLint": false,
+        "ExpectedNoLintLinter": ""
+    },
+    {
+        "FromLinter": "godot",
+        "Text": "Sentence should start with a capital letter",
+        "Severity": "error",
+        "SourceLines": [
+            "// func (s *RPCServer) StopServer() error {"
+        ],
+        "Replacement": {
+            "NeedOnlyDelete": false,
+            "NewLines": [
+                "// Func (s *RPCServer) StopServer() error {"
+            ],
+            "Inline": null
+        },
+        "Pos": {
+            "Filename": "internal/server/server.go",
+            "Offset": 5432,
+            "Line": 190,
+            "Column": 4
+        },
+        "ExpectNoLint": false,
+        "ExpectedNoLintLinter": ""
+    },
+    {
+        "FromLinter": "godot",
+        "Text": "Comment should end in a period",
+        "Severity": "error",
+        "SourceLines": [
+            "// }"
+        ],
+        "Replacement": {
+            "NeedOnlyDelete": false,
+            "NewLines": [
+                "// }."
+            ],
+            "Inline": null
+        },
+        "Pos": {
+            "Filename": "internal/server/server.go",
+            "Offset": 5432,
+            "Line": 201,
+            "Column": 5
+        },
+        "ExpectNoLint": false,
+        "ExpectedNoLintLinter": ""
+    },
+    {
+        "FromLinter": "stylecheck",
+        "Text": "ST1021: comment on exported type Storage should be of the form \"Storage ...\" (with optional leading article)",
+        "Severity": "error",
+        "SourceLines": [
+            "// Gorm connection to database."
+        ],
+        "Replacement": null,
+        "Pos": {
+            "Filename": "internal/server/storage/storage.go",
+            "Offset": 249,
+            "Line": 19,
+            "Column": 1
+        },
+        "ExpectNoLint": false,
+        "ExpectedNoLintLinter": ""
+    },
+    {
+        "FromLinter": "godot",
+        "Text": "Sentence should start with a capital letter",
+        "Severity": "error",
+        "SourceLines": [
+            "// func (s *Storage) AddOrder(ctx context.Context, uid int, order string) (int, error) {"
+        ],
+        "Replacement": {
+            "NeedOnlyDelete": false,
+            "NewLines": [
+                "// Func (s *Storage) AddOrder(ctx context.Context, uid int, order string) (int, error) {"
+            ],
+            "Inline": null
+        },
+        "Pos": {
+            "Filename": "internal/server/storage/storage.go",
+            "Offset": 1905,
+            "Line": 80,
+            "Column": 4
+        },
+        "ExpectNoLint": false,
+        "ExpectedNoLintLinter": ""
+    },
+    {
+        "FromLinter": "godot",
+        "Text": "Comment should end in a period",
+        "Severity": "error",
+        "SourceLines": [
+            "// }"
+        ],
+        "Replacement": {
+            "NeedOnlyDelete": false,
+            "NewLines": [
+                "// }."
+            ],
+            "Inline": null
+        },
+        "Pos": {
+            "Filename": "internal/server/storage/storage.go",
+            "Offset": 1905,
+            "Line": 112,
+            "Column": 5
+        },
+        "ExpectNoLint": false,
+        "ExpectedNoLintLinter": ""
+    },
+    {
+        "FromLinter": "godot",
+        "Text": "Sentence should start with a capital letter",
+        "Severity": "error",
+        "SourceLines": [
+            "// func (s *Storage) getValues(ctx context.Context, uid int, values any) ([]byte, error) {"
+        ],
+        "Replacement": {
+            "NeedOnlyDelete": false,
+            "NewLines": [
+                "// Func (s *Storage) getValues(ctx context.Context, uid int, values any) ([]byte, error) {"
+            ],
+            "Inline": null
+        },
+        "Pos": {
+            "Filename": "internal/server/storage/storage.go",
+            "Offset": 3032,
+            "Line": 114,
+            "Column": 4
+        },
+        "ExpectNoLint": false,
+        "ExpectedNoLintLinter": ""
+    },
+    {
+        "FromLinter": "godot",
+        "Text": "Comment should end in a period",
+        "Severity": "error",
+        "SourceLines": [
+            "// }"
+        ],
+        "Replacement": {
+            "NeedOnlyDelete": false,
+            "NewLines": [
+                "// }."
+            ],
+            "Inline": null
+        },
+        "Pos": {
+            "Filename": "internal/server/storage/storage.go",
+            "Offset": 3032,
+            "Line": 127,
+            "Column": 5
+        },
+        "ExpectNoLint": false,
+        "ExpectedNoLintLinter": ""
+    },
+    {
+        "FromLinter": "godot",
+        "Text": "Sentence should start with a capital letter",
+        "Severity": "error",
+        "SourceLines": [
+            "// func (s *Storage) GetOrders(ctx context.Context, uid int) ([]byte, error) {"
+        ],
+        "Replacement": {
+            "NeedOnlyDelete": false,
+            "NewLines": [
+                "// Func (s *Storage) GetOrders(ctx context.Context, uid int) ([]byte, error) {"
+            ],
+            "Inline": null
+        },
+        "Pos": {
+            "Filename": "internal/server/storage/storage.go",
+            "Offset": 3524,
+            "Line": 129,
+            "Column": 4
+        },
+        "ExpectNoLint": false,
+        "ExpectedNoLintLinter": ""
+    },
+    {
+        "FromLinter": "godot",
+        "Text": "Comment should end in a period",
+        "Severity": "error",
+        "SourceLines": [
+            "// }"
+        ],
+        "Replacement": {
+            "NeedOnlyDelete": false,
+            "NewLines": [
+                "// }."
+            ],
+            "Inline": null
+        },
+        "Pos": {
+            "Filename": "internal/server/storage/storage.go",
+            "Offset": 3524,
+            "Line": 132,
+            "Column": 5
+        },
+        "ExpectNoLint": false,
+        "ExpectedNoLintLinter": ""
+    },
+    {
+        "FromLinter": "godot",
+        "Text": "Sentence should start with a capital letter",
+        "Severity": "error",
+        "SourceLines": [
+            "// func (s *Storage) GetUserBalance(ctx context.Context, uid int) ([]byte, error) {"
+        ],
+        "Replacement": {
+            "NeedOnlyDelete": false,
+            "NewLines": [
+                "// Func (s *Storage) GetUserBalance(ctx context.Context, uid int) ([]byte, error) {"
+            ],
+            "Inline": null
+        },
+        "Pos": {
+            "Filename": "internal/server/storage/storage.go",
+            "Offset": 3675,
+            "Line": 134,
+            "Column": 4
+        },
+        "ExpectNoLint": false,
+        "ExpectedNoLintLinter": ""
+    },
+    {
+        "FromLinter": "godot",
+        "Text": "Comment should end in a period",
+        "Severity": "error",
+        "SourceLines": [
+            "// }"
+        ],
+        "Replacement": {
+            "NeedOnlyDelete": false,
+            "NewLines": [
+                "// }."
+            ],
+            "Inline": null
+        },
+        "Pos": {
+            "Filename": "internal/server/storage/storage.go",
+            "Offset": 3675,
+            "Line": 145,
+            "Column": 5
+        },
+        "ExpectNoLint": false,
+        "ExpectedNoLintLinter": ""
+    },
+    {
+        "FromLinter": "godot",
+        "Text": "Sentence should start with a capital letter",
+        "Severity": "error",
+        "SourceLines": [
+            "// func (s *Storage) AddWithdraw(ctx context.Context, uid int, order string, sum float32) (int, error) {"
+        ],
+        "Replacement": {
+            "NeedOnlyDelete": false,
+            "NewLines": [
+                "// Func (s *Storage) AddWithdraw(ctx context.Context, uid int, order string, sum float32) (int, error) {"
+            ],
+            "Inline": null
+        },
+        "Pos": {
+            "Filename": "internal/server/storage/storage.go",
+            "Offset": 4208,
+            "Line": 147,
+            "Column": 4
+        },
+        "ExpectNoLint": false,
+        "ExpectedNoLintLinter": ""
+    },
+    {
+        "FromLinter": "godot",
+        "Text": "Comment should end in a period",
+        "Severity": "error",
+        "SourceLines": [
+            "// }"
+        ],
+        "Replacement": {
+            "NeedOnlyDelete": false,
+            "NewLines": [
+                "// }."
+            ],
+            "Inline": null
+        },
+        "Pos": {
+            "Filename": "internal/server/storage/storage.go",
+            "Offset": 4208,
+            "Line": 184,
+            "Column": 5
+        },
+        "ExpectNoLint": false,
+        "ExpectedNoLintLinter": ""
+    },
+    {
+        "FromLinter": "godot",
+        "Text": "Sentence should start with a capital letter",
+        "Severity": "error",
+        "SourceLines": [
+            "// func (s *Storage) GetWithdraws(ctx context.Context, uid int) ([]byte, error) {"
+        ],
+        "Replacement": {
+            "NeedOnlyDelete": false,
+            "NewLines": [
+                "// Func (s *Storage) GetWithdraws(ctx context.Context, uid int) ([]byte, error) {"
+            ],
+            "Inline": null
+        },
+        "Pos": {
+            "Filename": "internal/server/storage/storage.go",
+            "Offset": 5687,
+            "Line": 186,
+            "Column": 4
+        },
+        "ExpectNoLint": false,
+        "ExpectedNoLintLinter": ""
+    },
+    {
+        "FromLinter": "godot",
+        "Text": "Comment should end in a period",
+        "Severity": "error",
+        "SourceLines": [
+            "// }"
+        ],
+        "Replacement": {
+            "NeedOnlyDelete": false,
+            "NewLines": [
+                "// }."
+            ],
+            "Inline": null
+        },
+        "Pos": {
+            "Filename": "internal/server/storage/storage.go",
+            "Offset": 5687,
+            "Line": 189,
+            "Column": 5
+        },
+        "ExpectNoLint": false,
+        "ExpectedNoLintLinter": ""
+    },
+    {
+        "FromLinter": "godot",
+        "Text": "Sentence should start with a capital letter",
+        "Severity": "error",
+        "SourceLines": [
+            "// func (s *Storage) GetAccrualOrders() []string {"
+        ],
+        "Replacement": {
+            "NeedOnlyDelete": false,
+            "NewLines": [
+                "// Func (s *Storage) GetAccrualOrders() []string {"
+            ],
+            "Inline": null
+        },
+        "Pos": {
+            "Filename": "internal/server/storage/storage.go",
+            "Offset": 5850,
+            "Line": 191,
+            "Column": 4
+        },
+        "ExpectNoLint": false,
+        "ExpectedNoLintLinter": ""
+    },
+    {
+        "FromLinter": "godot",
+        "Text": "Comment should end in a period",
+        "Severity": "error",
+        "SourceLines": [
+            "// }"
+        ],
+        "Replacement": {
+            "NeedOnlyDelete": false,
+            "NewLines": [
+                "// }."
+            ],
+            "Inline": null
+        },
+        "Pos": {
+            "Filename": "internal/server/storage/storage.go",
+            "Offset": 5850,
+            "Line": 202,
+            "Column": 5
+        },
+        "ExpectNoLint": false,
+        "ExpectedNoLintLinter": ""
+    },
+    {
+        "FromLinter": "godot",
+        "Text": "Sentence should start with a capital letter",
+        "Severity": "error",
+        "SourceLines": [
+            "// func (s *Storage) SetOrderData(number string, status string, balance float32) error {"
+        ],
+        "Replacement": {
+            "NeedOnlyDelete": false,
+            "NewLines": [
+                "// Func (s *Storage) SetOrderData(number string, status string, balance float32) error {"
+            ],
+            "Inline": null
+        },
+        "Pos": {
+            "Filename": "internal/server/storage/storage.go",
+            "Offset": 6251,
+            "Line": 204,
+            "Column": 4
+        },
+        "ExpectNoLint": false,
+        "ExpectedNoLintLinter": ""
+    },
+    {
+        "FromLinter": "godot",
+        "Text": "Comment should end in a period",
+        "Severity": "error",
+        "SourceLines": [
+            "// }"
+        ],
+        "Replacement": {
+            "NeedOnlyDelete": false,
+            "NewLines": [
+                "// }."
+            ],
+            "Inline": null
+        },
+        "Pos": {
+            "Filename": "internal/server/storage/storage.go",
+            "Offset": 6251,
+            "Line": 231,
+            "Column": 5
+        },
+        "ExpectNoLint": false,
+        "ExpectedNoLintLinter": ""
+    }
+]

@@ -9,12 +9,9 @@ import (
 	"fmt"
 	"net"
 	"net/http"
-	"time"
 
-	"github.com/gostuding/GophKeeper/internal/server/middlewares"
-
-	// "github.com/gostuding/goMarket/internal/server/middlewares"
 	"github.com/gostuding/GophKeeper/internal/server/storage"
+	"github.com/gostuding/middlewares"
 )
 
 type (
@@ -23,7 +20,7 @@ type (
 		Response http.ResponseWriter
 		Storage  *storage.Storage
 	}
-	// Struct for marshal regustration and authorization data.
+	// LoginPassword is struct for marshal regustration and authorization data.
 	LoginPassword struct {
 		Login    string `json:"login"`    //
 		Password string `json:"password"` //
@@ -50,12 +47,11 @@ func isValidateLoginPassword(body []byte) (*LoginPassword, error) {
 // @Success 200 "Отправка ключа"
 // @failure 500 "Внутренняя ошибка сервиса".
 func GetPublicKey(key *rsa.PrivateKey) ([]byte, error) {
-	pubASN, err := x509.MarshalPKIXPublicKey(key.Public())
+	keyData, err := x509.MarshalPKIXPublicKey(key.Public())
 	if err != nil {
 		return nil, fmt.Errorf("marshal public key error: %w", err)
 	}
-	return pubASN, nil
-
+	return keyData, nil
 }
 
 // Register new user handler.
@@ -73,7 +69,7 @@ func Register(
 	ctx context.Context,
 	body, key []byte,
 	strg *storage.Storage,
-	t time.Duration,
+	t int,
 	r *http.Request,
 ) (string, int, error) {
 	user, err := isValidateLoginPassword(body)

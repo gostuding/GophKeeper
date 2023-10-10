@@ -7,12 +7,11 @@ import (
 	"net/http"
 	"os"
 	"strconv"
-	"time"
 
 	"go.uber.org/zap"
 
 	"github.com/gostuding/GophKeeper/docs"
-	"github.com/gostuding/GophKeeper/internal/server/middlewares"
+	"github.com/gostuding/middlewares"
 
 	"github.com/go-chi/chi"
 	"github.com/go-chi/chi/middleware"
@@ -75,7 +74,8 @@ func makeRouter(s *Server) http.Handler {
 	})
 
 	router.Group(func(r chi.Router) {
-		// r.Use(middlewares.AuthMiddleware(logger, loginURL, key))
+		r.Use(middlewares.DecriptMiddleware(s.Config.PrivateKey, s.Logger))
+
 		r.Post("/api/user/register", func(w http.ResponseWriter, r *http.Request) {
 			data, err := io.ReadAll(r.Body)
 			if err != nil {
@@ -83,8 +83,8 @@ func makeRouter(s *Server) http.Handler {
 				s.Logger.Warnln(makeError(ReadRequestBodyError, err).Error())
 				return
 			}
-			token, status, err := Register(r.Context(), data, s.Config.TokenKey, s.Storage,
-				time.Duration(s.Config.MaxTokenLiveTime), r)
+			token, status, err := Register(r.Context(), data, s.Config.TokenKey,
+				s.Storage, s.Config.MaxTokenLiveTime, r)
 			if err != nil {
 				s.Logger.Warnln(fmt.Errorf("new user reguster error: %w", err))
 			}
