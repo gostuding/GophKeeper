@@ -22,9 +22,10 @@ type Cards struct {
 	Status    string    `gorm:"type:varchar(10)" json:"status"`
 	Accrual   float32   `gorm:"type:numeric" json:"accrual,omitempty"`
 	ID        uint      `gorm:"primarykey" json:"-"`
-	User      Users     `json:"-"`
+	UID       uint      `json:"-"`
 }
 
+// structCheck checks database structure.
 func structCheck(con *gorm.DB) error {
 	err := con.AutoMigrate(&Users{}, &Cards{})
 	if err != nil {

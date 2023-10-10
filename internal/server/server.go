@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"sync"
 	"syscall"
 	"time"
@@ -17,7 +18,6 @@ import (
 	// "google.golang.org/grpc"
 	"github.com/gostuding/GophKeeper/internal/server/storage"
 	"go.uber.org/zap"
-	"google.golang.org/grpc"
 )
 
 const (
@@ -37,48 +37,30 @@ type Server struct {
 	isRun   bool // flag to check is server run
 }
 
-// NewServer - создание сервера.
+// NewServer create new server.
 func NewServer(config *Config) (*Server, error) {
 	strg, err := storage.NewStorage(config.DSN, config.MaxConnectCount)
 	if err != nil {
-		return nil, fmt.Errorf("config error: %w", err)
+		return nil, makeError(ConfigError, err)
 	}
-	return &Server{Config: config, Storage: strg}, nil
-}
-
-func checkConfig(r bool, c *Config, l *zap.SugaredLogger, s Storage) error {
-	if r {
-		return fmt.Errorf("server already run")
+	logger, err := zap.NewDevelopment()
+	if err != nil {
+		return nil, makeError(CreateLoggerError)
 	}
-	if c == nil {
-		return fmt.Errorf("server options is nil")
-	}
-	if l == nil {
-		return fmt.Errorf("server logger is nil")
-	}
-	if s == nil {
-		return fmt.Errorf("server storage is nil")
-	}
-	return nil
+	return &Server{Config: config, Storage: strg, Logger: logger.Sugar()}, nil
 }
 
 // RunServer func run server. If the storage type is memory,
 // runs too gorutines for save storage data by interval and
 // save storage before finish work.
 func (s *Server) RunServer() error {
-	if err := checkConfig(s.isRun, s.Config, s.Logger, s.Storage); err != nil {
-		return err
+	s.mutex.Lock()
+	if s.isRun {
+		return fmt.Errorf("server already is run")
 	}
-	var subnet *net.IPNet
-	if s.Config.TrustedSubnet != "" {
-		_, mask, err := net.ParseCIDR(s.Config.TrustedSubnet)
-		if err != nil {
-			return fmt.Errorf("parse subnet error: %w", err)
-		}
-		subnet = mask
-	}
-
-	s.Logger.Infoln("Run server at adress: ", s.Config.IPAddress)
+	s.isRun = true
+	s.mutex.Unlock()
+	s.Logger.Infoln(fmt.Sprintf("Run server at IP: %s, PORT: %d", s.Config.IP, s.Config.Port))
 	ctx, cancelFunc := signal.NotifyContext(
 		context.Background(), os.Interrupt,
 		syscall.SIGTERM, syscall.SIGINT, syscall.SIGQUIT,
@@ -86,12 +68,9 @@ func (s *Server) RunServer() error {
 	defer cancelFunc()
 	srvChan := make(chan error, 1)
 	s.srv = http.Server{
-		Addr:    s.Config.IPAddress,
-		Handler: makeRouter(s.Storage, s.Logger, []byte(s.Config.Key), s.Config.PrivateKey, subnet),
+		Addr:    net.JoinHostPort(s.Config.IP, strconv.Itoa(s.Config.Port)),
+		Handler: makeRouter(s),
 	}
-	s.mutex.Lock()
-	s.isRun = true
-	s.mutex.Unlock()
 	go s.startServe(srvChan)
 	go func() {
 		<-ctx.Done()
@@ -99,10 +78,25 @@ func (s *Server) RunServer() error {
 			s.Logger.Warnf(stopServerString, err)
 		}
 	}()
-	if s.Config.ConnectDBString == "" {
-		go saveStorageInterval(ctx, s.Config.StoreInterval, s.Storage, s.Logger)
-	}
 	return <-srvChan
+}
+
+// startServe is private function for listen server's address and write error in chan when server finished.
+func (s *Server) startServe(srvChan chan error) {
+	err := s.srv.ListenAndServe()
+	if serr := s.Storage.Close(); serr != nil {
+		s.Logger.Warnf(stopStorageErrorString, serr)
+	} else {
+		s.Logger.Debugln(storageFinishedString)
+	}
+	if errors.Is(err, http.ErrServerClosed) {
+		srvChan <- nil
+	} else {
+		s.Logger.Warnf("server listen error: %w", err)
+		srvChan <- err
+	}
+	s.Logger.Debugln("Server listen finished")
+	close(srvChan)
 }
 
 // StopServer is used for correct finish server's work.
@@ -124,132 +118,84 @@ func (s *Server) StopServer() error {
 	return nil
 }
 
-// startServe is private function for listen server's address and write error in chan when server finished.
-func (s *Server) startServe(srvChan chan error) {
-	err := s.srv.ListenAndServe()
-	if serr := s.Storage.Stop(); serr != nil {
-		s.Logger.Warnf(stopStorageErrorString, serr)
-	} else {
-		s.Logger.Debugln(storageFinishedString)
-	}
-	if errors.Is(err, http.ErrServerClosed) {
-		srvChan <- nil
-	} else {
-		s.Logger.Warnf("server listen error: %w", err)
-		srvChan <- err
-	}
-	s.Logger.Debugln("Server listen finished")
-	close(srvChan)
-}
+// type RPCServer struct {
+// 	pb.UnimplementedMetricsServer
+// 	Config  *Config            // server's options
+// 	Storage Storage            // Storage interface
+// 	Logger  *zap.SugaredLogger // server's logger
+// 	srv     *grpc.Server       //
+// 	isRun   bool               // flag to check is server run
+// }
 
-// saveStorageInterval is private gorutine for save memory storage data by interval.
-func saveStorageInterval(
-	ctx context.Context,
-	interval int,
-	storage Saver,
-	logger *zap.SugaredLogger,
-) {
-	if interval < 1 {
-		logger.Infoln("save storage runtime mode", interval)
-		return
-	}
-	ticker := time.NewTicker(time.Duration(interval) * time.Second)
-	logger.Infof("save storage interval: %d sec.", interval)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			logger.Debugln("Save interval finished")
-			return
-		case <-ticker.C:
-			err := storage.Save()
-			if err != nil {
-				logger.Warnf("save storage error: %w", err)
-			} else {
-				logger.Info("save storage by interval")
-			}
-		}
-	}
-}
+// func (s *RPCServer) AddMetrics(ctx context.Context, in *pb.MetricsRequest) (*pb.MetricsResponse, error) {
+// 	var response pb.MetricsResponse
+// 	s.Logger.Debugln("Update metrics bytes")
 
-type RPCServer struct {
-	pb.UnimplementedMetricsServer
-	Config  *Config            // server's options
-	Storage Storage            // Storage interface
-	Logger  *zap.SugaredLogger // server's logger
-	srv     *grpc.Server       //
-	isRun   bool               // flag to check is server run
-}
+// 	_, err := bytesErrorRepeater(ctx, s.Storage.UpdateJSONSlice, in.Metrics)
+// 	if err != nil {
+// 		s.Logger.Debugln("Update metrics error", err)
+// 		response.Error = fmt.Sprintf("update metrics list error: %v", err)
+// 	}
+// 	return &response, nil
+// }
 
-func (s *RPCServer) AddMetrics(ctx context.Context, in *pb.MetricsRequest) (*pb.MetricsResponse, error) {
-	var response pb.MetricsResponse
-	s.Logger.Debugln("Update metrics bytes")
+// func NewRPCServer(config *Config, logger *zap.SugaredLogger, storage Storage) *RPCServer {
+// 	return &RPCServer{
+// 		Config:  config,
+// 		Logger:  logger,
+// 		Storage: storage,
+// 	}
+// }
 
-	_, err := bytesErrorRepeater(ctx, s.Storage.UpdateJSONSlice, in.Metrics)
-	if err != nil {
-		s.Logger.Debugln("Update metrics error", err)
-		response.Error = fmt.Sprintf("update metrics list error: %v", err)
-	}
-	return &response, nil
-}
+// func (s *RPCServer) RunServer() error {
+// 	if err := checkConfig(s.isRun, s.Config, s.Logger, s.Storage); err != nil {
+// 		return err
+// 	}
+// 	listen, err := net.Listen("tcp", s.Config.IPAddress)
+// 	if err != nil {
+// 		return fmt.Errorf("start RPC server error: %w", err)
+// 	}
+// 	s.srv = grpc.NewServer(
+// 		grpc.ChainUnaryInterceptor(
+// 			interseptors.HashInterceptor([]byte(s.Config.Key)),
+// 			interseptors.GzipInterceptor,
+// 			interseptors.DecriptInterceptor(s.Config.PrivateKey),
+// 			interseptors.LogInterceptor(s.Logger),
+// 		))
+// 	pb.RegisterMetricsServer(s.srv, s)
 
-func NewRPCServer(config *Config, logger *zap.SugaredLogger, storage Storage) *RPCServer {
-	return &RPCServer{
-		Config:  config,
-		Logger:  logger,
-		Storage: storage,
-	}
-}
+// 	ctx, cancelFunc := signal.NotifyContext(
+// 		context.Background(), os.Interrupt,
+// 		syscall.SIGTERM, syscall.SIGINT, syscall.SIGQUIT,
+// 	)
+// 	defer cancelFunc()
+// 	if s.Config.ConnectDBString == "" {
+// 		go saveStorageInterval(ctx, s.Config.StoreInterval, s.Storage, s.Logger)
+// 	}
+// 	s.Logger.Debugln("Server gRPC run at", s.Config.IPAddress)
+// 	s.isRun = true
+// 	go func() {
+// 		<-ctx.Done()
+// 		if err := s.StopServer(); err != nil {
+// 			s.Logger.Warnf(stopServerString, err)
+// 		}
+// 	}()
+// 	if err := s.srv.Serve(listen); err != nil {
+// 		s.isRun = false
+// 		return fmt.Errorf("server RPC error: %w", err)
+// 	}
+// 	return nil
+// }
 
-func (s *RPCServer) RunServer() error {
-	if err := checkConfig(s.isRun, s.Config, s.Logger, s.Storage); err != nil {
-		return err
-	}
-	listen, err := net.Listen("tcp", s.Config.IPAddress)
-	if err != nil {
-		return fmt.Errorf("start RPC server error: %w", err)
-	}
-	s.srv = grpc.NewServer(
-		grpc.ChainUnaryInterceptor(
-			interseptors.HashInterceptor([]byte(s.Config.Key)),
-			interseptors.GzipInterceptor,
-			interseptors.DecriptInterceptor(s.Config.PrivateKey),
-			interseptors.LogInterceptor(s.Logger),
-		))
-	pb.RegisterMetricsServer(s.srv, s)
-
-	ctx, cancelFunc := signal.NotifyContext(
-		context.Background(), os.Interrupt,
-		syscall.SIGTERM, syscall.SIGINT, syscall.SIGQUIT,
-	)
-	defer cancelFunc()
-	if s.Config.ConnectDBString == "" {
-		go saveStorageInterval(ctx, s.Config.StoreInterval, s.Storage, s.Logger)
-	}
-	s.Logger.Debugln("Server gRPC run at", s.Config.IPAddress)
-	s.isRun = true
-	go func() {
-		<-ctx.Done()
-		if err := s.StopServer(); err != nil {
-			s.Logger.Warnf(stopServerString, err)
-		}
-	}()
-	if err := s.srv.Serve(listen); err != nil {
-		s.isRun = false
-		return fmt.Errorf("server RPC error: %w", err)
-	}
-	return nil
-}
-
-func (s *RPCServer) StopServer() error {
-	if !s.isRun {
-		return fmt.Errorf("server not running yet")
-	}
-	if serr := s.Storage.Stop(); serr != nil {
-		s.Logger.Warnf(stopStorageErrorString, serr)
-	} else {
-		s.Logger.Debugln(storageFinishedString)
-	}
-	s.srv.Stop()
-	return nil
-}
+// func (s *RPCServer) StopServer() error {
+// 	if !s.isRun {
+// 		return fmt.Errorf("server not running yet")
+// 	}
+// 	if serr := s.Storage.Stop(); serr != nil {
+// 		s.Logger.Warnf(stopStorageErrorString, serr)
+// 	} else {
+// 		s.Logger.Debugln(storageFinishedString)
+// 	}
+// 	s.srv.Stop()
+// 	return nil
+// }

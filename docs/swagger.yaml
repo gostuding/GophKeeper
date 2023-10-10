@@ -1,0 +1,62 @@
+basePath: /api
+definitions:
+  server.LoginPassword:
+    properties:
+      login:
+        type: string
+      password:
+        type: string
+    type: object
+host: localhost:8080
+info:
+  contact:
+    email: mag-nat1@yandex.ru
+    name: API Support
+  title: GophKeeper API
+  version: "1.0"
+paths:
+  /get/key:
+    get:
+      responses:
+        "200":
+          description: Отправка ключа
+        "500":
+          description: Внутренняя ошибка сервиса
+      summary: Запрос открытого ключа сервера
+      tags:
+      - Авторизация
+  /user/register:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Логин и пароль пользователя в формате json
+        in: body
+        name: params
+        required: true
+        schema:
+          $ref: '#/definitions/server.LoginPassword'
+      responses:
+        "200":
+          description: Успешная регистрация пользователя
+          headers:
+            Authorization:
+              description: Токен авторизации
+              type: string
+        "400":
+          description: Ошибка в запросе.
+        "409":
+          description: Такой логин уже используется другим пользователем.
+        "500":
+          description: Внутренняя ошибка сервиса.
+      summary: Регистрация нового пользователя. Данные должны быть зашифрованы открытым
+        ключём сервера.
+      tags:
+      - Авторизация
+securityDefinitions:
+  ApiKeyAuth:
+    description: API для сервера менеджера паролей GophKeeper.
+    in: header
+    name: Authorization
+    type: apiKey
+swagger: "2.0"

@@ -17,22 +17,26 @@ const (
 	fBits                 os.FileMode = 0600
 	defaultPort                       = 8080
 	defaultConCount                   = 10
+	defaultTokenLiveTime              = 60 * 24
 	defaultIP                         = "127.0.0.1"
 	defaultPrivateKeyPath             = "./srv_private_key.pem"
 	defaultDSN                        = "host=localhost user=postgres database=gophkeeper"
+	defaultTokenKey                   = "token key"
 )
 
-// Структура для хранения настроек сервера.
+// Server config structure.
 type Config struct {
-	IP              string          `json:"ip"`                   // адрес сервера
-	DSN             string          `json:"dsn"`                  // строка подключения к БД
-	KeyPath         string          `json:"private_key"`          // путь до файла с закрытым ключом
-	PrivateKey      *rsa.PrivateKey `json:"-"`                    // ключ для шифрования данных
-	Port            int             `json:"port"`                 // порт для сервера
-	MaxConnectCount int             `json:"max_connection_count"` // максимальное количество подключений к БД
+	IP               string          `json:"ip"`                   // server's IP address
+	DSN              string          `json:"dsn"`                  // database connection string
+	KeyPath          string          `json:"private_key"`          // path to private key file
+	PrivateKey       *rsa.PrivateKey `json:"-"`                    // private key
+	TokenKey         []byte          `json:"token_key"`            // key for JWT token create
+	Port             int             `json:"port"`                 // server's PORT
+	MaxConnectCount  int             `json:"max_connection_count"` // max connections count
+	MaxTokenLiveTime int             `json:"max_token_live_time"`  // authorization token live time
 }
 
-// Проверка наличия файла с настройками и создание файла при его отсутствии.
+// checkFileExist checks config file exists. Createss default config if the file wasn't found.
 func checkFileExist(path string) error {
 	_, err := os.Stat(path)
 	if err == nil {
@@ -57,11 +61,13 @@ func checkFileExist(path string) error {
 	}
 
 	cfg := Config{
-		IP:              defaultIP,
-		Port:            defaultPort,
-		DSN:             defaultDSN,
-		KeyPath:         defaultPrivateKeyPath,
-		MaxConnectCount: defaultConCount,
+		IP:               defaultIP,
+		Port:             defaultPort,
+		DSN:              defaultDSN,
+		KeyPath:          defaultPrivateKeyPath,
+		MaxConnectCount:  defaultConCount,
+		TokenKey:         []byte(defaultTokenKey),
+		MaxTokenLiveTime: defaultTokenLiveTime,
 	}
 	data, err := json.MarshalIndent(cfg, "", "    ")
 	if err != nil {
@@ -73,7 +79,7 @@ func checkFileExist(path string) error {
 	return nil
 }
 
-// parcePrivateKey - чтение приватного ключа.
+// parcePrivateKey - reads private ke from file.
 func parcePrivateKey(filePath string) (*rsa.PrivateKey, error) {
 	data, err := os.ReadFile(filePath)
 	if err != nil {
@@ -107,12 +113,12 @@ func readConfigFile(path string, cfg *Config) error {
 	return nil
 }
 
-// NewConfig - получение конфигурации для сервера.
-// Все настройки должны храниться в json файле 'config.json'.
+// NewConfig creates new Config object for server.
+// Options must be in json file. Path to file sets by -i arg. Default is 'server_config.json'.
 func NewConfig() (*Config, error) {
 	cfg := Config{}
 	var fPath string
-	flag.StringVar(&fPath, "i", "server_config.json", "Путь до файла с настройками")
+	flag.StringVar(&fPath, "i", "server_config.json", "Path to configuration json file")
 	flag.Parse()
 	if err := checkFileExist(fPath); err != nil {
 		return nil, err
