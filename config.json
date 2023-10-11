@@ -1,5 +1,6 @@
 {
-    "ip": "127.0.0.1",
-    "login": "",
-    "port": 8080
+    "server_addres": "http://127.0.0.1:8080",
+    "login": "admin",
+    "local_storage_path": "",
+    "local_mode": false
 }

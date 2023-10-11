@@ -11,7 +11,7 @@ import (
 // @contact.name API Support
 // @contact.email mag-nat1@yandex.ru
 // @host localhost:8080
-// @BasePath /api
+// @BasePath /
 // @securityDefinitions.apikey ApiKeyAuth
 // @in header
 // @name Authorization

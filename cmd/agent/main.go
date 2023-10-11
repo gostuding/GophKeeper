@@ -1,17 +1,20 @@
 package main
 
 import (
-	"fmt"
 	"log"
 
 	"github.com/gostuding/GophKeeper/internal/agent"
+	"github.com/gostuding/GophKeeper/internal/agent/config"
 )
 
 func main() {
-	cfg, err := agent.NewConfig()
+	cfg, err := config.NewConfig()
 	if err != nil {
 		log.Fatalf("config error: %v", err)
 	}
-	fmt.Println(cfg)
+	agnt := agent.NewAgent(cfg)
+	if err := agnt.Run(); err != nil {
+		log.Fatalf("agent error: %v", err)
+	}
 
 }
