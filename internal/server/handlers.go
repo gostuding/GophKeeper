@@ -12,6 +12,7 @@ import (
 
 	"github.com/gostuding/GophKeeper/internal/server/storage"
 	"github.com/gostuding/middlewares"
+	"gorm.io/gorm"
 )
 
 type (
@@ -43,7 +44,7 @@ func isValidateLoginPassword(body []byte) (*LoginPassword, error) {
 // GetPublicKey handler returns server public key.
 // @Tags Авторизация
 // @Summary Запрос открытого ключа сервера
-// @Router /get/key [get]
+// @Router /api/get/key [get]
 // @Success 200 "Отправка ключа"
 // @failure 500 "Внутренняя ошибка сервиса".
 func GetPublicKey(key *rsa.PrivateKey) ([]byte, error) {
@@ -54,15 +55,30 @@ func GetPublicKey(key *rsa.PrivateKey) ([]byte, error) {
 	return keyData, nil
 }
 
+// createToken is private function.
+func createToken(r *http.Request, key []byte, uid, time int) (string, int, error) {
+	ua := r.Header.Get("User-Agent")
+	ip, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return "", http.StatusBadRequest, makeError(IPIncorrectError, err)
+	}
+	token, err := middlewares.CreateToken(key, time, uid, ua, ip)
+	if err != nil {
+		return "", http.StatusInternalServerError, makeError(CreateTokenError, err)
+	}
+	return token, http.StatusOK, nil
+}
+
 // Register new user handler.
 // @Tags Авторизация
 // @Summary Регистрация нового пользователя. Данные должны быть зашифрованы открытым ключём сервера.
 // @Accept json
 // @Param params body LoginPassword true "Логин и пароль пользователя в формате json"
-// @Router /user/register [post]
+// @Router /api/user/register [post]
 // @Success 200 "Успешная регистрация пользователя"
 // @Header 200 {string} Authorization "Токен авторизации"
-// @failure 400 "Ошибка в запросе."
+// @failure 400 "Ошибка при расшифровке тела запроса"
+// @failure 422 "Ошибка при конвертации json"
 // @failure 409 "Такой логин уже используется другим пользователем."
 // @failure 500 "Внутренняя ошибка сервиса.".
 func Register(
@@ -74,12 +90,7 @@ func Register(
 ) (string, int, error) {
 	user, err := isValidateLoginPassword(body)
 	if err != nil {
-		return "", http.StatusBadRequest, err
-	}
-	ua := r.Header.Get("User-Agent")
-	ip, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		return "", http.StatusBadRequest, makeError(IPIncorrectError, err)
+		return "", http.StatusUnprocessableEntity, err
 	}
 	uid, err := strg.Registration(ctx, user.Login, user.Password)
 	if err != nil {
@@ -91,48 +102,42 @@ func Register(
 		}
 		return "", status, err
 	}
-	token, err := middlewares.CreateToken(key, t, uid, ua, ip)
-	if err != nil {
-		return "", http.StatusInternalServerError, makeError(CreateTokenError, err)
-	}
-	return token, http.StatusOK, nil
+	return createToken(r, key, uid, t)
 }
 
-// // Login ...
-// // @Tags Авторизация
-// // @Summary Авторизация пользователя в микросервисе
-// // @Accept json
-// // @Param params body LoginPassword true "Логи и пароль пользователя в формате json"
-// // @Router /user/login [post]
-// // @Success 200 "Успешная авторизация"
-// // @Header 200 {string} Authorization "Токен авторизации"
-// // @failure 400 "Ошибка в теле запроса. Тело запроса не соответствует json формату"
-// // @failure 401 "Логин или пароль не найден"
-// // @failure 500 "Внутренняя ошибка сервиса".
-// func Login(ctx context.Context, body, key []byte, remoteAddr, ua string,
-// 	strg Storage, tokenLiveTime int) (string, int, error) {
-// 	user, err := isValidateLoginPassword(body)
-// 	if err != nil {
-// 		return "", http.StatusBadRequest, err
-// 	}
-// 	ip, _, err := net.SplitHostPort(remoteAddr)
-// 	if err != nil {
-// 		return "", http.StatusBadRequest, fmt.Errorf(incorrectIPErroString, err)
-// 	}
-// 	uid, err := strg.Login(ctx, user.Login, user.Password, ua, ip)
-// 	if err != nil {
-// 		if errors.Is(err, gorm.ErrRecordNotFound) {
-// 			return "", http.StatusUnauthorized, fmt.Errorf("user not found in system. Login: '%s'", user.Login)
-// 		} else {
-// 			return "", http.StatusInternalServerError, fmt.Errorf(gormError, err)
-// 		}
-// 	}
-// 	token, err := middlewares.CreateToken(key, tokenLiveTime, uid, ua, ip)
-// 	if err != nil {
-// 		return "", http.StatusInternalServerError, fmt.Errorf(tokenGenerateError, err)
-// 	}
-// 	return token, http.StatusOK, nil
-// }
+// Login user.
+// @Tags Авторизация
+// @Summary Авторизация пользователя в микросервисе. Данные должны быть зашифрованы открытым ключём сервера.
+// @Accept json
+// @Param params body LoginPassword true "Логи и пароль пользователя в формате json"
+// @Router /api/user/login [post]
+// @Success 200 "Успешная авторизация"
+// @Header 200 {string} Authorization "Токен авторизации"
+// @failure 400 "Ошибка при расшифровке тела запроса"
+// @failure 422 "Ошибка при конвертации json"
+// @failure 401 "Логин или пароль не найден"
+// @failure 500 "Внутренняя ошибка сервиса".
+func Login(
+	ctx context.Context,
+	body, key []byte,
+	strg *storage.Storage,
+	t int,
+	r *http.Request,
+) (string, int, error) {
+	user, err := isValidateLoginPassword(body)
+	if err != nil {
+		return "", http.StatusUnprocessableEntity, err
+	}
+	uid, err := strg.Login(ctx, user.Login, user.Password)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return "", http.StatusUnauthorized, fmt.Errorf("user not found in system. Login: '%s'", user.Login)
+		} else {
+			return "", http.StatusInternalServerError, makeError(GormGetError, err)
+		}
+	}
+	return createToken(r, key, uid, t)
+}
 
 // // AddOrder ...
 // // @Tags Заказы

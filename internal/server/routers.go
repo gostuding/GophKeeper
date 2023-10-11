@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"net"
@@ -11,6 +12,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/gostuding/GophKeeper/docs"
+	"github.com/gostuding/GophKeeper/internal/server/storage"
 	"github.com/gostuding/middlewares"
 
 	"github.com/go-chi/chi"
@@ -21,7 +23,7 @@ import (
 
 const (
 	OctetStream = "application/octet-stream"
-	ApplJson    = "application/json"
+	ApplJSON    = "application/json"
 	ContentType = "Content-Type"
 	TextPlain   = "text/plain"
 )
@@ -33,6 +35,33 @@ func writeResponseData(w http.ResponseWriter, data []byte, status int, l *zap.Su
 	if err != nil {
 		l.Warnf(makeError(WriteResponseError, err).Error())
 	}
+}
+
+// readRequestBody is using for no duplicate code.
+func readRequestBody(w http.ResponseWriter, r *http.Request, l *zap.SugaredLogger) ([]byte, error) {
+	data, err := io.ReadAll(r.Body)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		l.Warnln(makeError(ReadRequestBodyError, err).Error())
+		return nil, err
+	}
+	return data, nil
+}
+
+// loginRegistrationCommon is using for no duplicate code.
+func loginRegistrationCommon(
+	w http.ResponseWriter, r *http.Request, s *Server, name string,
+	f func(context.Context, []byte, []byte, *storage.Storage, int, *http.Request) (string, int, error),
+) {
+	data, err := readRequestBody(w, r, s.Logger)
+	if err != nil {
+		return
+	}
+	token, status, err := f(r.Context(), data, s.Config.TokenKey, s.Storage, s.Config.MaxTokenLiveTime, r)
+	if err != nil {
+		s.Logger.Warnln(fmt.Errorf("%s user error: %w", name, err))
+	}
+	writeResponseData(w, []byte(token), status, s.Logger)
 }
 
 func makeRouter(s *Server) http.Handler {
@@ -77,18 +106,11 @@ func makeRouter(s *Server) http.Handler {
 		r.Use(middlewares.DecriptMiddleware(s.Config.PrivateKey, s.Logger))
 
 		r.Post("/api/user/register", func(w http.ResponseWriter, r *http.Request) {
-			data, err := io.ReadAll(r.Body)
-			if err != nil {
-				w.WriteHeader(http.StatusBadRequest)
-				s.Logger.Warnln(makeError(ReadRequestBodyError, err).Error())
-				return
-			}
-			token, status, err := Register(r.Context(), data, s.Config.TokenKey,
-				s.Storage, s.Config.MaxTokenLiveTime, r)
-			if err != nil {
-				s.Logger.Warnln(fmt.Errorf("new user reguster error: %w", err))
-			}
-			writeResponseData(w, []byte(token), status, s.Logger)
+			loginRegistrationCommon(w, r, s, "registration", Register)
+		})
+
+		r.Post("/api/user/login", func(w http.ResponseWriter, r *http.Request) {
+			loginRegistrationCommon(w, r, s, "login", Login)
 		})
 	})
 

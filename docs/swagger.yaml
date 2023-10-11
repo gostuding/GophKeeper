@@ -15,7 +15,7 @@ info:
   title: GophKeeper API
   version: "1.0"
 paths:
-  /get/key:
+  /api/get/key:
     get:
       responses:
         "200":
@@ -25,7 +25,37 @@ paths:
       summary: Запрос открытого ключа сервера
       tags:
       - Авторизация
-  /user/register:
+  /api/user/login:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Логи и пароль пользователя в формате json
+        in: body
+        name: params
+        required: true
+        schema:
+          $ref: '#/definitions/server.LoginPassword'
+      responses:
+        "200":
+          description: Успешная авторизация
+          headers:
+            Authorization:
+              description: Токен авторизации
+              type: string
+        "400":
+          description: Ошибка при расшифровке тела запроса
+        "401":
+          description: Логин или пароль не найден
+        "422":
+          description: Ошибка при конвертации json
+        "500":
+          description: Внутренняя ошибка сервиса
+      summary: Авторизация пользователя в микросервисе. Данные должны быть зашифрованы
+        открытым ключём сервера.
+      tags:
+      - Авторизация
+  /api/user/register:
     post:
       consumes:
       - application/json
@@ -44,9 +74,11 @@ paths:
               description: Токен авторизации
               type: string
         "400":
-          description: Ошибка в запросе.
+          description: Ошибка при расшифровке тела запроса
         "409":
           description: Такой логин уже используется другим пользователем.
+        "422":
+          description: Ошибка при конвертации json
         "500":
           description: Внутренняя ошибка сервиса.
       summary: Регистрация нового пользователя. Данные должны быть зашифрованы открытым

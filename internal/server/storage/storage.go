@@ -56,6 +56,7 @@ func (s *Storage) Registration(
 	return int(user.ID), nil
 }
 
+// hashPassword creates hash from password string.
 func hashPassword(pwd []byte) ([]byte, error) {
 	hashedPassword, err := bcrypt.GenerateFromPassword(pwd, bcrypt.DefaultCost)
 	if err != nil {
@@ -64,11 +65,15 @@ func hashPassword(pwd []byte) ([]byte, error) {
 	return hashedPassword, nil
 }
 
-func (s *Storage) Login(ctx context.Context, login, pwd, ua, ip string) (int, error) {
+// Login checks user data in database.
+func (s *Storage) Login(
+	ctx context.Context,
+	login, pwd string,
+) (int, error) {
 	var user Users
 	result := s.con.WithContext(ctx).Where("login = ?", login).First(&user)
 	if result.Error != nil {
-		return 0, fmt.Errorf("user error: %w", result.Error)
+		return 0, fmt.Errorf("user login error: %w", result.Error)
 	}
 	err := bcrypt.CompareHashAndPassword([]byte(user.Pwd), []byte(pwd))
 	if err != nil {

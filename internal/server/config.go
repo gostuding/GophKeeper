@@ -79,7 +79,7 @@ func checkFileExist(path string) error {
 	return nil
 }
 
-// parcePrivateKey - reads private ke from file.
+// parcePrivateKey reads private ke from file.
 func parcePrivateKey(filePath string) (*rsa.PrivateKey, error) {
 	data, err := os.ReadFile(filePath)
 	if err != nil {
@@ -96,7 +96,7 @@ func parcePrivateKey(filePath string) (*rsa.PrivateKey, error) {
 	return pKey, nil
 }
 
-// readConfigFile - чтение настроек сервера из файла.
+// readConfigFile reads configuration from file.
 func readConfigFile(path string, cfg *Config) error {
 	data, err := os.ReadFile(path)
 	if err != nil {

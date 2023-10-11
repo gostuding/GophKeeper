@@ -11,7 +11,7 @@
     "host": "localhost:8080",
     "basePath": "/api",
     "paths": {
-        "/get/key": {
+        "/api/get/key": {
             "get": {
                 "tags": [
                     "Авторизация"
@@ -27,7 +27,52 @@
                 }
             }
         },
-        "/user/register": {
+        "/api/user/login": {
+            "post": {
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Авторизация"
+                ],
+                "summary": "Авторизация пользователя в микросервисе. Данные должны быть зашифрованы открытым ключём сервера.",
+                "parameters": [
+                    {
+                        "description": "Логи и пароль пользователя в формате json",
+                        "name": "params",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/server.LoginPassword"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Успешная авторизация",
+                        "headers": {
+                            "Authorization": {
+                                "type": "string",
+                                "description": "Токен авторизации"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Ошибка при расшифровке тела запроса"
+                    },
+                    "401": {
+                        "description": "Логин или пароль не найден"
+                    },
+                    "422": {
+                        "description": "Ошибка при конвертации json"
+                    },
+                    "500": {
+                        "description": "Внутренняя ошибка сервиса"
+                    }
+                }
+            }
+        },
+        "/api/user/register": {
             "post": {
                 "consumes": [
                     "application/json"
@@ -58,10 +103,13 @@
                         }
                     },
                     "400": {
-                        "description": "Ошибка в запросе."
+                        "description": "Ошибка при расшифровке тела запроса"
                     },
                     "409": {
                         "description": "Такой логин уже используется другим пользователем."
+                    },
+                    "422": {
+                        "description": "Ошибка при конвертации json"
                     },
                     "500": {
                         "description": "Внутренняя ошибка сервиса."
