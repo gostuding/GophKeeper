@@ -12,6 +12,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/gostuding/GophKeeper/docs"
+	midl "github.com/gostuding/GophKeeper/internal/server/middlewares"
 	"github.com/gostuding/GophKeeper/internal/server/storage"
 	"github.com/gostuding/middlewares"
 
@@ -51,22 +52,21 @@ func readRequestBody(w http.ResponseWriter, r *http.Request, l *zap.SugaredLogge
 // loginRegistrationCommon is using for no duplicate code.
 func loginRegistrationCommon(
 	w http.ResponseWriter, r *http.Request, s *Server, name string,
-	f func(context.Context, []byte, []byte, *storage.Storage, int, *http.Request) (string, int, error),
+	f func(context.Context, []byte, []byte, *storage.Storage, int, *http.Request) (string, string, int, error),
 ) {
 	data, err := readRequestBody(w, r, s.Logger)
 	if err != nil {
 		return
 	}
-	token, status, err := f(r.Context(), data, s.Config.TokenKey, s.Storage, s.Config.MaxTokenLiveTime, r)
+	pk, token, status, err := f(r.Context(), data, s.Config.TokenKey, s.Storage, s.Config.MaxTokenLiveTime, r)
 	if err != nil {
 		s.Logger.Warnln(fmt.Errorf("%s user error: %w", name, err))
 	}
+	w.Header().Add(midl.KeyRSAHeaderName, pk)
 	writeResponseData(w, []byte(token), status, s.Logger)
 }
 
 func makeRouter(s *Server) http.Handler {
-	// var loginURL = "/api/user/login"
-	// var ordersListURL = "/api/user/orders"
 	router := chi.NewRouter()
 	docs.SwaggerInfo.Host = net.JoinHostPort(s.Config.IP, strconv.Itoa(s.Config.Port))
 
@@ -103,7 +103,7 @@ func makeRouter(s *Server) http.Handler {
 	})
 
 	router.Group(func(r chi.Router) {
-		r.Use(middlewares.DecriptMiddleware(s.Config.PrivateKey, s.Logger))
+		r.Use(middlewares.DecriptMiddleware(s.Config.PrivateKey, s.Logger), midl.RSAEncryptMiddleware(s.Logger))
 
 		r.Post("/api/user/register", func(w http.ResponseWriter, r *http.Request) {
 			loginRegistrationCommon(w, r, s, "registration", Register)

@@ -8,11 +8,12 @@ import (
 )
 
 type Users struct {
-	CreatedAt time.Time `json:"-"`
-	UpdatedAt time.Time `json:"-"`
-	Login     string    `gorm:"unique" json:"-"`
-	Pwd       string    `gorm:"type:varchar(255)" json:"-"`
-	ID        uint      `gorm:"primarykey" json:"-"`
+	CreatedAt time.Time
+	UpdatedAt time.Time
+	Login     string `gorm:"unique" `
+	Pwd       string `gorm:"type:varchar(255)" `
+	Key       string `gorm:"type:varchar(32)" `
+	ID        uint   `gorm:"primarykey" `
 }
 
 type Cards struct {

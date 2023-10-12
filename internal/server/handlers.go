@@ -23,8 +23,9 @@ type (
 	}
 	// LoginPassword is struct for marshal regustration and authorization data.
 	LoginPassword struct {
-		Login    string `json:"login"`    //
-		Password string `json:"password"` //
+		Login     string `json:"login"`      //
+		Password  string `json:"password"`   //
+		PublicKey string `json:"public_key"` //
 	}
 )
 
@@ -35,7 +36,7 @@ func isValidateLoginPassword(body []byte) (*LoginPassword, error) {
 	if err != nil {
 		return nil, fmt.Errorf("body convert to json error: %w", err)
 	}
-	if user.Login == "" || user.Password == "" {
+	if user.Login == "" || user.Password == "" || user.PublicKey == "" {
 		return nil, errors.New("empty registration values error")
 	}
 	return &user, nil
@@ -87,12 +88,12 @@ func Register(
 	strg *storage.Storage,
 	t int,
 	r *http.Request,
-) (string, int, error) {
+) (string, string, int, error) {
 	user, err := isValidateLoginPassword(body)
 	if err != nil {
-		return "", http.StatusUnprocessableEntity, err
+		return "", "", http.StatusUnprocessableEntity, err
 	}
-	uid, err := strg.Registration(ctx, user.Login, user.Password)
+	aesKey, uid, err := strg.Registration(ctx, user.Login, user.Password)
 	if err != nil {
 		status := http.StatusInternalServerError
 		err = makeError(GormGetError, err)
@@ -100,9 +101,14 @@ func Register(
 			status = http.StatusConflict
 			err = fmt.Errorf("user registrating duplicate error: '%s'", user.Login)
 		}
-		return "", status, err
+		return "", "", status, err
 	}
-	return createToken(r, key, uid, t)
+	token, st, err := createToken(r, key, uid, t)
+	if err != nil {
+		return "", "", st, err
+	}
+	token = fmt.Sprintf(`{"token": "%s", "key": "%s"}`, token, aesKey)
+	return user.PublicKey, token, st, nil
 }
 
 // Login user.
@@ -123,20 +129,25 @@ func Login(
 	strg *storage.Storage,
 	t int,
 	r *http.Request,
-) (string, int, error) {
+) (string, string, int, error) {
 	user, err := isValidateLoginPassword(body)
 	if err != nil {
-		return "", http.StatusUnprocessableEntity, err
+		return "", "", http.StatusUnprocessableEntity, err
 	}
-	uid, err := strg.Login(ctx, user.Login, user.Password)
+	aesKey, uid, err := strg.Login(ctx, user.Login, user.Password)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return "", http.StatusUnauthorized, fmt.Errorf("user not found in system. Login: '%s'", user.Login)
+			return "", "", http.StatusUnauthorized, fmt.Errorf("user not found in system. Login: '%s'", user.Login)
 		} else {
-			return "", http.StatusInternalServerError, makeError(GormGetError, err)
+			return "", "", http.StatusInternalServerError, makeError(GormGetError, err)
 		}
 	}
-	return createToken(r, key, uid, t)
+	token, st, err := createToken(r, key, uid, t)
+	if err != nil {
+		return "", "", st, err
+	}
+	token = fmt.Sprintf(`{"token": "%s", "key": "%s"}`, token, aesKey)
+	return user.PublicKey, token, st, nil
 }
 
 // // AddOrder ...

@@ -2,9 +2,12 @@ package storage
 
 import (
 	"context"
+	"crypto/md5"
 	"database/sql"
+	"encoding/hex"
 	"errors"
 	"fmt"
+	"math/rand"
 
 	"github.com/jackc/pgerrcode"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -38,22 +41,34 @@ func NewStorage(dsn string, maxCon int) (*Storage, error) {
 	return &storage, structCheck(con)
 }
 
+// randomString generats random string
+func randomString(length int) string {
+	var letters = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
+	b := make([]rune, length)
+	for i := range b {
+		b[i] = letters[rand.Intn(len(letters))]
+	}
+	return string(b)
+}
+
 // Registration new users and returns it's id in database.
 func (s *Storage) Registration(
 	ctx context.Context,
 	login,
 	pwd string,
-) (int, error) {
+) (string, int, error) {
 	passwd, err := hashPassword([]byte(pwd))
 	if err != nil {
-		return 0, err
+		return "", 0, err
 	}
-	user := Users{Login: login, Pwd: string(passwd)}
+	h := md5.New()
+	h.Write([]byte(randomString(128)))
+	user := Users{Login: login, Pwd: string(passwd), Key: hex.EncodeToString(h.Sum(nil))}
 	result := s.con.WithContext(ctx).Create(&user)
 	if result.Error != nil {
-		return 0, fmt.Errorf("sql error: %w", result.Error)
+		return "", 0, fmt.Errorf("sql error: %w", result.Error)
 	}
-	return int(user.ID), nil
+	return user.Key, int(user.ID), nil
 }
 
 // hashPassword creates hash from password string.
@@ -69,17 +84,17 @@ func hashPassword(pwd []byte) ([]byte, error) {
 func (s *Storage) Login(
 	ctx context.Context,
 	login, pwd string,
-) (int, error) {
+) (string, int, error) {
 	var user Users
 	result := s.con.WithContext(ctx).Where("login = ?", login).First(&user)
 	if result.Error != nil {
-		return 0, fmt.Errorf("user login error: %w", result.Error)
+		return "", 0, fmt.Errorf("user login error: %w", result.Error)
 	}
 	err := bcrypt.CompareHashAndPassword([]byte(user.Pwd), []byte(pwd))
 	if err != nil {
-		return 0, gorm.ErrRecordNotFound
+		return "", 0, gorm.ErrRecordNotFound
 	}
-	return int(user.ID), nil
+	return user.Key, int(user.ID), nil
 }
 
 // func (s *Storage) AddOrder(ctx context.Context, uid int, order string) (int, error) {
