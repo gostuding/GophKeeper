@@ -5,6 +5,7 @@ import (
 	"crypto/md5"
 	"database/sql"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math/rand"
@@ -95,6 +96,33 @@ func (s *Storage) Login(
 		return "", 0, gorm.ErrRecordNotFound
 	}
 	return user.Key, int(user.ID), nil
+}
+
+// GetCardsList returns users cards json.
+func (s *Storage) GetCardsList(ctx context.Context, uid int) ([]byte, error) {
+	var c []Cards
+	result := s.con.WithContext(ctx).Order("id desc").Where("uid = ?", uid).Find(c)
+	if result.Error != nil {
+		return nil, fmt.Errorf("get cards error: %w", result.Error)
+	}
+	if result.RowsAffected == 0 {
+		return nil, nil
+	}
+	data, err := json.Marshal(c)
+	if err != nil {
+		return nil, fmt.Errorf("cards list convert error: %w", err)
+	}
+	return data, nil
+}
+
+// AddCard adds new card in database
+func (s *Storage) AddCard(ctx context.Context, uid uint, label, value string) error {
+	card := Cards{Label: label, Value: value, UID: uid}
+	result := s.con.WithContext(ctx).Create(&card)
+	if result.Error != nil {
+		return fmt.Errorf("add new card error: %w", result.Error)
+	}
+	return nil
 }
 
 // func (s *Storage) AddOrder(ctx context.Context, uid int, order string) (int, error) {

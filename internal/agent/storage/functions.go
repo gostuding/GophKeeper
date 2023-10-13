@@ -1,11 +1,15 @@
 package storage
 
 import (
+	"crypto/aes"
+	"crypto/cipher"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
 )
 
 // encryptRSAMessage encrypts message by RSA.
@@ -35,8 +39,8 @@ func encryptRSAMessage(msg []byte, key *rsa.PublicKey) ([]byte, error) {
 	return encripted, nil
 }
 
-// decriptRSAMessage decripts RSA message.
-func decriptRSAMessage(key *rsa.PrivateKey, msg []byte) ([]byte, error) {
+// decryptRSAMessage decripts RSA message.
+func decryptRSAMessage(key *rsa.PrivateKey, msg []byte) ([]byte, error) {
 	size := key.PublicKey.Size()
 	if len(msg)%size != 0 {
 		return nil, errors.New("message length error")
@@ -53,16 +57,44 @@ func decriptRSAMessage(key *rsa.PrivateKey, msg []byte) ([]byte, error) {
 	return dectipted, nil
 }
 
-//
-// func DecryptAES(key []byte, ct string) {
-// 	ciphertext, _ := hex.DecodeString(ct)
+// aesKey checks key size and add space rune till aes.BlockSize.
+func aesKey(key string) []byte {
+	for len([]byte(key)) < aes.BlockSize {
+		key += " "
+	}
+	return []byte(key)[:aes.BlockSize]
+}
 
-// 	c, err := aes.NewCipher(key)
-// 	CheckError(err)
+// encryptAES.
+func encryptAES(key, msg string) (string, error) {
+	block, err := aes.NewCipher(aesKey(key))
+	if err != nil {
+		return "", fmt.Errorf("create encrypt cioper error: %w", err)
+	}
+	ciphertext := make([]byte, aes.BlockSize+len(msg))
+	iv := ciphertext[:aes.BlockSize]
+	if _, err := io.ReadFull(rand.Reader, iv); err != nil {
+		panic(err)
+	}
+	stream := cipher.NewCFBEncrypter(block, iv)
+	stream.XORKeyStream(ciphertext[aes.BlockSize:], []byte(msg))
+	return hex.EncodeToString(ciphertext), nil
+}
 
-// 	pt := make([]byte, len(ciphertext))
-// 	c.Decrypt(pt, ciphertext)
-
-// 	s := string(pt[:])
-// 	fmt.Println("DECRYPTED:", s)
-// }
+// decryptAES.
+func decryptAES(key, msg string) (string, error) {
+	ciphertext, err := hex.DecodeString(msg)
+	if err != nil {
+		return "", fmt.Errorf("decode message error: %w", err)
+	}
+	block, err := aes.NewCipher(aesKey(key))
+	if err != nil {
+		panic(err)
+	}
+	iv := ciphertext[:aes.BlockSize]
+	ciphertext = ciphertext[aes.BlockSize:]
+	stream := cipher.NewCFBDecrypter(block, iv)
+	plaintext := make([]byte, len(ciphertext))
+	stream.XORKeyStream(plaintext, ciphertext)
+	return string(plaintext[:]), nil
+}

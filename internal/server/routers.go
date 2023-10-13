@@ -12,7 +12,6 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/gostuding/GophKeeper/docs"
-	midl "github.com/gostuding/GophKeeper/internal/server/middlewares"
 	"github.com/gostuding/GophKeeper/internal/server/storage"
 	"github.com/gostuding/middlewares"
 
@@ -52,20 +51,20 @@ func readRequestBody(w http.ResponseWriter, r *http.Request, l *zap.SugaredLogge
 // loginRegistrationCommon is using for no duplicate code.
 func loginRegistrationCommon(
 	w http.ResponseWriter, r *http.Request, s *Server, name string,
-	f func(context.Context, []byte, []byte, *storage.Storage, int, *http.Request) (string, string, int, error),
+	f func(context.Context, []byte, []byte, *storage.Storage, int, *http.Request) ([]byte, int, error),
 ) {
 	data, err := readRequestBody(w, r, s.Logger)
 	if err != nil {
 		return
 	}
-	pk, token, status, err := f(r.Context(), data, s.Config.TokenKey, s.Storage, s.Config.MaxTokenLiveTime, r)
+	data, status, err := f(r.Context(), data, s.Config.TokenKey, s.Storage, s.Config.MaxTokenLiveTime, r)
 	if err != nil {
-		s.Logger.Warnln(fmt.Errorf("%s user error: %w", name, err))
+		s.Logger.Warnf("%s user error: %w\n", name, err)
 	}
-	w.Header().Add(midl.KeyRSAHeaderName, pk)
-	writeResponseData(w, []byte(token), status, s.Logger)
+	writeResponseData(w, data, status, s.Logger)
 }
 
+// makeRouter creates hadlers for server.
 func makeRouter(s *Server) http.Handler {
 	router := chi.NewRouter()
 	docs.SwaggerInfo.Host = net.JoinHostPort(s.Config.IP, strconv.Itoa(s.Config.Port))
@@ -103,17 +102,31 @@ func makeRouter(s *Server) http.Handler {
 	})
 
 	router.Group(func(r chi.Router) {
-		r.Use(middlewares.DecriptMiddleware(s.Config.PrivateKey, s.Logger), midl.RSAEncryptMiddleware(s.Logger))
-
+		r.Use(middlewares.DecriptMiddleware(s.Config.PrivateKey, s.Logger))
 		r.Post("/api/user/register", func(w http.ResponseWriter, r *http.Request) {
 			loginRegistrationCommon(w, r, s, "registration", Register)
 		})
-
 		r.Post("/api/user/login", func(w http.ResponseWriter, r *http.Request) {
 			loginRegistrationCommon(w, r, s, "login", Login)
 		})
 	})
-
+	router.Group(func(r chi.Router) {
+		r.Use(
+			middlewares.DecriptMiddleware(s.Config.PrivateKey, s.Logger),
+			middlewares.AuthMiddleware(s.Logger, "/", s.Config.TokenKey),
+		)
+		r.Post("/api/cards/add", func(w http.ResponseWriter, r *http.Request) {
+			body, err := readRequestBody(w, r, s.Logger)
+			if err != nil {
+				return
+			}
+			status, err := AddCardInfo(r.Context(), body, s.Storage)
+			if err != nil {
+				s.Logger.Warnf("add card info error: %v", err)
+			}
+			writeResponseData(w, nil, status, s.Logger)
+		})
+	})
 	// router.Post("/api/user/register", func(w http.ResponseWriter, r *http.Request) {
 	// 	loginRegistrationCommon(w, r, logger, key, strg, tokenLiveTime, Register)
 	// })

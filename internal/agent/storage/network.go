@@ -28,14 +28,14 @@ const (
 type (
 	// NetStorage storage in server.
 	NetStorage struct {
-		Config          *config.Config //
-		Pwd             string         // user password
-		Key             string         // AES key
-		JWTToken        string         // authorization token.
-		Client          *http.Client   // http client for work with server.
-		ServerPublicKey *rsa.PublicKey // public server key.
-		PrivateKey      *rsa.PrivateKey
-		PublicKey       []byte
+		Config          *config.Config  // object with agent configuration
+		Pwd             string          // user password
+		Key             string          // user pasphrace to encrypt and decrypt stored data
+		JWTToken        string          // authorization token
+		Client          *http.Client    // http client for work with server
+		ServerPublicKey *rsa.PublicKey  // public server key for encrypt messages
+		PrivateKey      *rsa.PrivateKey // private rsa key for decript mesages
+		PublicKey       []byte          // public key for exchange with server
 	}
 	// loginPwd internal struct.
 	loginPwd struct {
@@ -50,6 +50,7 @@ type (
 	}
 )
 
+// NewNetStorage creates new storage object for work with server by http.
 func NewNetStorage(c *config.Config) (*NetStorage, error) {
 	client := http.Client{Timeout: time.Duration(requestTimeout) * time.Second}
 	key, err := rsa.GenerateKey(rand.Reader, keySize)
@@ -64,6 +65,7 @@ func NewNetStorage(c *config.Config) (*NetStorage, error) {
 }
 
 // url is private function for url construction.
+// Returns string with url for send client requests.
 func (ns *NetStorage) url(t urlType) string {
 	switch t {
 	case urlGetKey:
@@ -78,6 +80,8 @@ func (ns *NetStorage) url(t urlType) string {
 }
 
 // Check sends request to server for public key get.
+// If success public key got, tries to register or login at server.
+// Also do key exchange with server.
 func (ns *NetStorage) Check() error {
 	resp, err := ns.Client.Get(ns.url(urlGetKey))
 	if err != nil {
@@ -104,7 +108,7 @@ func (ns *NetStorage) Check() error {
 	}
 }
 
-// registration user in server.
+// registration user at server.
 func (ns *NetStorage) registration() error {
 	var l loginPwd
 	fmt.Println("Регистрация пользователя на сервере.")
@@ -144,11 +148,11 @@ func (ns *NetStorage) registration() error {
 		return fmt.Errorf("agent encript message error. Reteat later")
 	case http.StatusOK:
 		ns.Pwd = l.Pwd
-		if err = ns.Config.Save(); err != nil {
-			return fmt.Errorf("save registration config error: %w", err)
-		}
 		if err = ns.getToken(res.Body); err != nil {
 			return fmt.Errorf("registration get token error: %w", err)
+		}
+		if err = ns.Config.Save(); err != nil {
+			return fmt.Errorf("save registration config error: %w", err)
 		}
 		fmt.Println("Успешная регистрация на сервере")
 		return nil
@@ -157,7 +161,7 @@ func (ns *NetStorage) registration() error {
 	}
 }
 
-// authorization user in server.
+// authorization user at server.
 func (ns *NetStorage) authorization() error {
 	l := loginPwd{Login: ns.Config.Login}
 	fmt.Println("Авторизация пользователя ...")
@@ -169,6 +173,7 @@ func (ns *NetStorage) authorization() error {
 	} else {
 		l.Pwd = ns.Pwd
 	}
+
 	l.PublicKey = hex.EncodeToString(ns.PublicKey)
 	data, err := json.Marshal(l)
 	if err != nil {
@@ -187,6 +192,7 @@ func (ns *NetStorage) authorization() error {
 		return fmt.Errorf("authorization http request error: %w", err)
 	}
 	defer res.Body.Close()
+
 	switch res.StatusCode {
 	case http.StatusUnauthorized:
 		fmt.Println("ОШИБКА: Логин или пароль указан не правильно")
@@ -216,7 +222,7 @@ func (ns *NetStorage) getToken(body io.Reader) error {
 	if err != nil {
 		return fmt.Errorf("read error: %w", err)
 	}
-	data, err = decriptRSAMessage(ns.PrivateKey, data)
+	data, err = decryptRSAMessage(ns.PrivateKey, data)
 	if err != nil {
 		return fmt.Errorf("get token error: %w", err)
 	}
@@ -225,6 +231,22 @@ func (ns *NetStorage) getToken(body io.Reader) error {
 		return fmt.Errorf("unmarshal token error: %w, %s", err, string(data))
 	}
 	ns.JWTToken = t.Token
-	ns.Key = t.Key
+	if ns.Config.Key == "" {
+		fmt.Print("Введите ключ для шифрования приватных данных (минимум 8 символов): ")
+		if _, err := fmt.Scanln(&ns.Config.Key); err != nil {
+			return fmt.Errorf("get encription key error: %w", err)
+		}
+		ns.Config.Key, err = encryptAES(t.Key, ns.Config.Key)
+		if err != nil {
+			return fmt.Errorf("encrypting key error: %w", err)
+		}
+		if err = ns.Config.Save(); err != nil {
+			return fmt.Errorf("save key in config error: %w", err)
+		}
+	}
+	ns.Key, err = decryptAES(t.Key, ns.Config.Key)
+	if err != nil {
+		return fmt.Errorf("decrypting key error: %w", err)
+	}
 	return nil
 }

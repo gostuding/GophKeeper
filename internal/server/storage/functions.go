@@ -17,13 +17,12 @@ type Users struct {
 }
 
 type Cards struct {
-	CreatedAt time.Time `json:"uploaded_at"`
-	UpdatedAt time.Time `json:"-"`
-	Number    string    `gorm:"unique" json:"number"`
-	Status    string    `gorm:"type:varchar(10)" json:"status"`
-	Accrual   float32   `gorm:"type:numeric" json:"accrual,omitempty"`
+	CreatedAt time.Time `json:"created"`
+	UpdatedAt time.Time `json:"updated"`
+	Label     string    `gorm:"unique;type:varchar(255)" json:"lablel"`
+	Value     string    `gorm:"type:text" json:"value"`
 	ID        uint      `gorm:"primarykey" json:"-"`
-	UID       uint      `json:"-"`
+	UID       uint      `gorm:"numeric" json:"-"`
 }
 
 // structCheck checks database structure.

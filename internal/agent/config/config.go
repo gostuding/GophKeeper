@@ -19,6 +19,7 @@ type Config struct {
 	ServerAddres     string `json:"server_addres"`      // server's address
 	Login            string `json:"login"`              // login for authorization on server
 	path             string `json:"-"`                  // path to json configuration file
+	Key              string `json:"key"`                // key to encrypt messages
 	LocalStoragePath string `json:"local_storage_path"` // TODO добавить путь до локального хранилища
 	LocalMode        bool   `json:"local_mode"`         // type of storage (true: file, false: server)
 }
@@ -78,18 +79,7 @@ func checkFileExist(path string) error {
 		return fmt.Errorf("config file access error: %w", err)
 	}
 	cfg := Config{path: path, LocalMode: false}
-	// fmt.Fprint(os.Stdout, "Введите тип хранилища (1-Только на сервере, 2-локально): ")
-	// var t int
-	// if _, err = fmt.Scanln(&t); err == nil {
-	// 	if t == 2 {
-	// 		cfg.LocalMode = true
-	// 	}
-	// }
-	// if cfg.LocalMode {
-	// 	cfg.ServerAddres = defaultAddres
-	// } else {
 	cfg.FillServerConfig()
-	// }
 	return cfg.Save()
 }
 

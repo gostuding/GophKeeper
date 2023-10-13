@@ -2,8 +2,11 @@ package server
 
 import (
 	"context"
+	"crypto/rand"
 	"crypto/rsa"
+	"crypto/sha256"
 	"crypto/x509"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -16,16 +19,16 @@ import (
 )
 
 type (
-	RequestResponse struct {
-		Request  *http.Request
-		Response http.ResponseWriter
-		Storage  *storage.Storage
-	}
 	// LoginPassword is struct for marshal regustration and authorization data.
 	LoginPassword struct {
 		Login     string `json:"login"`      //
 		Password  string `json:"password"`   //
 		PublicKey string `json:"public_key"` //
+	}
+	// labelValue is struct for marshal requests body.
+	labelValue struct {
+		Label string `json:"label"`
+		Value string `json:"value"`
 	}
 )
 
@@ -34,26 +37,12 @@ func isValidateLoginPassword(body []byte) (*LoginPassword, error) {
 	var user LoginPassword
 	err := json.Unmarshal(body, &user)
 	if err != nil {
-		return nil, fmt.Errorf("body convert to json error: %w", err)
+		return nil, makeError(MarshalJsonError, err)
 	}
 	if user.Login == "" || user.Password == "" || user.PublicKey == "" {
 		return nil, errors.New("empty registration values error")
 	}
 	return &user, nil
-}
-
-// GetPublicKey handler returns server public key.
-// @Tags Авторизация
-// @Summary Запрос открытого ключа сервера
-// @Router /api/get/key [get]
-// @Success 200 "Отправка ключа"
-// @failure 500 "Внутренняя ошибка сервиса".
-func GetPublicKey(key *rsa.PrivateKey) ([]byte, error) {
-	keyData, err := x509.MarshalPKIXPublicKey(key.Public())
-	if err != nil {
-		return nil, fmt.Errorf("marshal public key error: %w", err)
-	}
-	return keyData, nil
 }
 
 // createToken is private function.
@@ -68,6 +57,20 @@ func createToken(r *http.Request, key []byte, uid, time int) (string, int, error
 		return "", http.StatusInternalServerError, makeError(CreateTokenError, err)
 	}
 	return token, http.StatusOK, nil
+}
+
+// GetPublicKey handler returns server public key.
+// @Tags Авторизация
+// @Summary Запрос открытого ключа сервера
+// @Router /api/get/key [get]
+// @Success 200 "Отправка ключа"
+// @failure 500 "Внутренняя ошибка сервиса".
+func GetPublicKey(key *rsa.PrivateKey) ([]byte, error) {
+	keyData, err := x509.MarshalPKIXPublicKey(key.Public())
+	if err != nil {
+		return nil, fmt.Errorf("marshal public key error: %w", err)
+	}
+	return keyData, nil
 }
 
 // Register new user handler.
@@ -88,10 +91,10 @@ func Register(
 	strg *storage.Storage,
 	t int,
 	r *http.Request,
-) (string, string, int, error) {
+) ([]byte, int, error) {
 	user, err := isValidateLoginPassword(body)
 	if err != nil {
-		return "", "", http.StatusUnprocessableEntity, err
+		return nil, http.StatusUnprocessableEntity, err
 	}
 	aesKey, uid, err := strg.Registration(ctx, user.Login, user.Password)
 	if err != nil {
@@ -99,16 +102,20 @@ func Register(
 		err = makeError(GormGetError, err)
 		if strg.IsUniqueViolation(err) {
 			status = http.StatusConflict
-			err = fmt.Errorf("user registrating duplicate error: '%s'", user.Login)
+			err = makeError(GormDublicateError, user.Login)
 		}
-		return "", "", status, err
+		return nil, status, err
 	}
 	token, st, err := createToken(r, key, uid, t)
 	if err != nil {
-		return "", "", st, err
+		return nil, st, err
 	}
 	token = fmt.Sprintf(`{"token": "%s", "key": "%s"}`, token, aesKey)
-	return user.PublicKey, token, st, nil
+	data, err := encryptMessage([]byte(token), user.PublicKey)
+	if err != nil {
+		return nil, http.StatusBadRequest, fmt.Errorf("registration error: %w", err)
+	}
+	return data, st, nil
 }
 
 // Login user.
@@ -129,73 +136,67 @@ func Login(
 	strg *storage.Storage,
 	t int,
 	r *http.Request,
-) (string, string, int, error) {
+) ([]byte, int, error) {
 	user, err := isValidateLoginPassword(body)
 	if err != nil {
-		return "", "", http.StatusUnprocessableEntity, err
+		return nil, http.StatusUnprocessableEntity, err
 	}
 	aesKey, uid, err := strg.Login(ctx, user.Login, user.Password)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return "", "", http.StatusUnauthorized, fmt.Errorf("user not found in system. Login: '%s'", user.Login)
+			return nil, http.StatusUnauthorized, fmt.Errorf("user not found. Login: '%s'", user.Login)
 		} else {
-			return "", "", http.StatusInternalServerError, makeError(GormGetError, err)
+			return nil, http.StatusInternalServerError, makeError(GormGetError, err)
 		}
 	}
 	token, st, err := createToken(r, key, uid, t)
 	if err != nil {
-		return "", "", st, err
+		return nil, st, err
 	}
 	token = fmt.Sprintf(`{"token": "%s", "key": "%s"}`, token, aesKey)
-	return user.PublicKey, token, st, nil
+	data, err := encryptMessage([]byte(token), user.PublicKey)
+	if err != nil {
+		return nil, http.StatusBadRequest, err
+	}
+	return data, st, nil
 }
 
-// // AddOrder ...
-// // @Tags Заказы
-// // @Summary Добавление номера заказа пользователя
-// // @Accept json
-// // @Param order body string true "Номер заказа"
-// // @Security ApiKeyAuth
-// // @Param Authorization header string false "Токен авторизации"
-// // @Router /user/orders [post]
-// // @Success 200 "Заказ уже был добавлен пользователем ранее"
-// // @Success 202 "Заказ успешно зарегистрирован за пользователем"
-// // @failure 400 "Ошибка в теле запроса. Тело запроса пустое"
-// // @failure 401 "Пользователь не авторизован"
-// // @failure 409 "Заказ зарегистрирован за другим пользователем"
-// // @failure 422 "Номер заказа не прошёл проверку подлинности"
-// // @failure 500 "Внутренняя ошибка сервиса".
-// func AddOrder(args requestResponce) {
-// 	body, err := io.ReadAll(args.r.Body)
-// 	if err != nil {
-// 		args.w.WriteHeader(http.StatusInternalServerError)
-// 		args.logger.Warnf(readRequestErrorString, err)
-// 		return
-// 	}
-// 	defer args.r.Body.Close() //nolint:errcheck // <-senselessly
-// 	if len(body) == 0 {
-// 		args.w.WriteHeader(http.StatusBadRequest)
-// 		args.logger.Warnln("empty add order request's body")
-// 		return
-// 	}
-// 	err = checkOrderNumber(string(body))
-// 	if err != nil {
-// 		args.w.WriteHeader(http.StatusUnprocessableEntity)
-// 		args.logger.Warnf("check order error: %w", err)
-// 		return
-// 	}
-// 	uid, ok := args.r.Context().Value(middlewares.AuthUID).(int)
-// 	if !ok {
-// 		args.w.WriteHeader(http.StatusUnauthorized)
-// 		args.logger.Warnln(uidContextTypeError)
-// 		return
-// 	}
-// 	status, err := args.strg.AddOrder(args.r.Context(), uid, string(body))
-// 	if err != nil {
-// 		args.logger.Warnf("add order error: %w", err)
-// 	}
-// 	args.w.WriteHeader(status)
-// }
+// AddCardInfo adds new card in database handle.
+// @Tags Заказы
+// @Summary Добавление информации о карте. Шифрование открытым ключём сервера.
+// @Accept json
+// @Param order body storage.Cards true "Данные о карте. Value должно шифроваться на сороне клиента"
+// @Security ApiKeyAuth
+// @Param Authorization header string false "Токен авторизации"
+// @Router /api/cards/add [post]
+// @Success 200 "Информация о карточке успешно сохранена"
+// @failure 400 "Ошибка при расшифровке тела запроса"
+// @failure 422 "Ошибка при конвертации json"
+// @failure 409 "Дублирование метаданных карточки"
+// @failure 500 "Внутренняя ошибка сервиса.".
+func AddCardInfo(
+	ctx context.Context,
+	body []byte,
+	strg *storage.Storage,
+) (int, error) {
+	var l labelValue
+	err := json.Unmarshal(body, &l)
+	if err != nil {
+		return http.StatusUnprocessableEntity, makeError(UnmarshalJsonError, err)
+	}
+	uid, ok := ctx.Value(middlewares.AuthUID).(uint)
+	if !ok {
+		return http.StatusUnauthorized, makeError(UserAuthorizationError, nil)
+	}
+	err = strg.AddCard(ctx, uid, l.Label, l.Value)
+	if err != nil {
+		if strg.IsUniqueViolation(err) {
+			return http.StatusConflict, makeError(GormDublicateError, err)
+		}
+		return http.StatusInternalServerError, makeError(InternalError)
+	}
+	return http.StatusOK, nil
+}
 
 // func getListCommon(args *requestResponce, name string, f func(context.Context, int) ([]byte, error)) {
 // 	args.logger.Debugf("%s list request", name)
@@ -334,3 +335,42 @@ func Login(
 // func GetWithdrawsList(args requestResponce) {
 // 	getListCommon(&args, "withdraws", args.strg.GetWithdraws)
 // }
+
+// encryption message by RSA.
+func encryptMessage(msg []byte, k string) ([]byte, error) {
+	// splitMessage byte slice to parts for RSA encription.
+	mRange := func(msg []byte, size int) [][]byte {
+		data := make([][]byte, 0)
+		end := len(msg) - size
+		var i int
+		for i = 0; i < end; i += size {
+			data = append(data, msg[i:i+size])
+		}
+		data = append(data, msg[i:])
+		return data
+	}
+	key, err := hex.DecodeString(k)
+	if err != nil {
+		return nil, makeError(ConvertToBytesError, err)
+	}
+	pub, err := x509.ParsePKIXPublicKey(key)
+	if err != nil {
+		return nil, fmt.Errorf("parse public key error: %w", err)
+	}
+	publicKey, ok := pub.(*rsa.PublicKey)
+	if !ok {
+		return nil, errors.New("key type is not RSA")
+	}
+	rng := rand.Reader
+	hash := sha256.New()
+	size := publicKey.Size() - 2*hash.Size() - 2 //nolint:gomnd //<-default values
+	encrypted := make([]byte, 0)
+	for _, slice := range mRange(msg, size) {
+		data, err := rsa.EncryptOAEP(hash, rng, publicKey, slice, []byte(""))
+		if err != nil {
+			return nil, makeError(EncryptMessageError, err)
+		}
+		encrypted = append(encrypted, data...)
+	}
+	return encrypted, nil
+}
