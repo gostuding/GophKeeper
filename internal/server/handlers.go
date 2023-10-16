@@ -162,15 +162,16 @@ func Login(
 }
 
 // AddCardInfo adds new card in database handle.
-// @Tags Заказы
+// @Tags Карты
 // @Summary Добавление информации о карте. Шифрование открытым ключём сервера.
 // @Accept json
-// @Param order body storage.Cards true "Данные о карте. Value должно шифроваться на сороне клиента"
+// @Param order body storage.Cards true "Данные о карте. Value должно шифроваться на стороне клиента"
 // @Security ApiKeyAuth
 // @Param Authorization header string false "Токен авторизации"
 // @Router /api/cards/add [post]
 // @Success 200 "Информация о карточке успешно сохранена"
 // @failure 400 "Ошибка при расшифровке тела запроса"
+// @failure 401 "Пользователь не авторизован"
 // @failure 422 "Ошибка при конвертации json"
 // @failure 409 "Дублирование метаданных карточки"
 // @failure 500 "Внутренняя ошибка сервиса.".
@@ -196,6 +197,38 @@ func AddCardInfo(
 		return http.StatusInternalServerError, makeError(InternalError)
 	}
 	return http.StatusOK, nil
+}
+
+// GetCardsList returns list of cards lables.
+// @Tags Карты
+// @Summary Запрос списка карт пользователя. Шифрование открытым ключём клиента.
+// @Accept json
+// @Param order body string true "Public key"
+// @Security ApiKeyAuth
+// @Param Authorization header string false "Токен авторизации"
+// @Router /api/cards/list [post]
+// @Success 200 "Список метаданных для карт пользователя"
+// @failure 400 "Ошибка шифрования"
+// @failure 401 "Пользователь не авторизован"
+// @failure 500 "Внутренняя ошибка сервиса.".
+func GetCardsList(
+	ctx context.Context,
+	key string,
+	strg *storage.Storage,
+) ([]byte, int, error) {
+	uid, ok := ctx.Value(middlewares.AuthUID).(int)
+	if !ok {
+		return nil, http.StatusUnauthorized, makeError(UserAuthorizationError, nil)
+	}
+	data, err := strg.GetCardsList(ctx, uint(uid))
+	if err != nil {
+		return nil, http.StatusInternalServerError, makeError(InternalError)
+	}
+	data, err = encryptMessage(data, key)
+	if err != nil {
+		return nil, http.StatusBadRequest, fmt.Errorf("cards list error: %w", err)
+	}
+	return data, http.StatusOK, nil
 }
 
 // func getListCommon(args *requestResponce, name string, f func(context.Context, int) ([]byte, error)) {

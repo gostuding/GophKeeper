@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"net"
@@ -115,6 +116,20 @@ func makeRouter(s *Server) http.Handler {
 			middlewares.DecriptMiddleware(s.Config.PrivateKey, s.Logger),
 			middlewares.AuthMiddleware(s.Logger, "/", s.Config.TokenKey),
 		)
+
+		r.Post("/api/cards/list", func(w http.ResponseWriter, r *http.Request) {
+			body, err := readRequestBody(w, r, s.Logger)
+			if err != nil {
+				return
+			}
+			publicKey := hex.EncodeToString(body)
+			data, status, err := GetCardsList(r.Context(), publicKey, s.Storage)
+			if err != nil {
+				s.Logger.Warnf("get cards list error: %v", err)
+			}
+			writeResponseData(w, data, status, s.Logger)
+		})
+
 		r.Post("/api/cards/add", func(w http.ResponseWriter, r *http.Request) {
 			body, err := readRequestBody(w, r, s.Logger)
 			if err != nil {
@@ -126,6 +141,7 @@ func makeRouter(s *Server) http.Handler {
 			}
 			writeResponseData(w, nil, status, s.Logger)
 		})
+
 	})
 	// router.Post("/api/user/register", func(w http.ResponseWriter, r *http.Request) {
 	// 	loginRegistrationCommon(w, r, logger, key, strg, tokenLiveTime, Register)

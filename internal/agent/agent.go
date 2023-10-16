@@ -11,6 +11,7 @@ import (
 // It can be file storage or server storage.
 type Storager interface {
 	Check() error
+	GetCardsList() (string, error)
 }
 
 // Agent struct.
@@ -40,5 +41,10 @@ func (a *Agent) Run() error {
 	if err := a.Storage.Check(); err != nil {
 		return fmt.Errorf("storage check error: %w", err)
 	}
+	lst, err := a.Storage.GetCardsList()
+	if err != nil {
+		return fmt.Errorf("cards list get error: %w", err)
+	}
+	fmt.Println(lst)
 	return nil
 }

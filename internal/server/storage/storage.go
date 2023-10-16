@@ -99,16 +99,24 @@ func (s *Storage) Login(
 }
 
 // GetCardsList returns users cards json.
-func (s *Storage) GetCardsList(ctx context.Context, uid int) ([]byte, error) {
+func (s *Storage) GetCardsList(ctx context.Context, uid uint) ([]byte, error) {
 	var c []Cards
-	result := s.con.WithContext(ctx).Order("id desc").Where("uid = ?", uid).Find(c)
+	result := s.con.WithContext(ctx).Order("id desc").Where("uid = ?", uid).Find(&c)
 	if result.Error != nil {
 		return nil, fmt.Errorf("get cards error: %w", result.Error)
 	}
 	if result.RowsAffected == 0 {
-		return nil, nil
+		return []byte("[]"), nil
 	}
-	data, err := json.Marshal(c)
+	type info struct {
+		Id    uint   `json:"id"`
+		Label string `json:"label"`
+	}
+	cards := make([]info, 0)
+	for _, item := range c {
+		cards = append(cards, info{Id: item.ID, Label: item.Label})
+	}
+	data, err := json.Marshal(cards)
 	if err != nil {
 		return nil, fmt.Errorf("cards list convert error: %w", err)
 	}
