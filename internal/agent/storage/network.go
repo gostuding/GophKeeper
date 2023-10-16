@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"bufio"
 	"bytes"
 	"crypto/rand"
 	"crypto/rsa"
@@ -11,29 +12,25 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/gostuding/GophKeeper/internal/agent/config"
+	"github.com/howeyc/gopass"
 )
 
 type urlType int
 type CmdType string
 
 const (
-	keySize                = 4028 // default rsa key size.
-	requestTimeout         = 60   // default request timeout
-	cardsCommand   CmdType = "cards"
-	filesCommand   CmdType = "files"
-	loginsCommand  CmdType = "logins"
-	listCommand    CmdType = "list"
-	addCommand     CmdType = "add"
-	editCommand    CmdType = "edit"
-	delCommand     CmdType = "del"
+	keySize                = 4028            // default rsa key size.
+	requestTimeout         = 60              // default request timeout
 	Authorization          = "Authorization" // JWT token header name.
 	urlGetKey      urlType = iota
 	urlRegistration
 	urlLogin
 	urlCardsList
+	urlCardsAdd
 )
 
 type (
@@ -43,7 +40,6 @@ type (
 		Pwd             string          // user password
 		Key             string          // user pasphrace to encrypt and decrypt stored data
 		JWTToken        string          // authorization token
-		currentCommand  CmdType         //
 		Client          *http.Client    // http client for work with server
 		ServerPublicKey *rsa.PublicKey  // public server key for encrypt messages
 		PrivateKey      *rsa.PrivateKey // private rsa key for decript mesages
@@ -62,9 +58,15 @@ type (
 	}
 	// idLabel internal struct.
 	idLabel struct {
-		Label  string `json:"label"`
-		Number int    `json:"-"`
-		ID     int    `json:"id"`
+		Label string `json:"label"`
+		Info  string `json:"info,omitempty"`
+		ID    int    `json:"id,omitempty"`
+	}
+	cardInfo struct {
+		Number   string `json:"number,omitempty"`
+		User     string `json:"user,omitempty"`
+		Duration string `json:"duration,omitempty"`
+		Csv      string `json:"csv,omitempty"`
 	}
 )
 
@@ -94,6 +96,8 @@ func (ns *NetStorage) url(t urlType) string {
 		return fmt.Sprintf("%s/api/user/login", ns.Config.ServerAddres)
 	case urlCardsList:
 		return fmt.Sprintf("%s/api/cards/list", ns.Config.ServerAddres)
+	case urlCardsAdd:
+		return fmt.Sprintf("%s/api/cards/add", ns.Config.ServerAddres)
 	default:
 		return "undefined"
 	}
@@ -187,9 +191,15 @@ func (ns *NetStorage) authorization() error {
 	fmt.Println("Авторизация пользователя ...")
 	if ns.Pwd == "" {
 		fmt.Printf("Введите пароль (%s): ", l.Login)
-		if _, err := fmt.Scanln(&l.Pwd); err != nil {
+		pwd, err := gopass.GetPasswdMasked()
+		if err != nil {
 			return fmt.Errorf("password read error: %w", err)
 		}
+		l.Pwd = string(pwd)
+		// fmt.Printf("Введите пароль (%s): ", l.Login)
+		// if _, err := fmt.Scanln(&l.Pwd); err != nil {
+		// 	return fmt.Errorf("password read error: %w", err)
+		// }
 	} else {
 		l.Pwd = ns.Pwd
 	}
@@ -270,27 +280,18 @@ func (ns *NetStorage) getToken(body io.Reader) error {
 	return nil
 }
 
-//SetComand.
-func (ns *NetStorage) SetComand(cmd string) []CmdType {
+// GetList returns list accoding to cmd.
+func (ns *NetStorage) GetList(cmd string) (string, error) {
 	switch cmd {
-	case "":
-		ns.currentCommand = CmdType(cmd)
-		return []CmdType{cardsCommand, filesCommand, loginsCommand}
-	case string(cardsCommand):
-		ns.currentCommand = cardsCommand
-		return []CmdType{listCommand, addCommand, editCommand, delCommand}
+	case "cards":
+		return ns.cardsList()
+	default:
+		return "", errors.New("command undefined")
 	}
-	if ns.currentCommand == "" {
-		return []CmdType{cardsCommand, filesCommand, loginsCommand}
-	}
-	switch ns.currentCommand {
-
-	}
-	return []CmdType{cardsCommand, filesCommand, loginsCommand}
 }
 
-// GetCardsList requests cards list from server.
-func (ns *NetStorage) GetCardsList() (string, error) {
+// cardsList requests cards list from server.
+func (ns *NetStorage) cardsList() (string, error) {
 	data, err := encryptRSAMessage(ns.PublicKey, ns.ServerPublicKey)
 	if err != nil {
 		return "", fmt.Errorf("get cards list encrypt error: %w", err)
@@ -319,17 +320,98 @@ func (ns *NetStorage) GetCardsList() (string, error) {
 		if err != nil {
 			return "", fmt.Errorf("decrypt body error: %w", err)
 		}
-		var lst []*idLabel
+		var lst []idLabel
 		err = json.Unmarshal(data, &lst)
 		if err != nil {
 			return "", fmt.Errorf("json convert error: %w", err)
 		}
 		cards := ""
-		for index, val := range lst {
-			cards += fmt.Sprintf("%d. %s\n", index, val.Label)
+		for _, val := range lst {
+			cards += fmt.Sprintf("Card: %d. %s\n", val.ID, val.Label)
 		}
 		return cards, nil
 	default:
 		return "", fmt.Errorf("undefined error. Status code is: %d", res.StatusCode)
+	}
+}
+
+// AddItem adds item accoding to cmd.
+func (ns *NetStorage) AddItem(cmd string) (string, error) {
+	switch cmd {
+	case "cards":
+		return "", ns.addCard()
+	default:
+		return "", errors.New("command undefined")
+	}
+}
+
+func scanStdin(text string, to *string) error {
+	fmt.Print(text)
+	scanner := bufio.NewScanner(os.Stdin)
+	if scanner.Scan() {
+		*to = scanner.Text()
+	} else {
+		return fmt.Errorf("scan value error: %w", scanner.Err())
+	}
+	// ok, err := regexp.Match(reg, []byte(*to))
+	// if
+	return nil
+}
+
+// addCard adds one card to server.
+func (ns *NetStorage) addCard() error {
+	var sendData idLabel
+	var info cardInfo
+	if err := scanStdin("Введите название: ", &sendData.Label); err != nil {
+		return fmt.Errorf("scan label error: %w", err)
+	}
+	fmt.Println(sendData.Label)
+	fmt.Print("Введите номер: ")
+	if _, err := fmt.Scanln(&info.Number); err != nil {
+		return fmt.Errorf("number error: %w", err)
+	}
+	fmt.Print("Введите владельца: ")
+	if _, err := fmt.Scanln(&info.User); err != nil {
+		return fmt.Errorf("user error: %w", err)
+	}
+	fmt.Print("Введите срок действия (mm/yy): ")
+	if _, err := fmt.Scanln(&info.Duration); err != nil {
+		return fmt.Errorf("duration error: %w", err)
+	}
+	fmt.Print("Введите csv-код (3 цифры на обороте): ")
+	if _, err := fmt.Scanln(&info.Csv); err != nil {
+		return fmt.Errorf("cvs error: %w", err)
+	}
+	data, err := json.Marshal(&info)
+	if err != nil {
+		return fmt.Errorf("card info json convert error: %w", err)
+	}
+	sendData.Info, err = encryptAES(ns.Key, string(data))
+	if err != nil {
+		return fmt.Errorf("encrypt data error: %w", err)
+	}
+	data, err = json.Marshal(&sendData)
+	if err != nil {
+		return fmt.Errorf("send value json convert error: %w", err)
+	}
+	data, err = encryptRSAMessage(data, ns.ServerPublicKey)
+	if err != nil {
+		return fmt.Errorf("encrypt error: %w", err)
+	}
+	req, err := http.NewRequest(http.MethodPost, ns.url(urlCardsAdd), bytes.NewReader(data))
+	if err != nil {
+		return fmt.Errorf("make request error: %w", err)
+	}
+	req.Header.Add(Authorization, ns.JWTToken)
+	res, err := ns.Client.Do(req)
+	if err != nil {
+		return fmt.Errorf("http request error: %w", err)
+	}
+	defer res.Body.Close()
+	switch res.StatusCode {
+	case http.StatusOK:
+		return nil
+	default:
+		return fmt.Errorf("responce status code error: %d", res.StatusCode)
 	}
 }

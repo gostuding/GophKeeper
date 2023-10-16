@@ -180,16 +180,16 @@ func AddCardInfo(
 	body []byte,
 	strg *storage.Storage,
 ) (int, error) {
+	uid, ok := ctx.Value(middlewares.AuthUID).(int)
+	if !ok {
+		return http.StatusUnauthorized, makeError(UserAuthorizationError, nil)
+	}
 	var l labelValue
 	err := json.Unmarshal(body, &l)
 	if err != nil {
 		return http.StatusUnprocessableEntity, makeError(UnmarshalJsonError, err)
 	}
-	uid, ok := ctx.Value(middlewares.AuthUID).(uint)
-	if !ok {
-		return http.StatusUnauthorized, makeError(UserAuthorizationError, nil)
-	}
-	err = strg.AddCard(ctx, uid, l.Label, l.Value)
+	err = strg.AddCard(ctx, uint(uid), l.Label, l.Value)
 	if err != nil {
 		if strg.IsUniqueViolation(err) {
 			return http.StatusConflict, makeError(GormDublicateError, err)
