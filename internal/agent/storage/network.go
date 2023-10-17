@@ -1,7 +1,6 @@
 package storage
 
 import (
-	"bufio"
 	"bytes"
 	"crypto/rand"
 	"crypto/rsa"
@@ -12,11 +11,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"time"
 
 	"github.com/gostuding/GophKeeper/internal/agent/config"
-	"github.com/howeyc/gopass"
 )
 
 type urlType int
@@ -31,6 +28,11 @@ const (
 	urlLogin
 	urlCardsList
 	urlCardsAdd
+	urlCardsGet
+)
+
+var (
+	AuthorizationErr = errors.New("authorization error")
 )
 
 type (
@@ -40,6 +42,7 @@ type (
 		Pwd             string          // user password
 		Key             string          // user pasphrace to encrypt and decrypt stored data
 		JWTToken        string          // authorization token
+		ServerAESKey    string          // server's key to encrypt or decrypt user pashprace
 		Client          *http.Client    // http client for work with server
 		ServerPublicKey *rsa.PublicKey  // public server key for encrypt messages
 		PrivateKey      *rsa.PrivateKey // private rsa key for decript mesages
@@ -98,9 +101,43 @@ func (ns *NetStorage) url(t urlType) string {
 		return fmt.Sprintf("%s/api/cards/list", ns.Config.ServerAddres)
 	case urlCardsAdd:
 		return fmt.Sprintf("%s/api/cards/add", ns.Config.ServerAddres)
+	case urlCardsGet:
+		return fmt.Sprintf("%s/api/cards/get", ns.Config.ServerAddres)
 	default:
 		return "undefined"
 	}
+}
+
+// doRequest is internal function for do requests with RSA encryption.
+func (ns *NetStorage) doEncryptRequest(msg []byte, url string, method string) (*http.Response, error) {
+	data, err := encryptRSAMessage(msg, ns.ServerPublicKey)
+	if err != nil {
+		return nil, fmt.Errorf("encrypt error: %w", err)
+	}
+	req, err := http.NewRequest(method, url, bytes.NewReader(data))
+	if err != nil {
+		return nil, fmt.Errorf("make request error: %w", err)
+	}
+	req.Header.Add(Authorization, ns.JWTToken)
+	res, err := ns.Client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("http request error: %w", err)
+	}
+	return res, nil
+}
+
+// doOpenRequest is internal function for do requests without any encryption.
+func (ns *NetStorage) doOpenRequest(msg []byte, url string, method string) (*http.Response, error) {
+	req, err := http.NewRequest(method, url, bytes.NewReader(msg))
+	if err != nil {
+		return nil, fmt.Errorf("make request error: %w", err)
+	}
+	req.Header.Add(Authorization, ns.JWTToken)
+	res, err := ns.Client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("http request error: %w", err)
+	}
+	return res, nil
 }
 
 // Check sends request to server for public key get.
@@ -125,123 +162,64 @@ func (ns *NetStorage) Check() error {
 		return fmt.Errorf("key type is not RSA")
 	}
 	ns.ServerPublicKey = publicKey
-	if ns.Config.Login == "" {
-		return ns.registration()
-	} else {
-		return ns.authorization()
-	}
+	return nil
 }
 
-// registration user at server.
-func (ns *NetStorage) registration() error {
-	var l loginPwd
-	fmt.Println("Регистрация пользователя на сервере.")
-	fmt.Print("Введите логи: ")
-	if _, err := fmt.Scanln(&l.Login); err != nil {
-		return fmt.Errorf("login read error: %w", err)
-	}
-	fmt.Print("Введите пароль: ")
-	if _, err := fmt.Scanln(&l.Pwd); err != nil {
-		return fmt.Errorf("password read error: %w", err)
-	}
-	l.PublicKey = hex.EncodeToString(ns.PublicKey)
-	data, err := json.Marshal(l)
+// Registration new user at server.
+func (ns *NetStorage) Registration(l, p string) error {
+	user := loginPwd{Login: l, Pwd: p}
+	user.PublicKey = hex.EncodeToString(ns.PublicKey)
+	data, err := json.Marshal(user)
 	if err != nil {
-		return fmt.Errorf("registration convert error: %w", err)
+		return fmt.Errorf("json convert error: %w", err)
 	}
-	data, err = encryptRSAMessage(data, ns.ServerPublicKey)
+	res, err := ns.doEncryptRequest(data, ns.url(urlRegistration), http.MethodPost)
 	if err != nil {
-		return fmt.Errorf("registration encript error: %w", err)
-	}
-	req, err := http.NewRequest(http.MethodPost, ns.url(urlRegistration), bytes.NewReader(data))
-	if err != nil {
-		return fmt.Errorf("make registration request error: %w", err)
-	}
-	res, err := ns.Client.Do(req)
-	if err != nil {
-		return fmt.Errorf("registration http request error: %w", err)
+		return err
 	}
 	defer res.Body.Close()
-	ns.Config.Login = l.Login
 	switch res.StatusCode {
 	case http.StatusConflict:
-		fmt.Println("ОШИБКА: Такой пользователь уже зарегистрирован")
-		ns.Pwd = l.Pwd
-		return ns.authorization()
-	case http.StatusBadRequest:
-		return fmt.Errorf("agent encript message error. Reteat later")
+		if err := ns.Authorization(l, p); err != nil {
+			return errors.New("such login already exist")
+		}
+		ns.Pwd = user.Pwd
+		return nil
 	case http.StatusOK:
-		ns.Pwd = l.Pwd
+		ns.Pwd = user.Pwd
 		if err = ns.getToken(res.Body); err != nil {
-			return fmt.Errorf("registration get token error: %w", err)
+			return fmt.Errorf("get token error: %w", err)
 		}
-		if err = ns.Config.Save(); err != nil {
-			return fmt.Errorf("save registration config error: %w", err)
-		}
-		fmt.Println("Успешная регистрация на сервере")
 		return nil
 	default:
-		return fmt.Errorf("registration error. Status code is: %d", res.StatusCode)
+		return fmt.Errorf("status code error: %d", res.StatusCode)
 	}
 }
 
 // authorization user at server.
-func (ns *NetStorage) authorization() error {
-	l := loginPwd{Login: ns.Config.Login}
-	fmt.Println("Авторизация пользователя ...")
-	if ns.Pwd == "" {
-		fmt.Printf("Введите пароль (%s): ", l.Login)
-		pwd, err := gopass.GetPasswdMasked()
-		if err != nil {
-			return fmt.Errorf("password read error: %w", err)
-		}
-		l.Pwd = string(pwd)
-		// fmt.Printf("Введите пароль (%s): ", l.Login)
-		// if _, err := fmt.Scanln(&l.Pwd); err != nil {
-		// 	return fmt.Errorf("password read error: %w", err)
-		// }
-	} else {
-		l.Pwd = ns.Pwd
-	}
-
-	l.PublicKey = hex.EncodeToString(ns.PublicKey)
-	data, err := json.Marshal(l)
+func (ns *NetStorage) Authorization(l, p string) error {
+	user := loginPwd{Login: l, Pwd: p}
+	user.PublicKey = hex.EncodeToString(ns.PublicKey)
+	data, err := json.Marshal(user)
 	if err != nil {
-		return fmt.Errorf("authorization convert error: %w", err)
+		return fmt.Errorf("json convert error: %w", err)
 	}
-	data, err = encryptRSAMessage(data, ns.ServerPublicKey)
+	res, err := ns.doEncryptRequest(data, ns.url(urlLogin), http.MethodPost)
 	if err != nil {
-		return fmt.Errorf("authorization encrypt error: %w", err)
-	}
-	req, err := http.NewRequest(http.MethodPost, ns.url(urlLogin), bytes.NewReader(data))
-	if err != nil {
-		return fmt.Errorf("make authorization request error: %w", err)
-	}
-	res, err := ns.Client.Do(req)
-	if err != nil {
-		return fmt.Errorf("authorization http request error: %w", err)
+		return err
 	}
 	defer res.Body.Close()
 	switch res.StatusCode {
 	case http.StatusUnauthorized:
-		fmt.Println("ОШИБКА: Логин или пароль указан не правильно")
-		ns.Pwd = ""
-		return ns.registration()
-	case http.StatusBadRequest:
-		return fmt.Errorf("encript message error")
+		return errors.New("login or password incorrect")
 	case http.StatusOK:
-		ns.Config.Login = l.Login
-		ns.Pwd = l.Pwd
-		if err = ns.Config.Save(); err != nil {
-			return fmt.Errorf("save authorization config error: %w", err)
-		}
+		ns.Pwd = user.Pwd
 		if err = ns.getToken(res.Body); err != nil {
-			return fmt.Errorf("authorization get token error: %w", err)
+			return fmt.Errorf("get token error: %w", err)
 		}
-		fmt.Println("Успешная авторизация на сервере")
 		return nil
 	default:
-		return fmt.Errorf("authorization error. Status code is: %d", res.StatusCode)
+		return fmt.Errorf("status code error: %d", res.StatusCode)
 	}
 }
 
@@ -253,57 +231,32 @@ func (ns *NetStorage) getToken(body io.Reader) error {
 	}
 	data, err = decryptRSAMessage(ns.PrivateKey, data)
 	if err != nil {
-		return fmt.Errorf("get token error: %w", err)
+		return fmt.Errorf("decrypt error: %w", err)
 	}
 	var t tokenKey
 	if err := json.Unmarshal(data, &t); err != nil {
-		return fmt.Errorf("unmarshal token error: %w, %s", err, string(data))
+		return fmt.Errorf("unmarshal error: %w", err)
 	}
 	ns.JWTToken = t.Token
-	if ns.Config.Key == "" {
-		fmt.Print("Введите ключ для шифрования приватных данных (минимум 8 символов): ")
-		if _, err := fmt.Scanln(&ns.Config.Key); err != nil {
-			return fmt.Errorf("get encription key error: %w", err)
-		}
-		ns.Config.Key, err = encryptAES(t.Key, ns.Config.Key)
-		if err != nil {
-			return fmt.Errorf("encrypting key error: %w", err)
-		}
-		if err = ns.Config.Save(); err != nil {
-			return fmt.Errorf("save key in config error: %w", err)
-		}
-	}
-	ns.Key, err = decryptAES(t.Key, ns.Config.Key)
-	if err != nil {
-		return fmt.Errorf("decrypting key error: %w", err)
-	}
+	ns.ServerAESKey = t.Key
 	return nil
 }
 
-// GetList returns list accoding to cmd.
-func (ns *NetStorage) GetList(cmd string) (string, error) {
-	switch cmd {
-	case "cards":
-		return ns.cardsList()
-	default:
-		return "", errors.New("command undefined")
+// SetUserAESKey decripts user key.
+func (ns *NetStorage) SetUserAESKey(key string) error {
+	key, err := decryptAES(ns.ServerAESKey, key)
+	if err != nil {
+		return fmt.Errorf("decrypt user key error: %w", err)
 	}
+	ns.Key = key
+	return nil
 }
 
 // cardsList requests cards list from server.
-func (ns *NetStorage) cardsList() (string, error) {
-	data, err := encryptRSAMessage(ns.PublicKey, ns.ServerPublicKey)
+func (ns *NetStorage) GetCardsList() (string, error) {
+	res, err := ns.doEncryptRequest(ns.PublicKey, ns.url(urlCardsList), http.MethodPost)
 	if err != nil {
-		return "", fmt.Errorf("get cards list encrypt error: %w", err)
-	}
-	req, err := http.NewRequest(http.MethodPost, ns.url(urlCardsList), bytes.NewReader(data))
-	if err != nil {
-		return "", fmt.Errorf("make request error: %w", err)
-	}
-	req.Header.Add(Authorization, ns.JWTToken)
-	res, err := ns.Client.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("http request error: %w", err)
+		return "", err
 	}
 	defer res.Body.Close()
 	switch res.StatusCode {
@@ -335,77 +288,25 @@ func (ns *NetStorage) cardsList() (string, error) {
 	}
 }
 
-// AddItem adds item accoding to cmd.
-func (ns *NetStorage) AddItem(cmd string) (string, error) {
-	switch cmd {
-	case "cards":
-		return "", ns.addCard()
-	default:
-		return "", errors.New("command undefined")
-	}
-}
-
-func scanStdin(text string, to *string) error {
-	fmt.Print(text)
-	scanner := bufio.NewScanner(os.Stdin)
-	if scanner.Scan() {
-		*to = scanner.Text()
-	} else {
-		return fmt.Errorf("scan value error: %w", scanner.Err())
-	}
-	// ok, err := regexp.Match(reg, []byte(*to))
-	// if
-	return nil
-}
-
-// addCard adds one card to server.
-func (ns *NetStorage) addCard() error {
-	var sendData idLabel
-	var info cardInfo
-	if err := scanStdin("Введите название: ", &sendData.Label); err != nil {
-		return fmt.Errorf("scan label error: %w", err)
-	}
-	fmt.Println(sendData.Label)
-	fmt.Print("Введите номер: ")
-	if _, err := fmt.Scanln(&info.Number); err != nil {
-		return fmt.Errorf("number error: %w", err)
-	}
-	fmt.Print("Введите владельца: ")
-	if _, err := fmt.Scanln(&info.User); err != nil {
-		return fmt.Errorf("user error: %w", err)
-	}
-	fmt.Print("Введите срок действия (mm/yy): ")
-	if _, err := fmt.Scanln(&info.Duration); err != nil {
-		return fmt.Errorf("duration error: %w", err)
-	}
-	fmt.Print("Введите csv-код (3 цифры на обороте): ")
-	if _, err := fmt.Scanln(&info.Csv); err != nil {
-		return fmt.Errorf("cvs error: %w", err)
-	}
+// AddCard adds one card info to server.
+func (ns *NetStorage) AddCard(label, number, user, duration, csv string) error {
+	info := cardInfo{Number: number, User: user, Duration: duration, Csv: csv}
 	data, err := json.Marshal(&info)
 	if err != nil {
 		return fmt.Errorf("card info json convert error: %w", err)
 	}
-	sendData.Info, err = encryptAES(ns.Key, string(data))
+	infoString, err := EncryptAES(ns.Key, string(data))
 	if err != nil {
 		return fmt.Errorf("encrypt data error: %w", err)
 	}
-	data, err = json.Marshal(&sendData)
+	send := idLabel{Info: infoString, Label: label}
+	data, err = json.Marshal(&send)
 	if err != nil {
-		return fmt.Errorf("send value json convert error: %w", err)
+		return fmt.Errorf("json convert error: %w", err)
 	}
-	data, err = encryptRSAMessage(data, ns.ServerPublicKey)
+	res, err := ns.doEncryptRequest(data, ns.url(urlCardsAdd), http.MethodPost)
 	if err != nil {
-		return fmt.Errorf("encrypt error: %w", err)
-	}
-	req, err := http.NewRequest(http.MethodPost, ns.url(urlCardsAdd), bytes.NewReader(data))
-	if err != nil {
-		return fmt.Errorf("make request error: %w", err)
-	}
-	req.Header.Add(Authorization, ns.JWTToken)
-	res, err := ns.Client.Do(req)
-	if err != nil {
-		return fmt.Errorf("http request error: %w", err)
+		return err
 	}
 	defer res.Body.Close()
 	switch res.StatusCode {
@@ -413,5 +314,38 @@ func (ns *NetStorage) addCard() error {
 		return nil
 	default:
 		return fmt.Errorf("responce status code error: %d", res.StatusCode)
+	}
+}
+
+// GetCard requests card info.
+func (ns *NetStorage) GetCard(id int) (string, error) {
+	url := fmt.Sprintf("%s/%d", ns.url(urlCardsGet), id)
+	res, err := ns.doEncryptRequest(ns.PublicKey, url, http.MethodPost)
+	if err != nil {
+		return "", err
+	}
+	defer res.Body.Close()
+	switch res.StatusCode {
+	case http.StatusUnauthorized:
+		return "", AuthorizationErr
+	case http.StatusOK:
+		data, err := readAndDecryptRSA(res.Body, ns.PrivateKey)
+		if err != nil {
+			return "", fmt.Errorf("response error: %w", err)
+		}
+		info, err := decryptAES(ns.Key, string(data))
+		if err != nil {
+			return "", fmt.Errorf("card info decrypt error: %w", err)
+		}
+		var card cardInfo
+		err = json.Unmarshal([]byte(info), &card)
+		if err != nil {
+			return "", fmt.Errorf("json convert error: %w", err)
+		}
+		info = fmt.Sprintf("Number: %s\nOwner: %s\nDuration: %s\nCsv: %s",
+			card.Number, card.User, card.Duration, card.Csv)
+		return info, nil
+	default:
+		return "", fmt.Errorf("undefined error. Status code is: %d", res.StatusCode)
 	}
 }

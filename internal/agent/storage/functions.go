@@ -57,6 +57,19 @@ func decryptRSAMessage(key *rsa.PrivateKey, msg []byte) ([]byte, error) {
 	return dectipted, nil
 }
 
+// readAndDecryptRSA reads data from body and decripts by RSA key.
+func readAndDecryptRSA(body io.ReadCloser, key *rsa.PrivateKey) ([]byte, error) {
+	data, err := io.ReadAll(body)
+	if err != nil {
+		return nil, fmt.Errorf("read body error: %w", err)
+	}
+	data, err = decryptRSAMessage(key, data)
+	if err != nil {
+		return nil, fmt.Errorf("decrypt error: %w", err)
+	}
+	return data, nil
+}
+
 // aesKey checks key size and add space rune till aes.BlockSize.
 func aesKey(key string) []byte {
 	for len([]byte(key)) < aes.BlockSize {
@@ -65,8 +78,8 @@ func aesKey(key string) []byte {
 	return []byte(key)[:aes.BlockSize]
 }
 
-// encryptAES.
-func encryptAES(key, msg string) (string, error) {
+// EncryptAES encripts msg with key by AES.
+func EncryptAES(key, msg string) (string, error) {
 	block, err := aes.NewCipher(aesKey(key))
 	if err != nil {
 		return "", fmt.Errorf("create encrypt cioper error: %w", err)
