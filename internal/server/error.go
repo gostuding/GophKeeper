@@ -22,6 +22,8 @@ const (
 	EncryptMessageError
 	ConvertToBytesError
 	UserAuthorizationError
+	ErrNotFound
+	ErrConvertError
 	InternalError
 )
 
@@ -55,6 +57,10 @@ func makeError(t ErrType, values ...any) error {
 		return fmt.Errorf("convert to byte error: %w", values...)
 	case UserAuthorizationError:
 		return errors.New("user authorization error")
+	case ErrNotFound:
+		return fmt.Errorf("not found: %w", values...)
+	case ErrConvertError:
+		return fmt.Errorf("convert item error: %w", values...)
 	default:
 		return fmt.Errorf("undefuned error: %w", values...)
 	}

@@ -16,6 +16,25 @@ import (
 	"github.com/howeyc/gopass"
 )
 
+type errType int
+
+const (
+	idConvertErr errType = iota
+)
+
+var (
+	ErrUndefinedTarget = errors.New("undefined target")
+)
+
+func makeError(t errType, values ...any) error {
+	switch t {
+	case idConvertErr:
+		return fmt.Errorf("convert id error: %w", values...)
+	default:
+		return fmt.Errorf("undefined error: %w", values...)
+	}
+}
+
 type (
 	// Agent struct.
 	Agent struct {
@@ -199,8 +218,8 @@ func (a *Agent) parceCommand(cmd string) string {
 			return fmt.Sprintf("undefined current command: '%s'", a.currentCommand)
 		}
 	case "cards", "files", "data", "":
-		a.currentCommand = cmd
-		return fmt.Sprintf("вкладка: %s", cmd)
+		a.currentCommand = c[0]
+		return fmt.Sprintf("вкладка: %s", c[0])
 	case "list":
 		lst, err := a.listSwitcher()
 		if err != nil {
@@ -214,13 +233,30 @@ func (a *Agent) parceCommand(cmd string) string {
 		return "Успешно добавлено"
 	case "get":
 		if len(c) <= 1 {
-			return fmt.Sprintf("%s get error. ID undefined", a.currentCommand)
+			return fmt.Sprintf("%s get error: %v", a.currentCommand, ErrUndefinedTarget)
 		}
 		lst, err := a.getSwitcher(c[1])
 		if err != nil {
 			return fmt.Sprintf("%s get error: %v", a.currentCommand, err)
 		}
 		return lst
+	case "del":
+		if len(c) <= 1 {
+			return fmt.Sprintf("%s delete error: %v", a.currentCommand, ErrUndefinedTarget)
+		}
+		if err := a.deleteSwitcher(c[1]); err != nil {
+			return fmt.Sprintf("%s delete error: %v", a.currentCommand, err)
+		}
+		return "Удалено"
+	case "edit":
+		if len(c) <= 1 {
+			return fmt.Sprintf("%s edit error: %v", a.currentCommand, ErrUndefinedTarget)
+		}
+		err := a.editSwitcher(c[1])
+		if err != nil {
+			return fmt.Sprintf("%s edit error: %v", a.currentCommand, err)
+		}
+		return "Информация успешно обновлена"
 	default:
 		return fmt.Sprintf("undefined command: '%s'", cmd)
 	}
@@ -246,12 +282,12 @@ func (a *Agent) addSwitcher() error {
 		if err := scanStdin("Введите csv-код (3 цифры на обороте): ", &c); err != nil {
 			return fmt.Errorf("read card csv error: %w", err)
 		}
-		if err := a.Storage.AddCard(l, n, u, d, c); err != nil {
+		if err := a.Storage.AddCard(storage.CardInfo{Label: l, User: u, Number: n, Duration: d, Csv: c}); err != nil {
 			return fmt.Errorf("card add error: %w", err)
 		}
 		return nil
 	default:
-		return errors.New("undefined add in target")
+		return ErrUndefinedTarget
 	}
 }
 
@@ -261,20 +297,92 @@ func (a *Agent) listSwitcher() (string, error) {
 	case "cards":
 		return a.Storage.GetCardsList()
 	default:
-		return "", errors.New("undefined list target")
+		return "", ErrUndefinedTarget
 	}
 }
 
 // getSwitcher makes get Storage's function according to currentCommand.
 func (a *Agent) getSwitcher(id string) (string, error) {
+	i, err := strconv.Atoi(id)
+	if err != nil {
+		return "", makeError(idConvertErr, err)
+	}
 	switch a.currentCommand {
 	case "cards":
-		id, err := strconv.Atoi(id)
+		card, err := a.Storage.GetCard(i)
 		if err != nil {
-			return "", fmt.Errorf("cards id error: %w", err)
+			return "", fmt.Errorf("get error: %w", err)
 		}
-		return a.Storage.GetCard(id)
+		info := fmt.Sprintf("Название: %s\nНомер: %s\nВладелец: %s\nСрок: %s\nCSV: %s\nДата изменения: %s",
+			card.Label, card.Number, card.User, card.Duration, card.Csv, card.Updated)
+		return info, nil
 	default:
-		return "", errors.New("undefined get target")
+		return "", ErrUndefinedTarget
+	}
+}
+
+// deleteSwitcher makes delete Storage's function according to currentCommand.
+func (a *Agent) deleteSwitcher(id string) error {
+	i, err := strconv.Atoi(id)
+	if err != nil {
+		return makeError(idConvertErr, err)
+	}
+	switch a.currentCommand {
+	case "cards":
+		return a.Storage.DeleteCard(i)
+	default:
+		return ErrUndefinedTarget
+	}
+}
+
+// editSwitcher makes edit Storage's function according to currentCommand.
+func (a *Agent) editSwitcher(id string) error {
+	i, err := strconv.Atoi(id)
+	if err != nil {
+		return makeError(idConvertErr, err)
+	}
+	switch a.currentCommand {
+	case "cards":
+		card, err := a.Storage.GetCard(i)
+		if err != nil {
+			return fmt.Errorf("get card error: %w", err)
+		}
+		var l, n, u, d, c string
+		if err := scanStdin(fmt.Sprintf("Название карты (%s): ", card.Label), &l); err != nil {
+			return fmt.Errorf("read card label error: %w", err)
+		}
+		if l != "" {
+			card.Label = l
+		}
+		if err := scanStdin(fmt.Sprintf("Номер карты (%s): ", card.Number), &n); err != nil {
+			return fmt.Errorf("read card number error: %w", err)
+		}
+		if n != "" {
+			card.Number = n
+		}
+		if err := scanStdin(fmt.Sprintf("Владелец карты (%s): ", card.User), &u); err != nil {
+			return fmt.Errorf("read card user error: %w", err)
+		}
+		if u != "" {
+			card.User = u
+		}
+		if err := scanStdin(fmt.Sprintf("Срок действия карты (%s): ", card.Duration), &d); err != nil {
+			return fmt.Errorf("read card duration error: %w", err)
+		}
+		if d != "" {
+			card.Duration = d
+		}
+		if err := scanStdin(fmt.Sprintf("CSV-код (%s): ", card.Csv), &c); err != nil {
+			return fmt.Errorf("read card csv error: %w", err)
+		}
+		if c != "" {
+			card.Csv = c
+		}
+		if err := a.Storage.UpdateCard(i, *card); err != nil {
+			return fmt.Errorf("card edit error: %w", err)
+		}
+		return nil
+	default:
+		return ErrUndefinedTarget
 	}
 }

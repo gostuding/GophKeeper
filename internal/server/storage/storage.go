@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"math/rand"
+	"time"
 
 	"github.com/jackc/pgerrcode"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -20,10 +21,19 @@ import (
 	"gorm.io/gorm"
 )
 
-// Gorm connection to database.
-type Storage struct {
-	con *gorm.DB
-}
+type (
+	// Gorm connection to database.
+	Storage struct {
+		con *gorm.DB
+	}
+	// sendCardsInfo struct sends card's information to clients.
+	sendCardsInfo struct {
+		Id     uint      `json:"id,omitempty"`
+		Label  string    `json:"label,omitempty"`
+		Info   string    `json:"info,omitempty"`
+		Update time.Time `json:"updated"`
+	}
+)
 
 // NewStorage creates and checks database connection.
 func NewStorage(dsn string, maxCon int) (*Storage, error) {
@@ -108,17 +118,28 @@ func (s *Storage) GetCardsList(ctx context.Context, uid uint) ([]byte, error) {
 	if result.RowsAffected == 0 {
 		return []byte("[]"), nil
 	}
-	type info struct {
-		Id    uint   `json:"id"`
-		Label string `json:"label"`
-	}
-	cards := make([]info, 0)
+	cards := make([]sendCardsInfo, 0)
 	for _, item := range c {
-		cards = append(cards, info{Id: item.ID, Label: item.Label})
+		cards = append(cards, sendCardsInfo{Id: item.ID, Label: item.Label, Update: item.UpdatedAt})
 	}
 	data, err := json.Marshal(cards)
 	if err != nil {
 		return nil, fmt.Errorf("cards list convert error: %w", err)
+	}
+	return data, nil
+}
+
+// GetCard returns full info about one user's card.
+func (s *Storage) GetCard(ctx context.Context, id, uid uint) ([]byte, error) {
+	c := Cards{UID: uid, ID: id}
+	result := s.con.WithContext(ctx).First(&c)
+	if result.Error != nil {
+		return nil, fmt.Errorf("get card error: %w", result.Error)
+	}
+	card := sendCardsInfo{Label: c.Label, Info: c.Value, Update: c.UpdatedAt}
+	data, err := json.Marshal(&card)
+	if err != nil {
+		return nil, fmt.Errorf("card info convert error: %w", err)
 	}
 	return data, nil
 }
@@ -133,129 +154,29 @@ func (s *Storage) AddCard(ctx context.Context, uid uint, label, value string) er
 	return nil
 }
 
-// func (s *Storage) AddOrder(ctx context.Context, uid int, order string) (int, error) {
-// 	var item Orders
-// 	orderOk := errors.New("order ok")
-// 	orderConflict := errors.New("order conflict")
-// 	err := s.con.Transaction(func(tx *gorm.DB) error {
-// 		result := tx.Where("number = ? ", order).First(&item)
-// 		if result.Error != nil {
-// 			if errors.Is(result.Error, gorm.ErrRecordNotFound) {
-// 				result := tx.Create(&Orders{UID: uid, Number: order, Status: "NEW"})
-// 				if result.Error != nil {
-// 					return fmt.Errorf("create order error: %w", result.Error)
-// 				}
-// 				return nil
-// 			}
-// 			return fmt.Errorf("select order error: %w", result.Error)
-// 		} else {
-// 			if item.UID == uid {
-// 				return orderOk
-// 			}
-// 			return orderConflict
-// 		}
-// 	})
-// 	switch err { //nolint:errorlint //<- wrapped errors is on default
-// 	case orderConflict:
-// 		return http.StatusConflict, nil
-// 	case orderOk:
-// 		return http.StatusOK, nil
-// 	case nil:
-// 		return http.StatusAccepted, nil
-// 	default:
-// 		return http.StatusInternalServerError, err //nolint:wrapcheck // <-wrapped early
-// 	}
-// }
+// DeleteCard deletes info about one user's card.
+func (s *Storage) DeleteCard(ctx context.Context, id, uid uint) error {
+	c := Cards{UID: uid, ID: id}
+	result := s.con.WithContext(ctx).Delete(&c)
+	if result.Error != nil {
+		return fmt.Errorf("delete error: %w", result.Error)
+	}
+	return nil
+}
 
-// func (s *Storage) getValues(ctx context.Context, uid int, values any) ([]byte, error) {
-// 	result := s.con.WithContext(ctx).Order("id desc").Where("uid = ?", uid).Find(values)
-// 	if result.Error != nil {
-// 		return nil, fmt.Errorf("get values error: %w", result.Error)
-// 	}
-// 	if result.RowsAffected == 0 {
-// 		return nil, nil
-// 	}
-// 	data, err := json.Marshal(values)
-// 	if err != nil {
-// 		return nil, fmt.Errorf("json convert error: %w", err)
-// 	}
-// 	return data, nil
-// }
-
-// func (s *Storage) GetOrders(ctx context.Context, uid int) ([]byte, error) {
-// 	var orders []Orders
-// 	return s.getValues(ctx, uid, &orders)
-// }
-
-// func (s *Storage) GetUserBalance(ctx context.Context, uid int) ([]byte, error) {
-// 	var user Users
-// 	result := s.con.WithContext(ctx).Where("id = ?", uid).First(&user) //nolint:all // more clearly
-// 	if result.Error != nil {
-// 		return nil, fmt.Errorf("get user balance error: %w", result.Error)
-// 	}
-// 	data, err := json.Marshal(BalanceStruct{Current: user.Balance, Withdrawn: user.Withdrawn})
-// 	if err != nil {
-// 		return nil, fmt.Errorf("convert user balance to json error: %w", err)
-// 	}
-// 	return data, nil
-// }
-
-// func (s *Storage) AddWithdraw(ctx context.Context, uid int, order string, sum float32) (int, error) {
-// 	var user Users
-// 	userNorFound := errors.New("user not found in database")
-// 	lowUserBalance := errors.New("low balance level")
-// 	err := s.con.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-// 		result := tx.Where("id = ?", uid).First(&user)
-// 		if result.Error != nil {
-// 			return fmt.Errorf("get user error: %w", userNorFound)
-// 		}
-// 		if user.Balance < sum {
-// 			return lowUserBalance
-// 		}
-// 		user.Balance -= sum
-// 		user.Withdrawn += sum
-// 		if err := tx.Save(&user).Error; err != nil {
-// 			return fmt.Errorf("update user balance error: %w", err)
-// 		}
-// 		withdraw := Withdraws{Sum: sum, UID: int(user.ID), Number: order}
-// 		if err := tx.Create(&withdraw).Error; err != nil {
-// 			return fmt.Errorf("create withdraw error: %w", err)
-// 		}
-// 		return nil
-// 	})
-// 	if err != nil {
-// 		if errors.Is(err, userNorFound) {
-// 			return http.StatusInternalServerError, err //nolint:wrapcheck //<-wrapped early
-// 		}
-// 		if errors.Is(err, lowUserBalance) {
-// 			return http.StatusPaymentRequired, nil
-// 		}
-// 		var pgErr *pgconn.PgError
-// 		if errors.As(err, &pgErr) && pgErr.Code == pgerrcode.UniqueViolation {
-// 			return http.StatusConflict, errors.New("withdraw order number repeat error")
-// 		}
-// 		return http.StatusInternalServerError, fmt.Errorf("transaction error: %w", err)
-// 	}
-// 	return http.StatusOK, nil
-// }
-
-// func (s *Storage) GetWithdraws(ctx context.Context, uid int) ([]byte, error) {
-// 	var withdraws []Withdraws
-// 	return s.getValues(ctx, uid, &withdraws)
-// }
-
-// func (s *Storage) GetAccrualOrders() []string {
-// 	var orders []Orders
-// 	result := s.con.Order("id").Where("status NOT IN ?", []string{"INVALID", "PROCESSED"}).Find(&orders)
-// 	if result.Error != nil || result.RowsAffected == 0 {
-// 		return nil
-// 	}
-// 	numbers := make([]string, 0)
-// 	for _, item := range orders {
-// 		numbers = append(numbers, item.Number)
-// 	}
-// 	return numbers
-// }
+// UpdateCard updates user's card information.
+func (s *Storage) UpdateCard(
+	ctx context.Context,
+	id, uid uint,
+	label, value string,
+) error {
+	c := Cards{UID: uid, ID: id}
+	result := s.con.WithContext(ctx).Model(&c).Updates(Cards{Label: label, Value: value})
+	if result.Error != nil {
+		return fmt.Errorf("gorm error: %w", result.Error)
+	}
+	return nil
+}
 
 // func (s *Storage) SetOrderData(number string, status string, balance float32) error {
 // 	var order Orders
@@ -286,6 +207,7 @@ func (s *Storage) AddCard(ctx context.Context, uid uint, label, value string) er
 // 	return nil
 // }
 
+// Close closes connection to database.
 func (s *Storage) Close() error {
 	db, err := s.con.DB()
 	if err != nil {
@@ -298,6 +220,7 @@ func (s *Storage) Close() error {
 	return nil
 }
 
+// IsUniqueViolation checks error on uniqueViolation.
 func (s *Storage) IsUniqueViolation(err error) bool {
 	var pgErr *pgconn.PgError
 	if errors.As(err, &pgErr) && pgErr.Code == pgerrcode.UniqueViolation {

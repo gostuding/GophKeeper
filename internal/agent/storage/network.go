@@ -28,11 +28,13 @@ const (
 	urlLogin
 	urlCardsList
 	urlCardsAdd
-	urlCardsGet
+	urlCard
 )
 
 var (
-	AuthorizationErr = errors.New("authorization error")
+	ErrAuthorization = errors.New("authorization error")
+	ErrNotFound      = errors.New("not found. Check id and repeat")
+	ErrDublicate     = errors.New("values dublicate error")
 )
 
 type (
@@ -59,17 +61,21 @@ type (
 		Token string `json:"token"`
 		Key   string `json:"key"`
 	}
-	// idLabel internal struct.
-	idLabel struct {
-		Label string `json:"label"`
-		Info  string `json:"info,omitempty"`
-		ID    int    `json:"id,omitempty"`
+	// idLabelInfo internal struct.
+	idLabelInfo struct {
+		Updated time.Time `json:"updated"`
+		Label   string    `json:"label"`
+		Info    string    `json:"info,omitempty"`
+		ID      int       `json:"id,omitempty"`
 	}
-	cardInfo struct {
-		Number   string `json:"number,omitempty"`
-		User     string `json:"user,omitempty"`
-		Duration string `json:"duration,omitempty"`
-		Csv      string `json:"csv,omitempty"`
+	// CardInfo is struct for card information.
+	CardInfo struct {
+		Updated  time.Time `json:"-"`
+		Label    string    `json:"-"`
+		Number   string    `json:"number,omitempty"`
+		User     string    `json:"user,omitempty"`
+		Duration string    `json:"duration,omitempty"`
+		Csv      string    `json:"csv,omitempty"`
 	}
 )
 
@@ -101,8 +107,8 @@ func (ns *NetStorage) url(t urlType) string {
 		return fmt.Sprintf("%s/api/cards/list", ns.Config.ServerAddres)
 	case urlCardsAdd:
 		return fmt.Sprintf("%s/api/cards/add", ns.Config.ServerAddres)
-	case urlCardsGet:
-		return fmt.Sprintf("%s/api/cards/get", ns.Config.ServerAddres)
+	case urlCard:
+		return fmt.Sprintf("%s/api/cards", ns.Config.ServerAddres)
 	default:
 		return "undefined"
 	}
@@ -127,18 +133,18 @@ func (ns *NetStorage) doEncryptRequest(msg []byte, url string, method string) (*
 }
 
 // doOpenRequest is internal function for do requests without any encryption.
-func (ns *NetStorage) doOpenRequest(msg []byte, url string, method string) (*http.Response, error) {
-	req, err := http.NewRequest(method, url, bytes.NewReader(msg))
-	if err != nil {
-		return nil, fmt.Errorf("make request error: %w", err)
-	}
-	req.Header.Add(Authorization, ns.JWTToken)
-	res, err := ns.Client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("http request error: %w", err)
-	}
-	return res, nil
-}
+// func (ns *NetStorage) doOpenRequest(msg []byte, url string, method string) (*http.Response, error) {
+// 	req, err := http.NewRequest(method, url, bytes.NewReader(msg))
+// 	if err != nil {
+// 		return nil, fmt.Errorf("make request error: %w", err)
+// 	}
+// 	req.Header.Add(Authorization, ns.JWTToken)
+// 	res, err := ns.Client.Do(req)
+// 	if err != nil {
+// 		return nil, fmt.Errorf("http request error: %w", err)
+// 	}
+// 	return res, nil
+// }
 
 // Check sends request to server for public key get.
 // If success public key got, tries to register or login at server.
@@ -273,14 +279,14 @@ func (ns *NetStorage) GetCardsList() (string, error) {
 		if err != nil {
 			return "", fmt.Errorf("decrypt body error: %w", err)
 		}
-		var lst []idLabel
+		var lst []idLabelInfo
 		err = json.Unmarshal(data, &lst)
 		if err != nil {
 			return "", fmt.Errorf("json convert error: %w", err)
 		}
 		cards := ""
 		for _, val := range lst {
-			cards += fmt.Sprintf("Card: %d. %s\n", val.ID, val.Label)
+			cards += fmt.Sprintf("Card: %d. '%s'\t'%s'\n", val.ID, val.Label, val.Updated)
 		}
 		return cards, nil
 	default:
@@ -288,10 +294,69 @@ func (ns *NetStorage) GetCardsList() (string, error) {
 	}
 }
 
-// AddCard adds one card info to server.
-func (ns *NetStorage) AddCard(label, number, user, duration, csv string) error {
-	info := cardInfo{Number: number, User: user, Duration: duration, Csv: csv}
-	data, err := json.Marshal(&info)
+// GetCard requests card info.
+func (ns *NetStorage) GetCard(id int) (*CardInfo, error) {
+	url := fmt.Sprintf("%s/%d", ns.url(urlCard), id)
+	res, err := ns.doEncryptRequest(ns.PublicKey, url, http.MethodPost)
+	if err != nil {
+		return nil, err
+	}
+	defer res.Body.Close()
+	switch res.StatusCode {
+	case http.StatusUnauthorized:
+		return nil, ErrAuthorization
+	case http.StatusNotFound:
+		return nil, ErrNotFound
+	case http.StatusOK:
+		data, err := readAndDecryptRSA(res.Body, ns.PrivateKey)
+		if err != nil {
+			return nil, fmt.Errorf("response error: %w", err)
+		}
+		var l idLabelInfo
+		err = json.Unmarshal(data, &l)
+		if err != nil {
+			return nil, fmt.Errorf("response json error: %w", err)
+		}
+		info, err := decryptAES(ns.Key, l.Info)
+		if err != nil {
+			return nil, fmt.Errorf("card's info decrypt error: %w", err)
+		}
+		var card CardInfo
+		err = json.Unmarshal([]byte(info), &card)
+		if err != nil {
+			return nil, fmt.Errorf("json convert error: %w", err)
+		}
+		card.Updated = l.Updated
+		card.Label = l.Label
+		return &card, nil
+	default:
+		return nil, fmt.Errorf("undefined error. Status code is: %d", res.StatusCode)
+	}
+}
+
+// DeleteCard requests to delete card's info from server.
+func (ns *NetStorage) DeleteCard(id int) error {
+	url := fmt.Sprintf("%s/%d", ns.url(urlCard), id)
+	res, err := ns.doEncryptRequest(nil, url, http.MethodDelete)
+	if err != nil {
+		return err
+	}
+	defer res.Body.Close()
+	switch res.StatusCode {
+	case http.StatusUnauthorized:
+		return ErrAuthorization
+	case http.StatusNotFound:
+		return ErrNotFound
+	case http.StatusOK:
+		return nil
+	default:
+		return fmt.Errorf("undefined error. Status code is: %d", res.StatusCode)
+	}
+}
+
+// addUpdateCard common in add and update card functions
+func (ns *NetStorage) addUpdateCard(url, method string, card CardInfo) error {
+	data, err := json.Marshal(&card)
 	if err != nil {
 		return fmt.Errorf("card info json convert error: %w", err)
 	}
@@ -299,17 +364,19 @@ func (ns *NetStorage) AddCard(label, number, user, duration, csv string) error {
 	if err != nil {
 		return fmt.Errorf("encrypt data error: %w", err)
 	}
-	send := idLabel{Info: infoString, Label: label}
-	data, err = json.Marshal(&send)
+	send := idLabelInfo{Info: infoString, Label: card.Label}
+	data, err = json.Marshal(send)
 	if err != nil {
 		return fmt.Errorf("json convert error: %w", err)
 	}
-	res, err := ns.doEncryptRequest(data, ns.url(urlCardsAdd), http.MethodPost)
+	res, err := ns.doEncryptRequest(data, url, method)
 	if err != nil {
 		return err
 	}
 	defer res.Body.Close()
 	switch res.StatusCode {
+	case http.StatusConflict:
+		return ErrDublicate
 	case http.StatusOK:
 		return nil
 	default:
@@ -317,35 +384,12 @@ func (ns *NetStorage) AddCard(label, number, user, duration, csv string) error {
 	}
 }
 
-// GetCard requests card info.
-func (ns *NetStorage) GetCard(id int) (string, error) {
-	url := fmt.Sprintf("%s/%d", ns.url(urlCardsGet), id)
-	res, err := ns.doEncryptRequest(ns.PublicKey, url, http.MethodPost)
-	if err != nil {
-		return "", err
-	}
-	defer res.Body.Close()
-	switch res.StatusCode {
-	case http.StatusUnauthorized:
-		return "", AuthorizationErr
-	case http.StatusOK:
-		data, err := readAndDecryptRSA(res.Body, ns.PrivateKey)
-		if err != nil {
-			return "", fmt.Errorf("response error: %w", err)
-		}
-		info, err := decryptAES(ns.Key, string(data))
-		if err != nil {
-			return "", fmt.Errorf("card info decrypt error: %w", err)
-		}
-		var card cardInfo
-		err = json.Unmarshal([]byte(info), &card)
-		if err != nil {
-			return "", fmt.Errorf("json convert error: %w", err)
-		}
-		info = fmt.Sprintf("Number: %s\nOwner: %s\nDuration: %s\nCsv: %s",
-			card.Number, card.User, card.Duration, card.Csv)
-		return info, nil
-	default:
-		return "", fmt.Errorf("undefined error. Status code is: %d", res.StatusCode)
-	}
+// AddCard adds one card info to server.
+func (ns *NetStorage) AddCard(card CardInfo) error {
+	return ns.addUpdateCard(ns.url(urlCardsAdd), http.MethodPost, card)
+}
+
+// UpdateCard edits one card info at server.
+func (ns *NetStorage) UpdateCard(id int, card CardInfo) error {
+	return ns.addUpdateCard(fmt.Sprintf("%s/%d", ns.url(urlCard), id), http.MethodPut, card)
 }

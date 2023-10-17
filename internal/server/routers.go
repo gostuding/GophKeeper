@@ -27,6 +27,7 @@ const (
 	ApplJSON    = "application/json"
 	ContentType = "Content-Type"
 	TextPlain   = "text/plain"
+	idString    = "id"
 )
 
 // writeResponseData is using for no duplicate code.
@@ -111,12 +112,12 @@ func makeRouter(s *Server) http.Handler {
 			loginRegistrationCommon(w, r, s, "login", Login)
 		})
 	})
+
 	router.Group(func(r chi.Router) {
 		r.Use(
 			middlewares.DecriptMiddleware(s.Config.PrivateKey, s.Logger),
 			middlewares.AuthMiddleware(s.Logger, "/", s.Config.TokenKey),
 		)
-
 		r.Post("/api/cards/list", func(w http.ResponseWriter, r *http.Request) {
 			body, err := readRequestBody(w, r, s.Logger)
 			if err != nil {
@@ -129,7 +130,6 @@ func makeRouter(s *Server) http.Handler {
 			}
 			writeResponseData(w, data, status, s.Logger)
 		})
-
 		r.Post("/api/cards/add", func(w http.ResponseWriter, r *http.Request) {
 			body, err := readRequestBody(w, r, s.Logger)
 			if err != nil {
@@ -141,39 +141,55 @@ func makeRouter(s *Server) http.Handler {
 			}
 			writeResponseData(w, nil, status, s.Logger)
 		})
+		r.Post("/api/cards/{id}", func(w http.ResponseWriter, r *http.Request) {
+			body, err := readRequestBody(w, r, s.Logger)
+			if err != nil {
+				return
+			}
+			publicKey := hex.EncodeToString(body)
+			id, err := strconv.Atoi(chi.URLParam(r, idString))
+			if err != nil {
+				s.Logger.Warnf(makeError(ErrConvertError, idString, err).Error())
+				writeResponseData(w, nil, http.StatusBadRequest, s.Logger)
+				return
+			}
+			data, status, err := GetCard(r.Context(), publicKey, s.Storage, uint(id))
+			if err != nil {
+				s.Logger.Warnf("get card's info error: %v", err)
+			}
+			writeResponseData(w, data, status, s.Logger)
+		})
+		r.Put("/api/cards/{id}", func(w http.ResponseWriter, r *http.Request) {
+			body, err := readRequestBody(w, r, s.Logger)
+			if err != nil {
+				return
+			}
+			id, err := strconv.Atoi(chi.URLParam(r, idString))
+			if err != nil {
+				s.Logger.Warnf(makeError(ErrConvertError, idString, err).Error())
+				writeResponseData(w, nil, http.StatusBadRequest, s.Logger)
+				return
+			}
+			status, err := UpdateCardInfo(r.Context(), body, s.Storage, uint(id))
+			if err != nil {
+				s.Logger.Warnf("update card's info error: %v", err)
+			}
+			writeResponseData(w, nil, status, s.Logger)
+		})
+		r.Delete("/api/cards/{id}", func(w http.ResponseWriter, r *http.Request) {
+			id, err := strconv.Atoi(chi.URLParam(r, idString))
+			if err != nil {
+				s.Logger.Warnf(makeError(ErrConvertError, idString, err).Error())
+				writeResponseData(w, nil, http.StatusBadRequest, s.Logger)
+				return
+			}
+			status, err := DeleteCard(r.Context(), s.Storage, uint(id))
+			if err != nil {
+				s.Logger.Warnf("delete card's info error: %v", err)
+			}
+			writeResponseData(w, nil, status, s.Logger)
+		})
 
 	})
-	// router.Post("/api/user/register", func(w http.ResponseWriter, r *http.Request) {
-	// 	loginRegistrationCommon(w, r, logger, key, strg, tokenLiveTime, Register)
-	// })
-
-	// router.Post(loginURL, func(w http.ResponseWriter, r *http.Request) {
-	// 	loginRegistrationCommon(w, r, logger, key, strg, tokenLiveTime, Login)
-	// })
-
-	// router.Group(func(r chi.Router) {
-	// 	r.Use(middlewares.AuthMiddleware(logger, loginURL, key))
-
-	// 	r.Get(ordersListURL, func(w http.ResponseWriter, r *http.Request) {
-	// 		GetOrdersList(requestResponce{r: r, w: w, strg: strg, logger: logger})
-	// 	})
-
-	// 	r.Post(ordersListURL, func(w http.ResponseWriter, r *http.Request) {
-	// 		AddOrder(requestResponce{r: r, w: w, strg: strg, logger: logger})
-	// 	})
-
-	// 	r.Get("/api/user/balance", func(w http.ResponseWriter, r *http.Request) {
-	// 		GetUserBalance(requestResponce{r: r, w: w, strg: strg, logger: logger})
-	// 	})
-
-	// 	r.Post("/api/user/balance/withdraw", func(w http.ResponseWriter, r *http.Request) {
-	// 		AddWithdraw(requestResponce{r: r, w: w, strg: strg, logger: logger})
-	// 	})
-
-	// 	r.Get("/api/user/withdrawals", func(w http.ResponseWriter, r *http.Request) {
-	// 		GetWithdrawsList(requestResponce{r: r, w: w, strg: strg, logger: logger})
-	// 	})
-	// })
-
 	return router
 }
