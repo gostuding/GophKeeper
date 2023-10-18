@@ -19,7 +19,18 @@ import (
 type errType int
 
 const (
-	idConvertErr errType = iota
+	cards = "cards"
+	files = "files"
+	exit  = "exit"
+	add   = "add"
+	list  = "list"
+	del   = "del"
+	edit  = "edit"
+
+	ErrIDConver errType = iota
+	ErrScanValue
+	ErrEncrypt
+	ErrDecrypt
 )
 
 var (
@@ -28,8 +39,14 @@ var (
 
 func makeError(t errType, values ...any) error {
 	switch t {
-	case idConvertErr:
+	case ErrIDConver:
 		return fmt.Errorf("convert id error: %w", values...)
+	case ErrScanValue:
+		return fmt.Errorf("scan value error: %w", values...)
+	case ErrEncrypt:
+		return fmt.Errorf("encrypt value error: %w", values...)
+	case ErrDecrypt:
+		return fmt.Errorf("decrypt value error: %w", values...)
 	default:
 		return fmt.Errorf("undefined error: %w", values...)
 	}
@@ -51,7 +68,7 @@ func scanStdin(text string, to *string) error {
 	if scanner.Scan() {
 		*to = scanner.Text()
 	} else {
-		return fmt.Errorf("scan value error: %w", scanner.Err())
+		return makeError(ErrScanValue, scanner.Err())
 	}
 	return nil
 }
@@ -83,10 +100,10 @@ func (a *Agent) Run() error {
 		}
 		select {
 		case <-ctx.Done():
-			fmt.Println("Agent work finish.")
+			fmt.Println("Stop work")
 			return nil
 		default:
-			fmt.Printf("ошибка: %v\n", err)
+			fmt.Printf("ОШИБКА авторизации: %v\n", err)
 		}
 		err = a.authentification()
 	}
@@ -101,7 +118,7 @@ func (a *Agent) Run() error {
 				fmt.Printf("ОШИБКА: %v\n", err)
 				continue
 			}
-			if cmd == "exit" {
+			if cmd == exit {
 				cancelFunc()
 			} else {
 				fmt.Println(a.parceCommand(cmd))
@@ -113,7 +130,7 @@ func (a *Agent) Run() error {
 func (a *Agent) authentification() error {
 	if a.Config.Login == "" {
 		if err := a.registration(); err != nil {
-			return fmt.Errorf("ошибка при регистрации нового пользователя: %w", err)
+			return fmt.Errorf("ошибка регистрации нового пользователя: %w", err)
 		}
 	} else {
 		if err := a.login(); err != nil {
@@ -123,11 +140,11 @@ func (a *Agent) authentification() error {
 	if a.Config.Key == "" {
 		var k string
 		if err := scanStdin("Введите ключ шифрования Ваших приватных данных: ", &k); err != nil {
-			return fmt.Errorf("scan user encrypt key error: %w", err)
+			return makeError(ErrScanValue, err)
 		}
 		k, err := storage.EncryptAES(k, a.Storage.ServerAESKey)
 		if err != nil {
-			return fmt.Errorf("encrypt key error: %w", err)
+			return makeError(ErrEncrypt, "user AES key encrypt:", err)
 		}
 		a.Config.Key = k
 		if err = a.Config.Save(); err != nil {
@@ -146,18 +163,18 @@ func (a *Agent) registration() error {
 	fmt.Println("Регистрация пользователя на сервере.")
 	fmt.Print("Введите логин: ")
 	if _, err := fmt.Scanln(&l); err != nil {
-		return fmt.Errorf("scan login error: %w", err)
+		return makeError(ErrScanValue, err)
 	}
 	fmt.Print("Введите пароль: ")
 	pwd, err := gopass.GetPasswdMasked()
 	if err != nil {
-		return fmt.Errorf("scan password error: %w", err)
+		return makeError(ErrScanValue, err)
 	}
 	p = string(pwd)
 	fmt.Print("Повторите пароль: ")
 	pwd, err = gopass.GetPasswdMasked()
 	if err != nil {
-		return fmt.Errorf("scan password repeat error: %w", err)
+		return makeError(ErrScanValue, err)
 	}
 	r = string(pwd)
 	if p != r {
@@ -180,7 +197,7 @@ func (a *Agent) login() error {
 	fmt.Printf("Введите пароль (%s): ", a.Config.Login)
 	pwd, err := gopass.GetPasswdMasked()
 	if err != nil {
-		return fmt.Errorf("scan password error: %w", err)
+		return makeError(ErrScanValue, err)
 	}
 	err = a.Storage.Authorization(a.Config.Login, string(pwd))
 	if err != nil {
@@ -203,13 +220,13 @@ func (a *Agent) parceCommand(cmd string) string {
 
 		}
 		switch a.currentCommand {
-		case "cards":
+		case cards:
 			return "list - список зарегистрированных карт \n" +
 				"add - добавление новой карты\n" +
 				"get <id> - отобразить данные карты\n" +
 				"edit <id> - изменить данные карты\n" +
 				"del <id> - удалить данные о карте"
-		case "files":
+		case files:
 			return "list - список файлов\n" +
 				"add </path/to/file> - добавление файла\n" +
 				"get <id> </path/save/to> - скачать файл\n" +
@@ -217,16 +234,16 @@ func (a *Agent) parceCommand(cmd string) string {
 		default:
 			return fmt.Sprintf("undefined current command: '%s'", a.currentCommand)
 		}
-	case "cards", "files", "data", "":
+	case cards, files, "data", "":
 		a.currentCommand = c[0]
 		return fmt.Sprintf("вкладка: %s", c[0])
-	case "list":
+	case list:
 		lst, err := a.listSwitcher()
 		if err != nil {
 			return fmt.Sprintf("%s list error: %v", a.currentCommand, err)
 		}
 		return lst
-	case "add":
+	case add:
 		if err := a.addSwitcher(); err != nil {
 			return fmt.Sprintf("%s add error: %v", a.currentCommand, err)
 		}
@@ -240,7 +257,7 @@ func (a *Agent) parceCommand(cmd string) string {
 			return fmt.Sprintf("%s get error: %v", a.currentCommand, err)
 		}
 		return lst
-	case "del":
+	case del:
 		if len(c) <= 1 {
 			return fmt.Sprintf("%s delete error: %v", a.currentCommand, ErrUndefinedTarget)
 		}
@@ -248,7 +265,7 @@ func (a *Agent) parceCommand(cmd string) string {
 			return fmt.Sprintf("%s delete error: %v", a.currentCommand, err)
 		}
 		return "Удалено"
-	case "edit":
+	case edit:
 		if len(c) <= 1 {
 			return fmt.Sprintf("%s edit error: %v", a.currentCommand, ErrUndefinedTarget)
 		}
@@ -294,8 +311,10 @@ func (a *Agent) addSwitcher() error {
 // listSwitcher makes list Storage's function according to currentCommand.
 func (a *Agent) listSwitcher() (string, error) {
 	switch a.currentCommand {
-	case "cards":
+	case cards:
 		return a.Storage.GetCardsList()
+	case files:
+		return a.Storage.GetFilesList()
 	default:
 		return "", ErrUndefinedTarget
 	}
@@ -305,10 +324,10 @@ func (a *Agent) listSwitcher() (string, error) {
 func (a *Agent) getSwitcher(id string) (string, error) {
 	i, err := strconv.Atoi(id)
 	if err != nil {
-		return "", makeError(idConvertErr, err)
+		return "", makeError(ErrIDConver, err)
 	}
 	switch a.currentCommand {
-	case "cards":
+	case cards:
 		card, err := a.Storage.GetCard(i)
 		if err != nil {
 			return "", fmt.Errorf("get error: %w", err)
@@ -325,10 +344,10 @@ func (a *Agent) getSwitcher(id string) (string, error) {
 func (a *Agent) deleteSwitcher(id string) error {
 	i, err := strconv.Atoi(id)
 	if err != nil {
-		return makeError(idConvertErr, err)
+		return makeError(ErrIDConver, err)
 	}
 	switch a.currentCommand {
-	case "cards":
+	case cards:
 		return a.Storage.DeleteCard(i)
 	default:
 		return ErrUndefinedTarget
@@ -339,10 +358,10 @@ func (a *Agent) deleteSwitcher(id string) error {
 func (a *Agent) editSwitcher(id string) error {
 	i, err := strconv.Atoi(id)
 	if err != nil {
-		return makeError(idConvertErr, err)
+		return makeError(ErrIDConver, err)
 	}
 	switch a.currentCommand {
-	case "cards":
+	case cards:
 		card, err := a.Storage.GetCard(i)
 		if err != nil {
 			return fmt.Errorf("get card error: %w", err)

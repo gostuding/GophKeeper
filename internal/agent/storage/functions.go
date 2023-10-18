@@ -12,6 +12,53 @@ import (
 	"io"
 )
 
+type ErrType int
+
+const (
+	ErrAuthorization ErrType = iota
+	ErrJsonMarshal
+	ErrJsonUnmarshal
+	ErrNotFound
+	ErrDublicate
+	ErrServerDecrypt
+	ErrServerEncrypt
+	ErrDecrypt
+	ErrEncrypt
+	ErrResponseStatusCode
+	ErrResponseRead
+	ErrDecryptMessage
+)
+
+func makeError(t ErrType, values ...any) error {
+	switch t {
+	case ErrAuthorization:
+		return fmt.Errorf("authorization error")
+	case ErrJsonMarshal:
+		return fmt.Errorf("json marshal error: %w ", values...)
+	case ErrJsonUnmarshal:
+		return fmt.Errorf("json unmarshal error: %w ", values...)
+	case ErrNotFound:
+		return fmt.Errorf("not found. Check id and repeat")
+	case ErrDublicate:
+		return fmt.Errorf("values dublicate error")
+	case ErrServerDecrypt:
+		return fmt.Errorf("server dencrypt message error")
+	case ErrServerEncrypt:
+		return fmt.Errorf("server encrypt message error")
+	case ErrDecrypt:
+		return fmt.Errorf("dencrypt message error")
+	case ErrEncrypt:
+		return fmt.Errorf("encrypt message error")
+	case ErrResponseStatusCode:
+		return fmt.Errorf("undefined error. Status code is: %d", values...)
+	case ErrResponseRead:
+		return fmt.Errorf("response body read error: %w", values...)
+	case ErrDecryptMessage:
+		return fmt.Errorf("decrypt body error: %w", values...)
+	}
+	return fmt.Errorf("undefined error: %w", values...)
+}
+
 // encryptRSAMessage encrypts message by RSA.
 func encryptRSAMessage(msg []byte, key *rsa.PublicKey) ([]byte, error) {
 	// splitMessage byte slice to parts for RSA encription.

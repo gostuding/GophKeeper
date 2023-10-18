@@ -190,6 +190,24 @@ func makeRouter(s *Server) http.Handler {
 			writeResponseData(w, nil, status, s.Logger)
 		})
 
+		r.Post("/api/files", func(w http.ResponseWriter, r *http.Request) {
+			body, err := readRequestBody(w, r, s.Logger)
+			if err != nil {
+				return
+			}
+			publicKey := hex.EncodeToString(body)
+			data, status, err := GetFilesList(r.Context(), publicKey, s.Storage)
+			if err != nil {
+				s.Logger.Warnf("files list info error: %v", err)
+			}
+			writeResponseData(w, data, status, s.Logger)
+		})
+	})
+
+	router.Group(func(r chi.Router) {
+		r.Use(
+			middlewares.AuthMiddleware(s.Logger, "/", s.Config.TokenKey),
+		)
 	})
 	return router
 }

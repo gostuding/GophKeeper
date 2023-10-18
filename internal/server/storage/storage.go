@@ -113,7 +113,7 @@ func (s *Storage) GetCardsList(ctx context.Context, uid uint) ([]byte, error) {
 	var c []Cards
 	result := s.con.WithContext(ctx).Order("id desc").Where("uid = ?", uid).Find(&c)
 	if result.Error != nil {
-		return nil, fmt.Errorf("get cards error: %w", result.Error)
+		return nil, makeError(ErrDatabase, result.Error)
 	}
 	if result.RowsAffected == 0 {
 		return []byte("[]"), nil
@@ -124,7 +124,7 @@ func (s *Storage) GetCardsList(ctx context.Context, uid uint) ([]byte, error) {
 	}
 	data, err := json.Marshal(cards)
 	if err != nil {
-		return nil, fmt.Errorf("cards list convert error: %w", err)
+		return nil, makeError(ErrJsonMarshal, err)
 	}
 	return data, nil
 }
@@ -176,6 +176,23 @@ func (s *Storage) UpdateCard(
 		return fmt.Errorf("gorm error: %w", result.Error)
 	}
 	return nil
+}
+
+// GetFilesList returns users cards json.
+func (s *Storage) GetFilesList(ctx context.Context, uid uint) ([]byte, error) {
+	var f []Files
+	result := s.con.WithContext(ctx).Order("id desc").Where("uid = ?", uid).Find(&f)
+	if result.Error != nil {
+		return nil, makeError(ErrDatabase, result.Error)
+	}
+	if result.RowsAffected == 0 {
+		return []byte("[]"), nil
+	}
+	data, err := json.Marshal(f)
+	if err != nil {
+		return nil, makeError(ErrJsonMarshal, err)
+	}
+	return data, nil
 }
 
 // func (s *Storage) SetOrderData(number string, status string, balance float32) error {

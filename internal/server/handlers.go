@@ -333,6 +333,38 @@ func UpdateCardInfo(
 	return http.StatusOK, nil
 }
 
+// GetFilesList returns list of user's files info.
+// @Tags Файлы
+// @Summary Запрос списка файлов пользователя. Шифрование ответа открытым ключём клиента.
+// @Accept json
+// @Param order body string true "Public key"
+// @Security ApiKeyAuth
+// @Param Authorization header string false "Токен авторизации"
+// @Router /api/cards/list [post]
+// @Success 200 "Список файлов пользователя"
+// @failure 400 "Ошибка шифрования"
+// @failure 401 "Пользователь не авторизован"
+// @failure 500 "Внутренняя ошибка сервиса.".
+func GetFilesList(
+	ctx context.Context,
+	publicKey string,
+	strg *storage.Storage,
+) ([]byte, int, error) {
+	uid, ok := ctx.Value(middlewares.AuthUID).(int)
+	if !ok {
+		return nil, http.StatusUnauthorized, makeError(UserAuthorizationError, nil)
+	}
+	data, err := strg.GetFilesList(ctx, uint(uid))
+	if err != nil {
+		return nil, http.StatusInternalServerError, makeError(InternalError)
+	}
+	data, err = encryptMessage(data, publicKey)
+	if err != nil {
+		return nil, http.StatusBadRequest, makeError(EncryptMessageError, err)
+	}
+	return data, http.StatusOK, nil
+}
+
 // func getListCommon(args *requestResponce, name string, f func(context.Context, int) ([]byte, error)) {
 // 	args.logger.Debugf("%s list request", name)
 // 	args.w.Header().Add(contentTypeString, ctApplicationJSONString)

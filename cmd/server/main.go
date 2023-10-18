@@ -19,7 +19,7 @@ import (
 func main() {
 	cfg, err := server.NewConfig()
 	if err != nil {
-		log.Fatalf("create config error: %v", err)
+		log.Fatalf("config error: %v", err)
 	}
 	srv, err := server.NewServer(cfg)
 	if err != nil {

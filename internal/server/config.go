@@ -22,6 +22,7 @@ const (
 	defaultPrivateKeyPath             = "./srv_private_key.pem"
 	defaultDSN                        = "host=localhost user=postgres database=gophkeeper"
 	defaultTokenKey                   = "token key"
+	defaultStoragePath                = "./storage"
 )
 
 // Config is server's config structure.
@@ -29,6 +30,7 @@ type Config struct {
 	IP               string          `json:"ip"`                   // server's IP address
 	DSN              string          `json:"dsn"`                  // database connection string
 	KeyPath          string          `json:"private_key"`          // path to private key file
+	StorageDirPath   string          `json:"file_storage_path"`    // path to file storage root dir
 	PrivateKey       *rsa.PrivateKey `json:"-"`                    // private key
 	TokenKey         []byte          `json:"token_key"`            // key for JWT token create
 	Port             int             `json:"port"`                 // server's PORT
@@ -43,7 +45,7 @@ func checkFileExist(path string) error {
 		return nil
 	}
 	if !os.IsNotExist(err) {
-		return fmt.Errorf("config read error: %w", err)
+		return fmt.Errorf("config file read error: %w", err)
 	}
 	key, err := rsa.GenerateKey(rand.Reader, keySize)
 	if err != nil {
@@ -68,10 +70,11 @@ func checkFileExist(path string) error {
 		MaxConnectCount:  defaultConCount,
 		TokenKey:         []byte(defaultTokenKey),
 		MaxTokenLiveTime: defaultTokenLiveTime,
+		StorageDirPath:   defaultStoragePath,
 	}
 	data, err := json.MarshalIndent(cfg, "", "    ")
 	if err != nil {
-		return fmt.Errorf("unmarshal error: %w", err)
+		return makeError(UnmarshalJsonError, err)
 	}
 	if err = os.WriteFile(path, data, fBits); err != nil {
 		return fmt.Errorf("write config file error: %w", err)
@@ -104,11 +107,25 @@ func readConfigFile(path string, cfg *Config) error {
 	}
 	err = json.Unmarshal(data, cfg)
 	if err != nil {
-		return fmt.Errorf("marshal config error: %w", err)
+		return makeError(MarshalJsonError, err)
 	}
 	cfg.PrivateKey, err = parcePrivateKey(cfg.KeyPath)
 	if err != nil {
 		return err
+	}
+	dir, err := os.Stat(cfg.StorageDirPath)
+	if err == nil {
+		if !dir.IsDir() {
+			return fmt.Errorf("files storage is not dir")
+		}
+	} else {
+		if errors.Is(err, os.ErrNotExist) {
+			if err := os.MkdirAll(cfg.StorageDirPath, fBits); err != nil {
+				return fmt.Errorf("create files storage dir error: %w", err)
+			}
+		} else {
+			return fmt.Errorf("files storage error: %w", err)
+		}
 	}
 	return nil
 }
