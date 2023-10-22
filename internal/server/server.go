@@ -13,9 +13,6 @@ import (
 	"syscall"
 	"time"
 
-	// pb "github.com/gostuding/go-metrics/internal/proto"
-	// "github.com/gostuding/go-metrics/internal/server/interseptors"
-	// "google.golang.org/grpc"
 	"github.com/gostuding/GophKeeper/internal/server/storage"
 	"go.uber.org/zap"
 )
@@ -41,11 +38,11 @@ type Server struct {
 func NewServer(config *Config) (*Server, error) {
 	strg, err := storage.NewStorage(config.DSN, config.MaxConnectCount)
 	if err != nil {
-		return nil, makeError(ConfigError, err)
+		return nil, makeError(ErrConfig, err)
 	}
 	logger, err := zap.NewDevelopment()
 	if err != nil {
-		return nil, makeError(CreateLoggerError)
+		return nil, makeError(ErrCreateLogger)
 	}
 	return &Server{Config: config, Storage: strg, Logger: logger.Sugar()}, nil
 }
@@ -126,11 +123,9 @@ func (s *Server) StopServer() error {
 // 	srv     *grpc.Server       //
 // 	isRun   bool               // flag to check is server run
 // }
-
 // func (s *RPCServer) AddMetrics(ctx context.Context, in *pb.MetricsRequest) (*pb.MetricsResponse, error) {
 // 	var response pb.MetricsResponse
 // 	s.Logger.Debugln("Update metrics bytes")
-
 // 	_, err := bytesErrorRepeater(ctx, s.Storage.UpdateJSONSlice, in.Metrics)
 // 	if err != nil {
 // 		s.Logger.Debugln("Update metrics error", err)
@@ -138,7 +133,6 @@ func (s *Server) StopServer() error {
 // 	}
 // 	return &response, nil
 // }
-
 // func NewRPCServer(config *Config, logger *zap.SugaredLogger, storage Storage) *RPCServer {
 // 	return &RPCServer{
 // 		Config:  config,
@@ -146,7 +140,6 @@ func (s *Server) StopServer() error {
 // 		Storage: storage,
 // 	}
 // }
-
 // func (s *RPCServer) RunServer() error {
 // 	if err := checkConfig(s.isRun, s.Config, s.Logger, s.Storage); err != nil {
 // 		return err
@@ -163,7 +156,6 @@ func (s *Server) StopServer() error {
 // 			interseptors.LogInterceptor(s.Logger),
 // 		))
 // 	pb.RegisterMetricsServer(s.srv, s)
-
 // 	ctx, cancelFunc := signal.NotifyContext(
 // 		context.Background(), os.Interrupt,
 // 		syscall.SIGTERM, syscall.SIGINT, syscall.SIGQUIT,
@@ -186,7 +178,6 @@ func (s *Server) StopServer() error {
 // 	}
 // 	return nil
 // }
-
 // func (s *RPCServer) StopServer() error {
 // 	if !s.isRun {
 // 		return fmt.Errorf("server not running yet")

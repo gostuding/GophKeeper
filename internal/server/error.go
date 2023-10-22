@@ -8,20 +8,20 @@ import (
 type ErrType int
 
 const (
-	WriteResponseError ErrType = iota
-	ReadRequestBodyError
-	GetPublicKeyError
-	GormGetError
-	GormDublicateError
-	IPIncorrectError
-	CreateTokenError
-	ConfigError
-	CreateLoggerError
-	MarshalJsonError
-	UnmarshalJsonError
-	EncryptMessageError
-	ConvertToBytesError
-	UserAuthorizationError
+	ErrWriteResponse ErrType = iota
+	ErrReadRequestBody
+	ErrGetPublicKey
+	ErrGormGet
+	ErrGormDublicate
+	ErrIPIncorrect
+	ErrCreateToken
+	ErrConfig
+	ErrCreateLogger
+	ErrMarshalJSON
+	ErrUnmarshalJSON
+	ErrEncryptMessage
+	ErrConvertToByte
+	ErrUserAuthorization
 	ErrNotFound
 	ErrConvertError
 	InternalError
@@ -29,33 +29,33 @@ const (
 
 func makeError(t ErrType, values ...any) error {
 	switch t {
-	case WriteResponseError:
+	case ErrWriteResponse:
 		return fmt.Errorf("write response error: %w", values...)
-	case GormDublicateError:
+	case ErrGormDublicate:
 		return fmt.Errorf("dublicate database value error: %w", values...)
-	case ReadRequestBodyError:
+	case ErrReadRequestBody:
 		return fmt.Errorf("request body read error: %w", values...)
-	case GetPublicKeyError:
+	case ErrGetPublicKey:
 		return fmt.Errorf("get public key error: %w", values...)
-	case GormGetError:
+	case ErrGormGet:
 		return fmt.Errorf("gorm error: %w", values...)
-	case IPIncorrectError:
+	case ErrIPIncorrect:
 		return fmt.Errorf("incorrect ip adress: %w", values...)
-	case CreateTokenError:
+	case ErrCreateToken:
 		return fmt.Errorf("create user JWT token error: %w", values...)
-	case ConfigError:
+	case ErrConfig:
 		return fmt.Errorf("server configuration error: %w", values...)
-	case CreateLoggerError:
+	case ErrCreateLogger:
 		return fmt.Errorf("logger init error: %w", values...)
-	case MarshalJsonError:
+	case ErrMarshalJSON:
 		return fmt.Errorf("marhsal item to json error: %w", values...)
-	case UnmarshalJsonError:
+	case ErrUnmarshalJSON:
 		return fmt.Errorf("unmarhsal json to item error: %w", values...)
-	case EncryptMessageError:
+	case ErrEncryptMessage:
 		return fmt.Errorf("message encript error: %w", values...)
-	case ConvertToBytesError:
+	case ErrConvertToByte:
 		return fmt.Errorf("convert to byte error: %w", values...)
-	case UserAuthorizationError:
+	case ErrUserAuthorization:
 		return errors.New("user authorization error")
 	case ErrNotFound:
 		return fmt.Errorf("not found: %w", values...)

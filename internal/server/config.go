@@ -74,7 +74,7 @@ func checkFileExist(path string) error {
 	}
 	data, err := json.MarshalIndent(cfg, "", "    ")
 	if err != nil {
-		return makeError(UnmarshalJsonError, err)
+		return makeError(ErrUnmarshalJSON, err)
 	}
 	if err = os.WriteFile(path, data, fBits); err != nil {
 		return fmt.Errorf("write config file error: %w", err)
@@ -107,7 +107,7 @@ func readConfigFile(path string, cfg *Config) error {
 	}
 	err = json.Unmarshal(data, cfg)
 	if err != nil {
-		return makeError(MarshalJsonError, err)
+		return makeError(ErrMarshalJSON, err)
 	}
 	cfg.PrivateKey, err = parcePrivateKey(cfg.KeyPath)
 	if err != nil {

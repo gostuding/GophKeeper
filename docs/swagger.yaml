@@ -6,6 +6,19 @@ definitions:
         type: string
       password:
         type: string
+      public_key:
+        type: string
+    type: object
+  storage.Cards:
+    properties:
+      created:
+        type: string
+      lablel:
+        type: string
+      updated:
+        type: string
+      value:
+        type: string
     type: object
 host: localhost:8080
 info:
@@ -15,6 +28,223 @@ info:
   title: GophKeeper API
   version: "1.0"
 paths:
+  /api/cards/{id}:
+    delete:
+      parameters:
+      - description: Токен авторизации
+        in: header
+        name: Authorization
+        type: string
+      responses:
+        "200":
+          description: Инфорация удалена
+        "400":
+          description: Ошибка шифрования
+        "401":
+          description: Пользователь не авторизован
+        "404":
+          description: Карта не найдена
+        "500":
+          description: Внутренняя ошибка сервиса.
+      security:
+      - ApiKeyAuth: []
+      summary: Удаление информации о карте пользователя.
+      tags:
+      - Карты
+    post:
+      parameters:
+      - description: Public key
+        in: body
+        name: order
+        required: true
+        schema:
+          type: string
+      - description: Токен авторизации
+        in: header
+        name: Authorization
+        type: string
+      responses:
+        "200":
+          description: Инфорация об одной карте пользователя
+        "400":
+          description: Ошибка шифрования
+        "401":
+          description: Пользователь не авторизован
+        "404":
+          description: Карта не найдена
+        "500":
+          description: Внутренняя ошибка сервиса.
+      security:
+      - ApiKeyAuth: []
+      summary: Запрос информации о карте пользователя.
+      tags:
+      - Карты
+  /api/cards/add:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Данные о карте. Value должно шифроваться на стороне клиента
+        in: body
+        name: order
+        required: true
+        schema:
+          $ref: '#/definitions/storage.Cards'
+      - description: Токен авторизации
+        in: header
+        name: Authorization
+        type: string
+      responses:
+        "200":
+          description: Информация о карточке успешно сохранена
+        "400":
+          description: Ошибка при расшифровке тела запроса
+        "401":
+          description: Пользователь не авторизован
+        "409":
+          description: Дублирование метаданных карточки
+        "422":
+          description: Ошибка при конвертации json
+        "500":
+          description: Внутренняя ошибка сервиса.
+      security:
+      - ApiKeyAuth: []
+      summary: Добавление информации о карте. Шифрование открытым ключём сервера.
+      tags:
+      - Карты
+  /api/cards/edit:
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Данные о карте. Value должно шифроваться на стороне клиента
+        in: body
+        name: order
+        required: true
+        schema:
+          $ref: '#/definitions/storage.Cards'
+      - description: Токен авторизации
+        in: header
+        name: Authorization
+        type: string
+      responses:
+        "200":
+          description: Информация о карточке успешно обновлена
+        "400":
+          description: Ошибка при расшифровке тела запроса
+        "401":
+          description: Пользователь не авторизован
+        "422":
+          description: Ошибка при конвертации json
+        "500":
+          description: Внутренняя ошибка сервиса.
+      security:
+      - ApiKeyAuth: []
+      summary: Редактирование информации о карте. Шифрование открытым ключём сервера.
+      tags:
+      - Карты
+  /api/cards/list:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Public key
+        in: body
+        name: order
+        required: true
+        schema:
+          type: string
+      - description: Токен авторизации
+        in: header
+        name: Authorization
+        type: string
+      responses:
+        "200":
+          description: Список файлов пользователя
+        "400":
+          description: Ошибка шифрования
+        "401":
+          description: Пользователь не авторизован
+        "500":
+          description: Внутренняя ошибка сервиса.
+      security:
+      - ApiKeyAuth: []
+      summary: Запрос списка файлов пользователя. Шифрование ответа открытым ключём
+        клиента.
+      tags:
+      - Файлы
+  /api/files/add:
+    get:
+      parameters:
+      - description: File id
+        in: query
+        name: fid
+        required: true
+        type: integer
+      - description: Токен авторизации
+        in: header
+        name: Authorization
+        type: string
+      responses:
+        "200":
+          description: Успешно
+        "400":
+          description: Ошибка в запросе
+        "401":
+          description: Пользователь не авторизован
+        "404":
+          description: Файл не найден
+        "500":
+          description: Внутренняя ошибка сервиса.
+      security:
+      - ApiKeyAuth: []
+      summary: Завершение добавления файла.
+      tags:
+      - Файлы
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Токен авторизации
+        in: header
+        name: Authorization
+        type: string
+      responses:
+        "200":
+          description: ""
+        "400":
+          description: Ошибка шифрования
+        "401":
+          description: Пользователь не авторизован
+        "500":
+          description: Внутренняя ошибка сервиса.
+      security:
+      - ApiKeyAuth: []
+      summary: Добавление одной части файла.
+      tags:
+      - Файлы
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Токен авторизации
+        in: header
+        name: Authorization
+        type: string
+      responses:
+        "200":
+          description: Идентификатор файла
+        "400":
+          description: Ошибка шифрования
+        "401":
+          description: Пользователь не авторизован
+        "500":
+          description: Внутренняя ошибка сервиса.
+      security:
+      - ApiKeyAuth: []
+      summary: Добавление файла пользователем.
+      tags:
+      - Файлы
   /api/get/key:
     get:
       responses:

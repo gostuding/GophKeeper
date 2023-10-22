@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"math/rand"
+	"strconv"
 	"time"
 
 	"github.com/jackc/pgerrcode"
@@ -21,17 +22,23 @@ import (
 	"gorm.io/gorm"
 )
 
+const (
+	emptyJSON  = "[]"
+	uidInQuery = "uid = ?"
+	idOrder    = "id desc"
+)
+
 type (
-	// Gorm connection to database.
+	// Storage is struct for Gorm connection to database.
 	Storage struct {
 		con *gorm.DB
 	}
-	// sendCardsInfo struct sends card's information to clients.
+	// SendCardsInfo struct sends card's information to clients.
 	sendCardsInfo struct {
-		Id     uint      `json:"id,omitempty"`
+		Update time.Time `json:"updated"`
 		Label  string    `json:"label,omitempty"`
 		Info   string    `json:"info,omitempty"`
-		Update time.Time `json:"updated"`
+		ID     uint      `json:"id,omitempty"`
 	}
 )
 
@@ -52,7 +59,7 @@ func NewStorage(dsn string, maxCon int) (*Storage, error) {
 	return &storage, structCheck(con)
 }
 
-// randomString generats random string
+// randomString generats random string.
 func randomString(length int) string {
 	var letters = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
 	b := make([]rune, length)
@@ -68,16 +75,17 @@ func (s *Storage) Registration(
 	login,
 	pwd string,
 ) (string, int, error) {
+	var r = 128
 	passwd, err := hashPassword([]byte(pwd))
 	if err != nil {
 		return "", 0, err
 	}
 	h := md5.New()
-	h.Write([]byte(randomString(128)))
+	h.Write([]byte(randomString(r)))
 	user := Users{Login: login, Pwd: string(passwd), Key: hex.EncodeToString(h.Sum(nil))}
 	result := s.con.WithContext(ctx).Create(&user)
 	if result.Error != nil {
-		return "", 0, fmt.Errorf("sql error: %w", result.Error)
+		return "", 0, makeError(ErrDatabase, result.Error)
 	}
 	return user.Key, int(user.ID), nil
 }
@@ -111,20 +119,20 @@ func (s *Storage) Login(
 // GetCardsList returns users cards json.
 func (s *Storage) GetCardsList(ctx context.Context, uid uint) ([]byte, error) {
 	var c []Cards
-	result := s.con.WithContext(ctx).Order("id desc").Where("uid = ?", uid).Find(&c)
+	result := s.con.WithContext(ctx).Order(idOrder).Where(uidInQuery, uid).Find(&c)
 	if result.Error != nil {
 		return nil, makeError(ErrDatabase, result.Error)
 	}
 	if result.RowsAffected == 0 {
-		return []byte("[]"), nil
+		return []byte(emptyJSON), nil
 	}
 	cards := make([]sendCardsInfo, 0)
 	for _, item := range c {
-		cards = append(cards, sendCardsInfo{Id: item.ID, Label: item.Label, Update: item.UpdatedAt})
+		cards = append(cards, sendCardsInfo{ID: item.ID, Label: item.Label, Update: item.UpdatedAt})
 	}
 	data, err := json.Marshal(cards)
 	if err != nil {
-		return nil, makeError(ErrJsonMarshal, err)
+		return nil, makeError(ErrJSONMarshal, err)
 	}
 	return data, nil
 }
@@ -134,7 +142,7 @@ func (s *Storage) GetCard(ctx context.Context, id, uid uint) ([]byte, error) {
 	c := Cards{UID: uid, ID: id}
 	result := s.con.WithContext(ctx).First(&c)
 	if result.Error != nil {
-		return nil, fmt.Errorf("get card error: %w", result.Error)
+		return nil, makeError(ErrDatabase, result.Error)
 	}
 	card := sendCardsInfo{Label: c.Label, Info: c.Value, Update: c.UpdatedAt}
 	data, err := json.Marshal(&card)
@@ -144,12 +152,12 @@ func (s *Storage) GetCard(ctx context.Context, id, uid uint) ([]byte, error) {
 	return data, nil
 }
 
-// AddCard adds new card in database
+// AddCard adds new card in database.
 func (s *Storage) AddCard(ctx context.Context, uid uint, label, value string) error {
 	card := Cards{Label: label, Value: value, UID: uid}
 	result := s.con.WithContext(ctx).Create(&card)
 	if result.Error != nil {
-		return fmt.Errorf("add new card error: %w", result.Error)
+		return makeError(ErrDatabase, result.Error)
 	}
 	return nil
 }
@@ -159,7 +167,7 @@ func (s *Storage) DeleteCard(ctx context.Context, id, uid uint) error {
 	c := Cards{UID: uid, ID: id}
 	result := s.con.WithContext(ctx).Delete(&c)
 	if result.Error != nil {
-		return fmt.Errorf("delete error: %w", result.Error)
+		return makeError(ErrDatabase, result.Error)
 	}
 	return nil
 }
@@ -173,7 +181,7 @@ func (s *Storage) UpdateCard(
 	c := Cards{UID: uid, ID: id}
 	result := s.con.WithContext(ctx).Model(&c).Updates(Cards{Label: label, Value: value})
 	if result.Error != nil {
-		return fmt.Errorf("gorm error: %w", result.Error)
+		return makeError(ErrDatabase, result.Error)
 	}
 	return nil
 }
@@ -181,18 +189,61 @@ func (s *Storage) UpdateCard(
 // GetFilesList returns users cards json.
 func (s *Storage) GetFilesList(ctx context.Context, uid uint) ([]byte, error) {
 	var f []Files
-	result := s.con.WithContext(ctx).Order("id desc").Where("uid = ?", uid).Find(&f)
+	result := s.con.WithContext(ctx).Order(idOrder).Where(uidInQuery, uid).Find(&f)
 	if result.Error != nil {
 		return nil, makeError(ErrDatabase, result.Error)
 	}
 	if result.RowsAffected == 0 {
-		return []byte("[]"), nil
+		return []byte(emptyJSON), nil
 	}
 	data, err := json.Marshal(f)
 	if err != nil {
-		return nil, makeError(ErrJsonMarshal, err)
+		return nil, makeError(ErrJSONMarshal, err)
 	}
 	return data, nil
+}
+
+// AddFile writes file info in database and returns new id for file.
+func (s *Storage) AddFile(ctx context.Context, uid uint, data []byte) ([]byte, error) {
+	var f Files
+	err := json.Unmarshal(data, &f)
+	if err != nil {
+		return nil, makeError(ErrJSONUnmarshal, err)
+	}
+	f.UID = int(uid)
+	result := s.con.WithContext(ctx).Create(&f)
+	if result.Error != nil {
+		return nil, makeError(ErrDatabase, result.Error)
+	}
+	return []byte(strconv.Itoa(int(f.ID))), nil
+}
+
+// AddFileData writes new one data in database.
+func (s *Storage) AddFileData(
+	ctx context.Context,
+	uid, fid uint,
+	index, pos, size int,
+	data []byte,
+) error {
+	f := FileData{Index: index, Pos: pos, Size: size, UID: uid, FID: fid, Data: data}
+	result := s.con.WithContext(ctx).Create(&f)
+	if result.Error != nil {
+		return makeError(ErrDatabase, result.Error)
+	}
+	return nil
+}
+
+// AddFileFinish sets file loaded flag.
+func (s *Storage) AddFileFinish(
+	ctx context.Context,
+	id, uid uint,
+) error {
+	c := Files{ID: id, UID: int(uid)}
+	result := s.con.WithContext(ctx).Model(&c).Updates(Files{Loaded: true})
+	if result.Error != nil {
+		return makeError(ErrDatabase, result.Error)
+	}
+	return nil
 }
 
 // func (s *Storage) SetOrderData(number string, status string, balance float32) error {

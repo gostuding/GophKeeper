@@ -19,6 +19,356 @@ const docTemplate = `{
     "host": "{{.Host}}",
     "basePath": "{{.BasePath}}",
     "paths": {
+        "/api/cards/add": {
+            "post": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Карты"
+                ],
+                "summary": "Добавление информации о карте. Шифрование открытым ключём сервера.",
+                "parameters": [
+                    {
+                        "description": "Данные о карте. Value должно шифроваться на стороне клиента",
+                        "name": "order",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/storage.Cards"
+                        }
+                    },
+                    {
+                        "type": "string",
+                        "description": "Токен авторизации",
+                        "name": "Authorization",
+                        "in": "header"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Информация о карточке успешно сохранена"
+                    },
+                    "400": {
+                        "description": "Ошибка при расшифровке тела запроса"
+                    },
+                    "401": {
+                        "description": "Пользователь не авторизован"
+                    },
+                    "409": {
+                        "description": "Дублирование метаданных карточки"
+                    },
+                    "422": {
+                        "description": "Ошибка при конвертации json"
+                    },
+                    "500": {
+                        "description": "Внутренняя ошибка сервиса."
+                    }
+                }
+            }
+        },
+        "/api/cards/edit": {
+            "put": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Карты"
+                ],
+                "summary": "Редактирование информации о карте. Шифрование открытым ключём сервера.",
+                "parameters": [
+                    {
+                        "description": "Данные о карте. Value должно шифроваться на стороне клиента",
+                        "name": "order",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/storage.Cards"
+                        }
+                    },
+                    {
+                        "type": "string",
+                        "description": "Токен авторизации",
+                        "name": "Authorization",
+                        "in": "header"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Информация о карточке успешно обновлена"
+                    },
+                    "400": {
+                        "description": "Ошибка при расшифровке тела запроса"
+                    },
+                    "401": {
+                        "description": "Пользователь не авторизован"
+                    },
+                    "422": {
+                        "description": "Ошибка при конвертации json"
+                    },
+                    "500": {
+                        "description": "Внутренняя ошибка сервиса."
+                    }
+                }
+            }
+        },
+        "/api/cards/list": {
+            "post": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Файлы"
+                ],
+                "summary": "Запрос списка файлов пользователя. Шифрование ответа открытым ключём клиента.",
+                "parameters": [
+                    {
+                        "description": "Public key",
+                        "name": "order",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "type": "string",
+                        "description": "Токен авторизации",
+                        "name": "Authorization",
+                        "in": "header"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Список файлов пользователя"
+                    },
+                    "400": {
+                        "description": "Ошибка шифрования"
+                    },
+                    "401": {
+                        "description": "Пользователь не авторизован"
+                    },
+                    "500": {
+                        "description": "Внутренняя ошибка сервиса."
+                    }
+                }
+            }
+        },
+        "/api/cards/{id}": {
+            "post": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "tags": [
+                    "Карты"
+                ],
+                "summary": "Запрос информации о карте пользователя.",
+                "parameters": [
+                    {
+                        "description": "Public key",
+                        "name": "order",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "type": "string",
+                        "description": "Токен авторизации",
+                        "name": "Authorization",
+                        "in": "header"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Инфорация об одной карте пользователя"
+                    },
+                    "400": {
+                        "description": "Ошибка шифрования"
+                    },
+                    "401": {
+                        "description": "Пользователь не авторизован"
+                    },
+                    "404": {
+                        "description": "Карта не найдена"
+                    },
+                    "500": {
+                        "description": "Внутренняя ошибка сервиса."
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "tags": [
+                    "Карты"
+                ],
+                "summary": "Удаление информации о карте пользователя.",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Токен авторизации",
+                        "name": "Authorization",
+                        "in": "header"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Инфорация удалена"
+                    },
+                    "400": {
+                        "description": "Ошибка шифрования"
+                    },
+                    "401": {
+                        "description": "Пользователь не авторизован"
+                    },
+                    "404": {
+                        "description": "Карта не найдена"
+                    },
+                    "500": {
+                        "description": "Внутренняя ошибка сервиса."
+                    }
+                }
+            }
+        },
+        "/api/files/add": {
+            "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "tags": [
+                    "Файлы"
+                ],
+                "summary": "Завершение добавления файла.",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "File id",
+                        "name": "fid",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Токен авторизации",
+                        "name": "Authorization",
+                        "in": "header"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Успешно"
+                    },
+                    "400": {
+                        "description": "Ошибка в запросе"
+                    },
+                    "401": {
+                        "description": "Пользователь не авторизован"
+                    },
+                    "404": {
+                        "description": "Файл не найден"
+                    },
+                    "500": {
+                        "description": "Внутренняя ошибка сервиса."
+                    }
+                }
+            },
+            "put": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Файлы"
+                ],
+                "summary": "Добавление файла пользователем.",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Токен авторизации",
+                        "name": "Authorization",
+                        "in": "header"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Идентификатор файла"
+                    },
+                    "400": {
+                        "description": "Ошибка шифрования"
+                    },
+                    "401": {
+                        "description": "Пользователь не авторизован"
+                    },
+                    "500": {
+                        "description": "Внутренняя ошибка сервиса."
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Файлы"
+                ],
+                "summary": "Добавление одной части файла.",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Токен авторизации",
+                        "name": "Authorization",
+                        "in": "header"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": ""
+                    },
+                    "400": {
+                        "description": "Ошибка шифрования"
+                    },
+                    "401": {
+                        "description": "Пользователь не авторизован"
+                    },
+                    "500": {
+                        "description": "Внутренняя ошибка сервиса."
+                    }
+                }
+            }
+        },
         "/api/get/key": {
             "get": {
                 "tags": [
@@ -134,6 +484,26 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "password": {
+                    "type": "string"
+                },
+                "public_key": {
+                    "type": "string"
+                }
+            }
+        },
+        "storage.Cards": {
+            "type": "object",
+            "properties": {
+                "created": {
+                    "type": "string"
+                },
+                "lablel": {
+                    "type": "string"
+                },
+                "updated": {
+                    "type": "string"
+                },
+                "value": {
                     "type": "string"
                 }
             }

@@ -6,7 +6,6 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -16,8 +15,8 @@ type ErrType int
 
 const (
 	ErrAuthorization ErrType = iota
-	ErrJsonMarshal
-	ErrJsonUnmarshal
+	ErrJSONMarshal
+	ErrJSONUnmarshal
 	ErrNotFound
 	ErrDublicate
 	ErrServerDecrypt
@@ -26,16 +25,21 @@ const (
 	ErrEncrypt
 	ErrResponseStatusCode
 	ErrResponseRead
+	ErrRequest
+	ErrResponse
 	ErrDecryptMessage
+	ErrGetToken
 )
 
 func makeError(t ErrType, values ...any) error {
 	switch t {
 	case ErrAuthorization:
 		return fmt.Errorf("authorization error")
-	case ErrJsonMarshal:
+	case ErrGetToken:
+		return fmt.Errorf("get token error: %w", values...)
+	case ErrJSONMarshal:
 		return fmt.Errorf("json marshal error: %w ", values...)
-	case ErrJsonUnmarshal:
+	case ErrJSONUnmarshal:
 		return fmt.Errorf("json unmarshal error: %w ", values...)
 	case ErrNotFound:
 		return fmt.Errorf("not found. Check id and repeat")
@@ -46,15 +50,19 @@ func makeError(t ErrType, values ...any) error {
 	case ErrServerEncrypt:
 		return fmt.Errorf("server encrypt message error")
 	case ErrDecrypt:
-		return fmt.Errorf("dencrypt message error")
+		return fmt.Errorf("decrypt error")
 	case ErrEncrypt:
-		return fmt.Errorf("encrypt message error")
+		return fmt.Errorf("encrypt error")
 	case ErrResponseStatusCode:
-		return fmt.Errorf("undefined error. Status code is: %d", values...)
+		return fmt.Errorf("response status code error. Status code is: %v", values...)
 	case ErrResponseRead:
 		return fmt.Errorf("response body read error: %w", values...)
 	case ErrDecryptMessage:
 		return fmt.Errorf("decrypt body error: %w", values...)
+	case ErrRequest:
+		return fmt.Errorf("request error: %w", values...)
+	case ErrResponse:
+		return fmt.Errorf("response error: %w", values...)
 	}
 	return fmt.Errorf("undefined error: %w", values...)
 }
@@ -79,7 +87,7 @@ func encryptRSAMessage(msg []byte, key *rsa.PublicKey) ([]byte, error) {
 	for _, slice := range mRange(msg, size) {
 		data, err := rsa.EncryptOAEP(hash, rng, key, slice, []byte(""))
 		if err != nil {
-			return nil, fmt.Errorf("message encript error: %w", err)
+			return nil, makeError(ErrEncrypt, err)
 		}
 		encripted = append(encripted, data...)
 	}
@@ -112,49 +120,63 @@ func readAndDecryptRSA(body io.ReadCloser, key *rsa.PrivateKey) ([]byte, error) 
 	}
 	data, err = decryptRSAMessage(key, data)
 	if err != nil {
-		return nil, fmt.Errorf("decrypt error: %w", err)
+		return nil, makeError(ErrDecrypt, err)
 	}
 	return data, nil
 }
 
 // aesKey checks key size and add space rune till aes.BlockSize.
-func aesKey(key string) []byte {
-	for len([]byte(key)) < aes.BlockSize {
-		key += " "
+func aesKey(key []byte) []byte {
+	null := []byte(" ")
+	for len(key) < aes.BlockSize {
+		key = append(key, null...)
 	}
-	return []byte(key)[:aes.BlockSize]
+	return key[:aes.BlockSize]
 }
 
 // EncryptAES encripts msg with key by AES.
-func EncryptAES(key, msg string) (string, error) {
+func EncryptAES(key, msg []byte) ([]byte, error) {
 	block, err := aes.NewCipher(aesKey(key))
 	if err != nil {
-		return "", fmt.Errorf("create encrypt cioper error: %w", err)
+		return nil, fmt.Errorf("create encrypt cipher error: %w", err)
 	}
-	ciphertext := make([]byte, aes.BlockSize+len(msg))
-	iv := ciphertext[:aes.BlockSize]
+	cipherdata := make([]byte, aes.BlockSize+len(msg))
+	iv := cipherdata[:aes.BlockSize]
 	if _, err := io.ReadFull(rand.Reader, iv); err != nil {
-		panic(err)
+		return nil, fmt.Errorf("random read error: %w", err)
 	}
 	stream := cipher.NewCFBEncrypter(block, iv)
-	stream.XORKeyStream(ciphertext[aes.BlockSize:], []byte(msg))
-	return hex.EncodeToString(ciphertext), nil
+	stream.XORKeyStream(cipherdata[aes.BlockSize:], msg)
+	return cipherdata, nil
 }
 
 // decryptAES.
-func decryptAES(key, msg string) (string, error) {
-	ciphertext, err := hex.DecodeString(msg)
-	if err != nil {
-		return "", fmt.Errorf("decode message error: %w", err)
-	}
+func decryptAES(key, msg []byte) ([]byte, error) {
 	block, err := aes.NewCipher(aesKey(key))
 	if err != nil {
-		panic(err)
+		return nil, fmt.Errorf("create decrypt cipher error: %w", err)
 	}
-	iv := ciphertext[:aes.BlockSize]
-	ciphertext = ciphertext[aes.BlockSize:]
+	if len(msg) < aes.BlockSize {
+		return nil, fmt.Errorf("decrypttion error: message size less then blocksize")
+	}
+	iv := msg[:aes.BlockSize]
+	msg = msg[aes.BlockSize:]
 	stream := cipher.NewCFBDecrypter(block, iv)
-	plaintext := make([]byte, len(ciphertext))
-	stream.XORKeyStream(plaintext, ciphertext)
-	return string(plaintext[:]), nil
+	decrypt := make([]byte, len(msg))
+	stream.XORKeyStream(decrypt, msg)
+	return decrypt, nil
+}
+
+func fileSize(size int64) string {
+	var s int64 = 1024
+	if size < s {
+		return fmt.Sprintf("%d b", size)
+	}
+	if size < s*s {
+		return fmt.Sprintf("%d Kb", int(size/s))
+	}
+	if size < s*s*s {
+		return fmt.Sprintf("%d Mb", int(size/(s*s)))
+	}
+	return fmt.Sprintf("%d Gb", int(size/(s*s*s)))
 }

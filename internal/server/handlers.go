@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"strconv"
 
 	"github.com/gostuding/GophKeeper/internal/server/storage"
 	"github.com/gostuding/middlewares"
@@ -25,19 +26,19 @@ type (
 		Password  string `json:"password"`   //
 		PublicKey string `json:"public_key"` //
 	}
-	// labelInfo is struct for marshal requests body.
+	// LabelInfo is struct for marshal requests body.
 	labelInfo struct {
 		Label string `json:"label"`
 		Info  string `json:"info"`
 	}
 )
 
-// isValidateLoginPassword checks if body correct.
+// IsValidateLoginPassword checks if body correct.
 func isValidateLoginPassword(body []byte) (*LoginPassword, error) {
 	var user LoginPassword
 	err := json.Unmarshal(body, &user)
 	if err != nil {
-		return nil, makeError(MarshalJsonError, err)
+		return nil, makeError(ErrMarshalJSON, err)
 	}
 	if user.Login == "" || user.Password == "" || user.PublicKey == "" {
 		return nil, errors.New("empty registration values error")
@@ -46,17 +47,22 @@ func isValidateLoginPassword(body []byte) (*LoginPassword, error) {
 }
 
 // createToken is private function.
-func createToken(r *http.Request, key []byte, uid, time int) (string, int, error) {
+func createToken(r *http.Request, key []byte, uid, time int, aesKey, pk string) ([]byte, int, error) {
 	ua := r.Header.Get("User-Agent")
 	ip, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
-		return "", http.StatusBadRequest, makeError(IPIncorrectError, err)
+		return nil, http.StatusBadRequest, makeError(ErrIPIncorrect, err)
 	}
 	token, err := middlewares.CreateToken(key, time, uid, ua, ip)
 	if err != nil {
-		return "", http.StatusInternalServerError, makeError(CreateTokenError, err)
+		return nil, http.StatusInternalServerError, makeError(ErrCreateToken, err)
 	}
-	return token, http.StatusOK, nil
+	token = fmt.Sprintf(`{"token": "%s", "key": "%s"}`, token, aesKey)
+	data, err := encryptMessage([]byte(token), pk)
+	if err != nil {
+		return nil, http.StatusBadRequest, fmt.Errorf("registration error: %w", err)
+	}
+	return data, http.StatusOK, nil
 }
 
 // GetPublicKey handler returns server public key.
@@ -99,23 +105,14 @@ func Register(
 	aesKey, uid, err := strg.Registration(ctx, user.Login, user.Password)
 	if err != nil {
 		status := http.StatusInternalServerError
-		err = makeError(GormGetError, err)
+		err = makeError(ErrGormGet, err)
 		if strg.IsUniqueViolation(err) {
 			status = http.StatusConflict
-			err = makeError(GormDublicateError, user.Login)
+			err = makeError(ErrGormDublicate, user.Login)
 		}
 		return nil, status, err
 	}
-	token, st, err := createToken(r, key, uid, t)
-	if err != nil {
-		return nil, st, err
-	}
-	token = fmt.Sprintf(`{"token": "%s", "key": "%s"}`, token, aesKey)
-	data, err := encryptMessage([]byte(token), user.PublicKey)
-	if err != nil {
-		return nil, http.StatusBadRequest, fmt.Errorf("registration error: %w", err)
-	}
-	return data, st, nil
+	return createToken(r, key, uid, t, aesKey, user.PublicKey)
 }
 
 // Login user.
@@ -146,19 +143,10 @@ func Login(
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, http.StatusUnauthorized, fmt.Errorf("user not found. Login: '%s'", user.Login)
 		} else {
-			return nil, http.StatusInternalServerError, makeError(GormGetError, err)
+			return nil, http.StatusInternalServerError, makeError(ErrGormGet, err)
 		}
 	}
-	token, st, err := createToken(r, key, uid, t)
-	if err != nil {
-		return nil, st, err
-	}
-	token = fmt.Sprintf(`{"token": "%s", "key": "%s"}`, token, aesKey)
-	data, err := encryptMessage([]byte(token), user.PublicKey)
-	if err != nil {
-		return nil, http.StatusBadRequest, err
-	}
-	return data, st, nil
+	return createToken(r, key, uid, t, aesKey, user.PublicKey)
 }
 
 // GetCardsList returns list of cards lables.
@@ -178,19 +166,7 @@ func GetCardsList(
 	key string,
 	strg *storage.Storage,
 ) ([]byte, int, error) {
-	uid, ok := ctx.Value(middlewares.AuthUID).(int)
-	if !ok {
-		return nil, http.StatusUnauthorized, makeError(UserAuthorizationError, nil)
-	}
-	data, err := strg.GetCardsList(ctx, uint(uid))
-	if err != nil {
-		return nil, http.StatusInternalServerError, makeError(InternalError)
-	}
-	data, err = encryptMessage(data, key)
-	if err != nil {
-		return nil, http.StatusBadRequest, fmt.Errorf("cards list error: %w", err)
-	}
-	return data, http.StatusOK, nil
+	return getListCommon(ctx, key, strg.GetCardsList)
 }
 
 // AddCardInfo adds new card in database handle.
@@ -214,17 +190,17 @@ func AddCardInfo(
 ) (int, error) {
 	uid, ok := ctx.Value(middlewares.AuthUID).(int)
 	if !ok {
-		return http.StatusUnauthorized, makeError(UserAuthorizationError, nil)
+		return http.StatusUnauthorized, makeError(ErrUserAuthorization, nil)
 	}
 	var l labelInfo
 	err := json.Unmarshal(body, &l)
 	if err != nil {
-		return http.StatusUnprocessableEntity, makeError(UnmarshalJsonError, err)
+		return http.StatusUnprocessableEntity, makeError(ErrUnmarshalJSON, err)
 	}
 	err = strg.AddCard(ctx, uint(uid), l.Label, l.Info)
 	if err != nil {
 		if strg.IsUniqueViolation(err) {
-			return http.StatusConflict, makeError(GormDublicateError, err)
+			return http.StatusConflict, makeError(ErrGormDublicate, err)
 		}
 		return http.StatusInternalServerError, makeError(InternalError)
 	}
@@ -233,11 +209,11 @@ func AddCardInfo(
 
 // GetCard returns information about one card.
 // @Tags Карты
-// @Summary Запрос информации о карте пользователя. Шифрование открытым ключём клиента.
+// @Summary Запрос информации о карте пользователя.
 // @Param order body string true "Public key"
 // @Security ApiKeyAuth
 // @Param Authorization header string false "Токен авторизации"
-// @Router /api/cards/<id> [post]
+// @Router /api/cards/{id} [post]
 // @Success 200 "Инфорация об одной карте пользователя"
 // @failure 400 "Ошибка шифрования"
 // @failure 401 "Пользователь не авторизован"
@@ -251,7 +227,7 @@ func GetCard(
 ) ([]byte, int, error) {
 	uid, ok := ctx.Value(middlewares.AuthUID).(int)
 	if !ok {
-		return nil, http.StatusUnauthorized, makeError(UserAuthorizationError, nil)
+		return nil, http.StatusUnauthorized, makeError(ErrUserAuthorization, nil)
 	}
 	data, err := strg.GetCard(ctx, id, uint(uid))
 	if err != nil {
@@ -262,18 +238,17 @@ func GetCard(
 	}
 	data, err = encryptMessage(data, key)
 	if err != nil {
-		return nil, http.StatusBadRequest, fmt.Errorf("cards list error: %w", err)
+		return nil, http.StatusBadRequest, makeError(ErrEncryptMessage, err)
 	}
 	return data, http.StatusOK, nil
 }
 
 // DeleteCard deletes information about one card from database.
 // @Tags Карты
-// @Summary Удаление информации о карте пользователя. Шифрование открытым ключём клиента.
-// @Param order body string true "Public key"
+// @Summary Удаление информации о карте пользователя.
 // @Security ApiKeyAuth
 // @Param Authorization header string false "Токен авторизации"
-// @Router /api/cards/<id> [post]
+// @Router /api/cards/{id} [delete]
 // @Success 200 "Инфорация удалена"
 // @failure 400 "Ошибка шифрования"
 // @failure 401 "Пользователь не авторизован"
@@ -286,7 +261,7 @@ func DeleteCard(
 ) (int, error) {
 	uid, ok := ctx.Value(middlewares.AuthUID).(int)
 	if !ok {
-		return http.StatusUnauthorized, makeError(UserAuthorizationError, nil)
+		return http.StatusUnauthorized, makeError(ErrUserAuthorization, nil)
 	}
 	err := strg.DeleteCard(ctx, id, uint(uid))
 	if err != nil {
@@ -305,7 +280,7 @@ func DeleteCard(
 // @Param order body storage.Cards true "Данные о карте. Value должно шифроваться на стороне клиента"
 // @Security ApiKeyAuth
 // @Param Authorization header string false "Токен авторизации"
-// @Router /api/cards/add [post]
+// @Router /api/cards/edit [put]
 // @Success 200 "Информация о карточке успешно обновлена"
 // @failure 400 "Ошибка при расшифровке тела запроса"
 // @failure 401 "Пользователь не авторизован"
@@ -319,18 +294,38 @@ func UpdateCardInfo(
 ) (int, error) {
 	uid, ok := ctx.Value(middlewares.AuthUID).(int)
 	if !ok {
-		return http.StatusUnauthorized, makeError(UserAuthorizationError, nil)
+		return http.StatusUnauthorized, makeError(ErrUserAuthorization, nil)
 	}
 	var l labelInfo
 	err := json.Unmarshal(body, &l)
 	if err != nil {
-		return http.StatusUnprocessableEntity, makeError(UnmarshalJsonError, err)
+		return http.StatusUnprocessableEntity, makeError(ErrUnmarshalJSON, err)
 	}
 	err = strg.UpdateCard(ctx, id, uint(uid), l.Label, l.Info)
 	if err != nil {
 		return http.StatusInternalServerError, makeError(InternalError)
 	}
 	return http.StatusOK, nil
+}
+
+func getListCommon(
+	ctx context.Context,
+	pk string,
+	f func(c context.Context, id uint) ([]byte, error),
+) ([]byte, int, error) {
+	uid, ok := ctx.Value(middlewares.AuthUID).(int)
+	if !ok {
+		return nil, http.StatusUnauthorized, makeError(ErrUserAuthorization, nil)
+	}
+	data, err := f(ctx, uint(uid))
+	if err != nil {
+		return nil, http.StatusInternalServerError, makeError(InternalError)
+	}
+	data, err = encryptMessage(data, pk)
+	if err != nil {
+		return nil, http.StatusBadRequest, makeError(ErrEncryptMessage, err)
+	}
+	return data, http.StatusOK, nil
 }
 
 // GetFilesList returns list of user's files info.
@@ -350,158 +345,110 @@ func GetFilesList(
 	publicKey string,
 	strg *storage.Storage,
 ) ([]byte, int, error) {
+	return getListCommon(ctx, publicKey, strg.GetFilesList)
+}
+
+// AddFile returns new id for file.
+// @Tags Файлы
+// @Summary Добавление файла пользователем.
+// @Accept json
+// @Security ApiKeyAuth
+// @Param Authorization header string false "Токен авторизации"
+// @Router /api/files/add [put]
+// @Success 200 "Идентификатор файла"
+// @failure 400 "Ошибка шифрования"
+// @failure 401 "Пользователь не авторизован"
+// @failure 500 "Внутренняя ошибка сервиса.".
+func AddFile(
+	ctx context.Context,
+	body []byte,
+	strg *storage.Storage,
+) ([]byte, int, error) {
 	uid, ok := ctx.Value(middlewares.AuthUID).(int)
 	if !ok {
-		return nil, http.StatusUnauthorized, makeError(UserAuthorizationError, nil)
+		return nil, http.StatusUnauthorized, makeError(ErrUserAuthorization, nil)
 	}
-	data, err := strg.GetFilesList(ctx, uint(uid))
+	data, err := strg.AddFile(ctx, uint(uid), body)
 	if err != nil {
 		return nil, http.StatusInternalServerError, makeError(InternalError)
-	}
-	data, err = encryptMessage(data, publicKey)
-	if err != nil {
-		return nil, http.StatusBadRequest, makeError(EncryptMessageError, err)
 	}
 	return data, http.StatusOK, nil
 }
 
-// func getListCommon(args *requestResponce, name string, f func(context.Context, int) ([]byte, error)) {
-// 	args.logger.Debugf("%s list request", name)
-// 	args.w.Header().Add(contentTypeString, ctApplicationJSONString)
-// 	uid, ok := args.r.Context().Value(middlewares.AuthUID).(int)
-// 	if !ok {
-// 		args.w.WriteHeader(http.StatusUnauthorized)
-// 		args.logger.Warnln(uidContextTypeError)
-// 		return
-// 	}
-// 	data, err := f(args.r.Context(), uid)
-// 	if err != nil {
-// 		args.w.WriteHeader(http.StatusInternalServerError)
-// 		args.logger.Warnf("%s get list error: %w", name, err)
-// 		return
-// 	}
-// 	if data == nil {
-// 		args.w.WriteHeader(http.StatusNoContent)
-// 	} else {
-// 		args.w.WriteHeader(http.StatusOK)
-// 	}
-// 	_, err = args.w.Write(data)
-// 	if err != nil {
-// 		args.logger.Warnf(writeResponceErrorString, err)
-// 	}
-// }
+// AddFileData add's one part of file.
+// @Tags Файлы
+// @Summary Добавление одной части файла.
+// @Accept json
+// @Security ApiKeyAuth
+// @Param Authorization header string false "Токен авторизации"
+// @Router /api/files/add [post]
+// @Success 200 ""
+// @failure 400 "Ошибка шифрования"
+// @failure 401 "Пользователь не авторизован"
+// @failure 500 "Внутренняя ошибка сервиса.".
+func AddFileData(
+	ctx context.Context,
+	body []byte,
+	strg *storage.Storage,
+	r *http.Request,
+) (int, error) {
+	uid, ok := ctx.Value(middlewares.AuthUID).(int)
+	if !ok {
+		return http.StatusUnauthorized, makeError(ErrUserAuthorization, nil)
+	}
+	index, err := strconv.Atoi(r.Header.Get("index"))
+	if err != nil {
+		return http.StatusBadRequest, makeError(ErrConvertError, err)
+	}
+	pos, err := strconv.Atoi(r.Header.Get("pos"))
+	if err != nil {
+		return http.StatusBadRequest, makeError(ErrConvertError, err)
+	}
+	fid, err := strconv.Atoi(r.Header.Get("fid"))
+	if err != nil {
+		return http.StatusBadRequest, makeError(ErrConvertError, err)
+	}
+	size, err := strconv.Atoi(r.Header.Get("size"))
+	if err != nil {
+		return http.StatusBadRequest, makeError(ErrConvertError, err)
+	}
+	err = strg.AddFileData(ctx, uint(uid), uint(fid), index, pos, size, body)
+	if err != nil {
+		return http.StatusInternalServerError, makeError(InternalError)
+	}
+	return http.StatusOK, nil
+}
 
-// // GetOrdersList ...
-// // @Tags Заказы
-// // @Summary Запрос списка заказов, зарегистрированных за пользователем
-// // @Accept json
-// // @Produce json
-// // @Router /user/orders [get]
-// // @Security ApiKeyAuth
-// // @Param Authorization header string false "Токен авторизации"
-// // @Success 200 {array} storage.Orders "Список зарегистрированных за пользователем заказов"
-// // @failure 204 "Нет данных для ответа"
-// // @failure 401 "Пользователь не авторизован"
-// // @failure 500 "Внутренняя ошибка сервиса".
-// func GetOrdersList(args requestResponce) {
-// 	getListCommon(&args, "orders", args.strg.GetOrders)
-// }
-
-// // GetUserBalance ...
-// // @Tags Баланс пользователя
-// // @Summary Запрос баланса пользователя
-// // @Produce json
-// // @Security ApiKeyAuth
-// // @Param Authorization header string false "Токен авторизации"
-// // @Router /user/balance [get]
-// // @Success 200 {object} storage.BalanceStruct "Баланс пользователя"
-// // @failure 401 "Пользователь не авторизован"
-// // @failure 500 "Внутренняя ошибка сервиса".
-// func GetUserBalance(args requestResponce) {
-// 	args.logger.Debug("user balance request")
-// 	uid, ok := args.r.Context().Value(middlewares.AuthUID).(int)
-// 	if !ok {
-// 		args.w.WriteHeader(http.StatusUnauthorized)
-// 		args.logger.Warnln(uidContextTypeError)
-// 		return
-// 	}
-// 	data, err := args.strg.GetUserBalance(args.r.Context(), uid)
-// 	if err != nil {
-// 		args.w.WriteHeader(http.StatusInternalServerError)
-// 		args.logger.Warnf("get user balance error: %w", err)
-// 		return
-// 	}
-// 	args.w.Header().Add(contentTypeString, ctApplicationJSONString)
-// 	_, err = args.w.Write(data)
-// 	if err != nil {
-// 		args.logger.Warnf(writeResponceErrorString, err)
-// 	}
-// }
-
-// // AddWithdraw ...
-// // @Tags Списание баллов
-// // @Summary Запрос на списание баллов в счёт другого заказа
-// // @Accept json
-// // @Param withdraw body Withdraw true "Номер заказа в счет которого списываются баллы"
-// // @Security ApiKeyAuth
-// // @Param Authorization header string false "Токен авторизации"
-// // @Router /user/balance/withdraw [post]
-// // @Success 200 "Списание успешно добавлено"
-// // @failure 400 "Ошибка в теле запроса. Тело запроса не соответствует формату json"
-// // @failure 401 "Пользователь не авторизован"
-// // @failure 402 "Недостаточно средств"
-// // @failure 409 "Заказ уже был зарегистрирован ранее"
-// // @failure 422 "Номер заказа не прошёл проверку подлинности"
-// // @failure 500 "Внутренняя ошибка сервиса".
-// func AddWithdraw(args requestResponce) {
-// 	body, err := io.ReadAll(args.r.Body)
-// 	if err != nil {
-// 		args.w.WriteHeader(http.StatusInternalServerError)
-// 		args.logger.Warnf("body read error: %w", err)
-// 		return
-// 	}
-// 	var withdraw Withdraw
-// 	err = json.Unmarshal(body, &withdraw)
-// 	if err != nil {
-// 		args.w.WriteHeader(http.StatusBadRequest)
-// 		args.logger.Warnf("convert to json error: %w", err)
-// 		return
-// 	}
-// 	args.logger.Debugf("add withdraw request %s: %f", withdraw.Order, withdraw.Sum)
-// 	err = checkOrderNumber(withdraw.Order)
-// 	if err != nil {
-// 		args.w.WriteHeader(http.StatusUnprocessableEntity)
-// 		args.logger.Warnf("check order error", err)
-// 		return
-// 	}
-// 	uid, ok := args.r.Context().Value(middlewares.AuthUID).(int)
-// 	if !ok {
-// 		args.w.WriteHeader(http.StatusUnauthorized)
-// 		args.logger.Warnln(uidContextTypeError)
-// 		return
-// 	}
-// 	status, err := args.strg.AddWithdraw(args.r.Context(), uid, withdraw.Order, withdraw.Sum)
-// 	if err != nil {
-// 		args.logger.Warnf("add withdraw error: %w", err)
-// 	}
-// 	args.logger.Debugf("add withdraw status: %d \n", status)
-// 	args.w.WriteHeader(status)
-// }
-
-// // GetWithdrawsList ...
-// // @Tags Списание баллов
-// // @Summary Запрос списка списаний баллов
-// // @Produce json
-// // @Router /user/withdrawals [get]
-// // @Security ApiKeyAuth
-// // @Param Authorization header string false "Токен авторизации"
-// // @Success 200 {array} storage.Withdraws "Список списаний"
-// // @failure 204 "Нет данных для ответа"
-// // @failure 401 "Пользователь не авторизован"
-// // @failure 500 "Внутренняя ошибка сервиса".
-// func GetWithdrawsList(args requestResponce) {
-// 	getListCommon(&args, "withdraws", args.strg.GetWithdraws)
-// }
+// AddFileFinish sets file loaded flag.
+// @Tags Файлы
+// @Summary Завершение добавления файла.
+// @Param fid query int true "File id"
+// @Security ApiKeyAuth
+// @Param Authorization header string false "Токен авторизации"
+// @Router /api/files/add [get]
+// @Success 200 "Успешно"
+// @failure 400 "Ошибка в запросе"
+// @failure 401 "Пользователь не авторизован"
+// @failure 404 "Файл не найден"
+// @failure 500 "Внутренняя ошибка сервиса.".
+func AddFileFinish(
+	ctx context.Context,
+	strg *storage.Storage,
+	fid uint,
+) (int, error) {
+	uid, ok := ctx.Value(middlewares.AuthUID).(int)
+	if !ok {
+		return http.StatusUnauthorized, makeError(ErrUserAuthorization, nil)
+	}
+	err := strg.AddFileFinish(ctx, fid, uint(uid))
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return http.StatusNotFound, makeError(ErrNotFound, fid)
+		}
+		return http.StatusInternalServerError, makeError(InternalError)
+	}
+	return http.StatusOK, nil
+}
 
 // encryption message by RSA.
 func encryptMessage(msg []byte, k string) ([]byte, error) {
@@ -518,7 +465,7 @@ func encryptMessage(msg []byte, k string) ([]byte, error) {
 	}
 	key, err := hex.DecodeString(k)
 	if err != nil {
-		return nil, makeError(ConvertToBytesError, err)
+		return nil, makeError(ErrConvertToByte, err)
 	}
 	pub, err := x509.ParsePKIXPublicKey(key)
 	if err != nil {
@@ -535,7 +482,7 @@ func encryptMessage(msg []byte, k string) ([]byte, error) {
 	for _, slice := range mRange(msg, size) {
 		data, err := rsa.EncryptOAEP(hash, rng, publicKey, slice, []byte(""))
 		if err != nil {
-			return nil, makeError(EncryptMessageError, err)
+			return nil, makeError(ErrEncryptMessage, err)
 		}
 		encrypted = append(encrypted, data...)
 	}

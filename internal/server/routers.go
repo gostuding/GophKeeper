@@ -35,7 +35,7 @@ func writeResponseData(w http.ResponseWriter, data []byte, status int, l *zap.Su
 	w.WriteHeader(status)
 	_, err := w.Write(data)
 	if err != nil {
-		l.Warnf(makeError(WriteResponseError, err).Error())
+		l.Warnf(makeError(ErrWriteResponse, err).Error())
 	}
 }
 
@@ -44,8 +44,8 @@ func readRequestBody(w http.ResponseWriter, r *http.Request, l *zap.SugaredLogge
 	data, err := io.ReadAll(r.Body)
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
-		l.Warnln(makeError(ReadRequestBodyError, err).Error())
-		return nil, err
+		l.Warnln(makeError(ErrReadRequestBody, err).Error())
+		return nil, makeError(ErrReadRequestBody, err)
 	}
 	return data, nil
 }
@@ -70,7 +70,9 @@ func loginRegistrationCommon(
 func makeRouter(s *Server) http.Handler {
 	router := chi.NewRouter()
 	docs.SwaggerInfo.Host = net.JoinHostPort(s.Config.IP, strconv.Itoa(s.Config.Port))
-
+	cardsURL := "/api/cards/{id}"
+	filesURL := "/api/files/add"
+	redURL := "/"
 	router.Use(middleware.RealIP, middleware.Recoverer, middlewares.LoggerMiddleware(s.Logger),
 		cors.Handler(cors.Options{
 			AllowedOrigins: []string{"https://*", "http://*"},
@@ -95,7 +97,7 @@ func makeRouter(s *Server) http.Handler {
 			status := http.StatusOK
 			data, err := GetPublicKey(s.Config.PrivateKey)
 			if err != nil {
-				s.Logger.Warnf(makeError(GetPublicKeyError, err).Error())
+				s.Logger.Warnf(makeError(ErrGetPublicKey, err).Error())
 				status = http.StatusInternalServerError
 			}
 			w.Header().Set(ContentType, TextPlain)
@@ -116,7 +118,7 @@ func makeRouter(s *Server) http.Handler {
 	router.Group(func(r chi.Router) {
 		r.Use(
 			middlewares.DecriptMiddleware(s.Config.PrivateKey, s.Logger),
-			middlewares.AuthMiddleware(s.Logger, "/", s.Config.TokenKey),
+			middlewares.AuthMiddleware(s.Logger, redURL, s.Config.TokenKey),
 		)
 		r.Post("/api/cards/list", func(w http.ResponseWriter, r *http.Request) {
 			body, err := readRequestBody(w, r, s.Logger)
@@ -141,7 +143,7 @@ func makeRouter(s *Server) http.Handler {
 			}
 			writeResponseData(w, nil, status, s.Logger)
 		})
-		r.Post("/api/cards/{id}", func(w http.ResponseWriter, r *http.Request) {
+		r.Post(cardsURL, func(w http.ResponseWriter, r *http.Request) {
 			body, err := readRequestBody(w, r, s.Logger)
 			if err != nil {
 				return
@@ -159,7 +161,7 @@ func makeRouter(s *Server) http.Handler {
 			}
 			writeResponseData(w, data, status, s.Logger)
 		})
-		r.Put("/api/cards/{id}", func(w http.ResponseWriter, r *http.Request) {
+		r.Put(cardsURL, func(w http.ResponseWriter, r *http.Request) {
 			body, err := readRequestBody(w, r, s.Logger)
 			if err != nil {
 				return
@@ -176,7 +178,7 @@ func makeRouter(s *Server) http.Handler {
 			}
 			writeResponseData(w, nil, status, s.Logger)
 		})
-		r.Delete("/api/cards/{id}", func(w http.ResponseWriter, r *http.Request) {
+		r.Delete(cardsURL, func(w http.ResponseWriter, r *http.Request) {
 			id, err := strconv.Atoi(chi.URLParam(r, idString))
 			if err != nil {
 				s.Logger.Warnf(makeError(ErrConvertError, idString, err).Error())
@@ -189,7 +191,6 @@ func makeRouter(s *Server) http.Handler {
 			}
 			writeResponseData(w, nil, status, s.Logger)
 		})
-
 		r.Post("/api/files", func(w http.ResponseWriter, r *http.Request) {
 			body, err := readRequestBody(w, r, s.Logger)
 			if err != nil {
@@ -202,12 +203,48 @@ func makeRouter(s *Server) http.Handler {
 			}
 			writeResponseData(w, data, status, s.Logger)
 		})
+		r.Put(filesURL, func(w http.ResponseWriter, r *http.Request) {
+			body, err := readRequestBody(w, r, s.Logger)
+			if err != nil {
+				return
+			}
+			data, status, err := AddFile(r.Context(), body, s.Storage)
+			if err != nil {
+				s.Logger.Warnf("new file info error: %v", err)
+			}
+			writeResponseData(w, data, status, s.Logger)
+		})
 	})
 
 	router.Group(func(r chi.Router) {
 		r.Use(
-			middlewares.AuthMiddleware(s.Logger, "/", s.Config.TokenKey),
+			middlewares.AuthMiddleware(s.Logger, redURL, s.Config.TokenKey),
 		)
+		r.Post(filesURL, func(w http.ResponseWriter, r *http.Request) {
+			body, err := readRequestBody(w, r, s.Logger)
+			if err != nil {
+				return
+			}
+			status, err := AddFileData(r.Context(), body, s.Storage, r)
+			if err != nil {
+				s.Logger.Warnf("add file data error: %v", err)
+			}
+			writeResponseData(w, nil, status, s.Logger)
+		})
+		r.Get(filesURL, func(w http.ResponseWriter, r *http.Request) {
+			var f string = "fid"
+			fid, err := strconv.Atoi(r.FormValue(f))
+			if err != nil {
+				writeResponseData(w, nil, http.StatusBadRequest, s.Logger)
+				s.Logger.Warnln(makeError(ErrConvertError, err).Error())
+				return
+			}
+			status, err := AddFileFinish(r.Context(), s.Storage, uint(fid))
+			if err != nil {
+				s.Logger.Warnf("finish add file info error: %v", err)
+			}
+			writeResponseData(w, nil, status, s.Logger)
+		})
 	})
 	return router
 }

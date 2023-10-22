@@ -31,6 +31,7 @@ const (
 	ErrScanValue
 	ErrEncrypt
 	ErrDecrypt
+	ErrSaveConfig
 )
 
 var (
@@ -47,6 +48,8 @@ func makeError(t errType, values ...any) error {
 		return fmt.Errorf("encrypt value error: %w", values...)
 	case ErrDecrypt:
 		return fmt.Errorf("decrypt value error: %w", values...)
+	case ErrSaveConfig:
+		return fmt.Errorf("save configuration error: %w", values...)
 	default:
 		return fmt.Errorf("undefined error: %w", values...)
 	}
@@ -142,13 +145,13 @@ func (a *Agent) authentification() error {
 		if err := scanStdin("Введите ключ шифрования Ваших приватных данных: ", &k); err != nil {
 			return makeError(ErrScanValue, err)
 		}
-		k, err := storage.EncryptAES(k, a.Storage.ServerAESKey)
+		key, err := storage.EncryptAES([]byte(k), a.Storage.ServerAESKey)
 		if err != nil {
-			return makeError(ErrEncrypt, "user AES key encrypt:", err)
+			return makeError(ErrEncrypt, "user AES key:", err)
 		}
-		a.Config.Key = k
+		a.Config.Key = string(key)
 		if err = a.Config.Save(); err != nil {
-			return fmt.Errorf("save key in config error: %w", err)
+			return makeError(ErrSaveConfig, err)
 		}
 	}
 	err := a.Storage.SetUserAESKey(a.Config.Key)
@@ -186,7 +189,7 @@ func (a *Agent) registration() error {
 	}
 	a.Config.Login = l
 	if err := a.Config.Save(); err != nil {
-		return fmt.Errorf("save config error: %w", err)
+		return makeError(ErrSaveConfig, err)
 	}
 	return nil
 }
@@ -217,7 +220,6 @@ func (a *Agent) parceCommand(cmd string) string {
 				"files - переключиться на вкладку файлов\n" +
 				"data - другая приватная информация\n" +
 				"exit - завершение работы"
-
 		}
 		switch a.currentCommand {
 		case cards:
@@ -244,13 +246,17 @@ func (a *Agent) parceCommand(cmd string) string {
 		}
 		return lst
 	case add:
-		if err := a.addSwitcher(); err != nil {
+		arg := ""
+		if len(c) > 1 {
+			arg = c[1]
+		}
+		if err := a.addSwitcher(arg); err != nil {
 			return fmt.Sprintf("%s add error: %v", a.currentCommand, err)
 		}
 		return "Успешно добавлено"
 	case "get":
 		if len(c) <= 1 {
-			return fmt.Sprintf("%s get error: %v", a.currentCommand, ErrUndefinedTarget)
+			return fmt.Sprintf("%s get command error: %v", a.currentCommand, ErrUndefinedTarget)
 		}
 		lst, err := a.getSwitcher(c[1])
 		if err != nil {
@@ -259,7 +265,7 @@ func (a *Agent) parceCommand(cmd string) string {
 		return lst
 	case del:
 		if len(c) <= 1 {
-			return fmt.Sprintf("%s delete error: %v", a.currentCommand, ErrUndefinedTarget)
+			return fmt.Sprintf("%s delete command error: %v", a.currentCommand, ErrUndefinedTarget)
 		}
 		if err := a.deleteSwitcher(c[1]); err != nil {
 			return fmt.Sprintf("%s delete error: %v", a.currentCommand, err)
@@ -267,7 +273,7 @@ func (a *Agent) parceCommand(cmd string) string {
 		return "Удалено"
 	case edit:
 		if len(c) <= 1 {
-			return fmt.Sprintf("%s edit error: %v", a.currentCommand, ErrUndefinedTarget)
+			return fmt.Sprintf("%s edit command error: %v", a.currentCommand, ErrUndefinedTarget)
 		}
 		err := a.editSwitcher(c[1])
 		if err != nil {
@@ -280,27 +286,40 @@ func (a *Agent) parceCommand(cmd string) string {
 }
 
 // addSwitcher makes add Storage's function according to currentCommand.
-func (a *Agent) addSwitcher() error {
+func (a *Agent) addSwitcher(path string) error {
 	switch a.currentCommand {
-	case "cards":
+	case cards:
 		var l, n, u, d, c string
 		if err := scanStdin("Введите название карты: ", &l); err != nil {
-			return fmt.Errorf("read card label error: %w", err)
+			return makeError(ErrScanValue, err)
 		}
 		if err := scanStdin("Введите номер карты: ", &n); err != nil {
-			return fmt.Errorf("read card number error: %w", err)
+			return makeError(ErrScanValue, err)
 		}
 		if err := scanStdin("Введите владельца карты: ", &u); err != nil {
-			return fmt.Errorf("read card user error: %w", err)
+			return makeError(ErrScanValue, err)
 		}
 		if err := scanStdin("Введите срок действия карты (mm/yy): ", &d); err != nil {
-			return fmt.Errorf("read card duration error: %w", err)
+			return makeError(ErrScanValue, err)
 		}
 		if err := scanStdin("Введите csv-код (3 цифры на обороте): ", &c); err != nil {
-			return fmt.Errorf("read card csv error: %w", err)
+			return makeError(ErrScanValue, err)
 		}
 		if err := a.Storage.AddCard(storage.CardInfo{Label: l, User: u, Number: n, Duration: d, Csv: c}); err != nil {
 			return fmt.Errorf("card add error: %w", err)
+		}
+		return nil
+	case files:
+		f, err := os.Stat(path)
+		if err != nil {
+			return fmt.Errorf("get file stat error: %w", err)
+		}
+		if f.IsDir() {
+			return fmt.Errorf("path incorrect, set path to file")
+		}
+		err = a.Storage.AddFile(path, f)
+		if err != nil {
+			return fmt.Errorf("file add error: %w", err)
 		}
 		return nil
 	default:
@@ -312,9 +331,9 @@ func (a *Agent) addSwitcher() error {
 func (a *Agent) listSwitcher() (string, error) {
 	switch a.currentCommand {
 	case cards:
-		return a.Storage.GetCardsList()
+		return a.Storage.GetCardsList() //nolint:wrapcheck //<-
 	case files:
-		return a.Storage.GetFilesList()
+		return a.Storage.GetFilesList() //nolint:wrapcheck //<-
 	default:
 		return "", ErrUndefinedTarget
 	}
@@ -348,7 +367,7 @@ func (a *Agent) deleteSwitcher(id string) error {
 	}
 	switch a.currentCommand {
 	case cards:
-		return a.Storage.DeleteCard(i)
+		return a.Storage.DeleteCard(i) //nolint:wrapcheck //<-
 	default:
 		return ErrUndefinedTarget
 	}

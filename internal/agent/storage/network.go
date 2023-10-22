@@ -11,6 +11,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
+	"strconv"
+	"sync"
 	"time"
 
 	"github.com/gostuding/GophKeeper/internal/agent/config"
@@ -20,43 +23,47 @@ type urlType int
 type CmdType string
 
 const (
-	keySize                = 4028            // default rsa key size.
-	requestTimeout         = 60              // default request timeout
-	Authorization          = "Authorization" // JWT token header name.
-	urlGetKey      urlType = iota
+	readFileBlockSize         = 1024 * 1024 * 2 // read file block size
+	sendThreadCount           = 10              // count send requests to server
+	keySize                   = 4028            // default rsa key size.
+	requestTimeout            = 60              // default request timeout
+	Authorization             = "Authorization" // JWT token header name.
+	urlSD                     = "%s/%d"
+	urlGetKey         urlType = iota
 	urlRegistration
 	urlLogin
 	urlCardsList
 	urlCardsAdd
 	urlCard
 	urlFilesList
+	urlFileAdd
 )
 
 type (
 	// NetStorage storage in server.
 	NetStorage struct {
 		Config          *config.Config  // object with agent configuration
-		Pwd             string          // user password
-		Key             string          // user pasphrace to encrypt and decrypt stored data
-		JWTToken        string          // authorization token
-		ServerAESKey    string          // server's key to encrypt or decrypt user pashprace
 		Client          *http.Client    // http client for work with server
 		ServerPublicKey *rsa.PublicKey  // public server key for encrypt messages
 		PrivateKey      *rsa.PrivateKey // private rsa key for decript mesages
+		Pwd             string          // user password
+		JWTToken        string          // authorization token
+		Key             []byte          // user pasphrace to encrypt and decrypt stored data
+		ServerAESKey    []byte          // server's key to encrypt or decrypt user pashprace
 		PublicKey       []byte          // public key for exchange with server
 	}
-	// loginPwd internal struct.
+	// LoginPwd internal struct.
 	loginPwd struct {
 		Login     string `json:"login"`
 		Pwd       string `json:"password"`
 		PublicKey string `json:"public_key"`
 	}
-	// tokenKey internal struct.
+	// TokenKey internal struct.
 	tokenKey struct {
 		Token string `json:"token"`
 		Key   string `json:"key"`
 	}
-	// idLabelInfo internal struct.
+	// IdLabelInfo internal struct.
 	idLabelInfo struct {
 		Updated time.Time `json:"updated"`
 		Label   string    `json:"label"`
@@ -78,8 +85,14 @@ type (
 		Name      string    `json:"name"`
 		Size      int64     `json:"size"`
 		ID        uint      `json:"id"`
-		Crypted   bool      `json:"crypted"`
 		Loaded    bool      `json:"loaded"`
+	}
+	// FileSend is struct for send file's data to server.
+	FileSend struct {
+		Data  []byte
+		Pos   int64
+		Index int
+		Size  int
 	}
 )
 
@@ -115,6 +128,8 @@ func (ns *NetStorage) url(t urlType) string {
 		return fmt.Sprintf("%s/api/cards", ns.Config.ServerAddres)
 	case urlFilesList:
 		return fmt.Sprintf("%s/api/files", ns.Config.ServerAddres)
+	case urlFileAdd:
+		return fmt.Sprintf("%s/api/files/add", ns.Config.ServerAddres)
 	default:
 		return "undefined"
 	}
@@ -146,10 +161,10 @@ func (ns *NetStorage) Check() error {
 	if err != nil {
 		return fmt.Errorf("check server connection error: %w", err)
 	}
-	defer resp.Body.Close()
+	defer resp.Body.Close() //nolint:errcheck //<-senselessly
 	keyData, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return fmt.Errorf("request body read error: %w", err)
+		return makeError(ErrResponseRead, err)
 	}
 	pub, err := x509.ParsePKIXPublicKey(keyData)
 	if err != nil {
@@ -169,13 +184,13 @@ func (ns *NetStorage) Registration(l, p string) error {
 	user.PublicKey = hex.EncodeToString(ns.PublicKey)
 	data, err := json.Marshal(user)
 	if err != nil {
-		return fmt.Errorf("json convert error: %w", err)
+		return makeError(ErrJSONMarshal, err)
 	}
 	res, err := ns.doEncryptRequest(data, ns.url(urlRegistration), http.MethodPost)
 	if err != nil {
 		return err
 	}
-	defer res.Body.Close()
+	defer res.Body.Close() //nolint:errcheck //<-senselessly
 	switch res.StatusCode {
 	case http.StatusConflict:
 		if err := ns.Authorization(l, p); err != nil {
@@ -186,7 +201,7 @@ func (ns *NetStorage) Registration(l, p string) error {
 	case http.StatusOK:
 		ns.Pwd = user.Pwd
 		if err = ns.getToken(res.Body); err != nil {
-			return fmt.Errorf("get token error: %w", err)
+			return makeError(ErrGetToken, err)
 		}
 		return nil
 	default:
@@ -194,30 +209,30 @@ func (ns *NetStorage) Registration(l, p string) error {
 	}
 }
 
-// authorization user at server.
+// Authorization user at server.
 func (ns *NetStorage) Authorization(l, p string) error {
 	user := loginPwd{Login: l, Pwd: p}
 	user.PublicKey = hex.EncodeToString(ns.PublicKey)
 	data, err := json.Marshal(user)
 	if err != nil {
-		return fmt.Errorf("json convert error: %w", err)
+		return makeError(ErrJSONMarshal, err)
 	}
 	res, err := ns.doEncryptRequest(data, ns.url(urlLogin), http.MethodPost)
 	if err != nil {
 		return err
 	}
-	defer res.Body.Close()
+	defer res.Body.Close() //nolint:errcheck //<-senselessly
 	switch res.StatusCode {
 	case http.StatusUnauthorized:
 		return errors.New("login or password incorrect")
 	case http.StatusOK:
 		ns.Pwd = user.Pwd
 		if err = ns.getToken(res.Body); err != nil {
-			return fmt.Errorf("get token error: %w", err)
+			return makeError(ErrGetToken, err)
 		}
 		return nil
 	default:
-		return fmt.Errorf("status code error: %d", res.StatusCode)
+		return makeError(ErrResponseStatusCode, res.StatusCode)
 	}
 }
 
@@ -236,45 +251,45 @@ func (ns *NetStorage) getToken(body io.Reader) error {
 		return fmt.Errorf("unmarshal error: %w", err)
 	}
 	ns.JWTToken = t.Token
-	ns.ServerAESKey = t.Key
+	ns.ServerAESKey = []byte(t.Key)
 	return nil
 }
 
 // SetUserAESKey decripts user key.
 func (ns *NetStorage) SetUserAESKey(key string) error {
-	key, err := decryptAES(ns.ServerAESKey, key)
+	k, err := decryptAES(ns.ServerAESKey, []byte(key))
 	if err != nil {
-		return fmt.Errorf("decrypt user key error: %w", err)
+		return makeError(ErrDecrypt, "user key error:", err)
 	}
-	ns.Key = key
+	ns.Key = k
 	return nil
 }
 
-// cardsList requests cards list from server.
+// GetCardsList requests cards list from server.
 func (ns *NetStorage) GetCardsList() (string, error) {
 	res, err := ns.doEncryptRequest(ns.PublicKey, ns.url(urlCardsList), http.MethodPost)
 	if err != nil {
 		return "", err
 	}
-	defer res.Body.Close()
+	defer res.Body.Close() //nolint:errcheck //<-senselessly
 	switch res.StatusCode {
 	case http.StatusUnauthorized:
-		return "", errors.New("user authorization error")
+		return "", makeError(ErrAuthorization, nil)
 	case http.StatusBadRequest:
 		return "", errors.New("encript message error")
 	case http.StatusOK:
 		data, err := io.ReadAll(res.Body)
 		if err != nil {
-			return "", fmt.Errorf("request body read error: %w", err)
+			return "", makeError(ErrResponseRead, err)
 		}
 		data, err = decryptRSAMessage(ns.PrivateKey, data)
 		if err != nil {
-			return "", fmt.Errorf("decrypt body error: %w", err)
+			return "", makeError(ErrDecryptMessage, err)
 		}
 		var lst []idLabelInfo
 		err = json.Unmarshal(data, &lst)
 		if err != nil {
-			return "", fmt.Errorf("json convert error: %w", err)
+			return "", makeError(ErrJSONUnmarshal, err)
 		}
 		cards := ""
 		for _, val := range lst {
@@ -282,18 +297,18 @@ func (ns *NetStorage) GetCardsList() (string, error) {
 		}
 		return cards, nil
 	default:
-		return "", fmt.Errorf("undefined error. Status code is: %d", res.StatusCode)
+		return "", makeError(ErrResponseStatusCode, res.StatusCode)
 	}
 }
 
 // GetCard requests card info.
 func (ns *NetStorage) GetCard(id int) (*CardInfo, error) {
-	url := fmt.Sprintf("%s/%d", ns.url(urlCard), id)
+	url := fmt.Sprintf(urlSD, ns.url(urlCard), id)
 	res, err := ns.doEncryptRequest(ns.PublicKey, url, http.MethodPost)
 	if err != nil {
 		return nil, err
 	}
-	defer res.Body.Close()
+	defer res.Body.Close() //nolint:errcheck //<-senselessly
 	switch res.StatusCode {
 	case http.StatusUnauthorized:
 		return nil, makeError(ErrAuthorization, nil)
@@ -302,38 +317,42 @@ func (ns *NetStorage) GetCard(id int) (*CardInfo, error) {
 	case http.StatusOK:
 		data, err := readAndDecryptRSA(res.Body, ns.PrivateKey)
 		if err != nil {
-			return nil, fmt.Errorf("response error: %w", err)
+			return nil, makeError(ErrResponse, err)
 		}
 		var l idLabelInfo
 		err = json.Unmarshal(data, &l)
 		if err != nil {
-			return nil, fmt.Errorf("response json error: %w", err)
+			return nil, makeError(ErrJSONUnmarshal, err)
 		}
-		info, err := decryptAES(ns.Key, l.Info)
+		msg, err := hex.DecodeString(l.Info)
 		if err != nil {
-			return nil, fmt.Errorf("card's info decrypt error: %w", err)
+			return nil, makeError(ErrDecrypt, err)
+		}
+		info, err := decryptAES(ns.Key, msg)
+		if err != nil {
+			return nil, makeError(ErrDecryptMessage, err)
 		}
 		var card CardInfo
-		err = json.Unmarshal([]byte(info), &card)
+		err = json.Unmarshal(info, &card)
 		if err != nil {
-			return nil, fmt.Errorf("json convert error: %w", err)
+			return nil, makeError(ErrJSONUnmarshal, err, string(info))
 		}
 		card.Updated = l.Updated
 		card.Label = l.Label
 		return &card, nil
 	default:
-		return nil, fmt.Errorf("undefined error. Status code is: %d", res.StatusCode)
+		return nil, makeError(ErrResponseStatusCode, res.StatusCode)
 	}
 }
 
 // DeleteCard requests to delete card's info from server.
 func (ns *NetStorage) DeleteCard(id int) error {
-	url := fmt.Sprintf("%s/%d", ns.url(urlCard), id)
+	url := fmt.Sprintf(urlSD, ns.url(urlCard), id)
 	res, err := ns.doEncryptRequest(nil, url, http.MethodDelete)
 	if err != nil {
 		return err
 	}
-	defer res.Body.Close()
+	defer res.Body.Close() //nolint:errcheck //<-senselessly
 	switch res.StatusCode {
 	case http.StatusUnauthorized:
 		return makeError(ErrAuthorization, nil)
@@ -346,26 +365,26 @@ func (ns *NetStorage) DeleteCard(id int) error {
 	}
 }
 
-// addUpdateCard common in add and update card functions
+// addUpdateCard common in add and update card functions.
 func (ns *NetStorage) addUpdateCard(url, method string, card CardInfo) error {
 	data, err := json.Marshal(&card)
 	if err != nil {
-		return makeError(ErrJsonMarshal, err)
+		return makeError(ErrJSONMarshal, err)
 	}
-	infoString, err := EncryptAES(ns.Key, string(data))
+	infoString, err := EncryptAES(ns.Key, data)
 	if err != nil {
 		return makeError(ErrEncrypt, err)
 	}
-	send := idLabelInfo{Info: infoString, Label: card.Label}
+	send := idLabelInfo{Info: hex.EncodeToString(infoString), Label: card.Label}
 	data, err = json.Marshal(send)
 	if err != nil {
-		return makeError(ErrJsonMarshal, err)
+		return makeError(ErrJSONMarshal, err)
 	}
 	res, err := ns.doEncryptRequest(data, url, method)
 	if err != nil {
 		return err
 	}
-	defer res.Body.Close()
+	defer res.Body.Close() //nolint:errcheck //<-senselessly
 	switch res.StatusCode {
 	case http.StatusConflict:
 		return makeError(ErrDublicate, nil)
@@ -383,7 +402,7 @@ func (ns *NetStorage) AddCard(card CardInfo) error {
 
 // UpdateCard edits one card info at server.
 func (ns *NetStorage) UpdateCard(id int, card CardInfo) error {
-	return ns.addUpdateCard(fmt.Sprintf("%s/%d", ns.url(urlCard), id), http.MethodPut, card)
+	return ns.addUpdateCard(fmt.Sprintf(urlSD, ns.url(urlCard), id), http.MethodPut, card)
 }
 
 // GetFilesList requests user's files list from server.
@@ -392,7 +411,7 @@ func (ns *NetStorage) GetFilesList() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer res.Body.Close()
+	defer res.Body.Close() //nolint:errcheck //<-senselessly
 	switch res.StatusCode {
 	case http.StatusUnauthorized:
 		return "", makeError(ErrAuthorization, nil)
@@ -410,22 +429,168 @@ func (ns *NetStorage) GetFilesList() (string, error) {
 		var lst []Files
 		err = json.Unmarshal(data, &lst)
 		if err != nil {
-			return "", makeError(ErrJsonUnmarshal, err)
+			return "", makeError(ErrJSONUnmarshal, err)
 		}
 		files := ""
 		for _, val := range lst {
-			files += fmt.Sprintf("File: %d. '%s'\t'%d'\t", val.ID, val.Name, val.Size)
-			if val.Crypted {
-				files += "'Зашифрован'"
-			}
-			files += "\t"
+			files += fmt.Sprintf("File: %d. Название:'%s'\tРазмер:'%s'\tДата: %s",
+				val.ID, val.Name, fileSize(val.Size), val.CreatedAt.Format("02.01.2006 15:04:05"))
 			if !val.Loaded {
-				files += "'Загружен не полностью'"
+				files += "\t'Загружен не полностью'"
 			}
-			files += fmt.Sprintf("\t Дата: %s\n", val.CreatedAt)
+			files += "\n"
 		}
 		return files, nil
 	default:
 		return "", makeError(ErrResponseStatusCode, res.StatusCode)
+	}
+}
+
+func (ns *NetStorage) getNewFileID(info os.FileInfo) (int, error) {
+	data, err := json.Marshal(Files{Name: info.Name(), Size: info.Size()})
+	if err != nil {
+		return 0, makeError(ErrJSONMarshal, err)
+	}
+	res, err := ns.doEncryptRequest(data, ns.url(urlFileAdd), http.MethodPut)
+	if err != nil {
+		return 0, err
+	}
+	defer res.Body.Close() //nolint:errcheck //<-senselessly
+	if res.StatusCode != http.StatusOK {
+		return 0, makeError(ErrResponseStatusCode, res.StatusCode, "get file id error")
+	}
+	f, err := io.ReadAll(res.Body)
+	if err != nil {
+		return 0, makeError(ErrResponseRead, err)
+	}
+	fid, err := strconv.Atoi(string(f))
+	if err != nil {
+		return 0, fmt.Errorf("convert file id error: %w", err)
+	}
+	return fid, nil
+}
+
+// fihishFileTrasfer sends get request to server for confirm add finish.
+func (ns *NetStorage) fihishFileTrasfer(fid int) error {
+	url := fmt.Sprintf("%s/?fid=%d", ns.url(urlFileAdd), fid)
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		return makeError(ErrRequest, err)
+	}
+	req.Header.Add(Authorization, ns.JWTToken)
+	res, err := ns.Client.Do(req)
+	if err != nil {
+		return makeError(ErrRequest, err)
+	}
+	defer res.Body.Close() //nolint:errcheck //<-senselessly
+	if res.StatusCode != http.StatusOK {
+		return makeError(ErrResponseStatusCode, res.StatusCode, "finish file add error")
+	}
+	return nil
+}
+
+// AddFile sends file to server.
+func (ns *NetStorage) AddFile(path string, info os.FileInfo) error {
+	fid, err := ns.getNewFileID(info)
+	if err != nil {
+		return fmt.Errorf("get file id error: %w", err)
+	}
+	sendChan := make(chan (FileSend), sendThreadCount)
+	errChan := make(chan (error), sendThreadCount)
+	stopChan := make(chan (interface{}))
+	reader := make(chan (interface{}))
+	go func() {
+		defer close(sendChan)
+		defer close(reader)
+		file, err := os.Open(path)
+		if err != nil {
+			errChan <- fmt.Errorf("open file error: %w", err)
+			return
+		}
+		defer file.Close() //nolint:errcheck //<-senselessly
+		block := make([]byte, readFileBlockSize)
+		pos := int64(0)
+		index := 0
+	label:
+		for {
+			select {
+			case <-stopChan:
+				return
+			default:
+				n, err := file.Read(block)
+				if errors.Is(err, io.EOF) {
+					break label
+				}
+				block = block[:n]
+				data, err := EncryptAES(ns.Key, block)
+				if err != nil {
+					errChan <- makeError(ErrEncrypt, err)
+					return
+				}
+				index++
+				sendChan <- FileSend{Index: index, Pos: pos, Size: n, Data: data}
+				pos += int64(n)
+			}
+		}
+	}()
+
+	var wg sync.WaitGroup
+	wg.Add(sendThreadCount)
+	for i := 0; i < sendThreadCount; i++ {
+		go func() {
+			defer wg.Done()
+			client := http.Client{Timeout: time.Duration(requestTimeout) * time.Second}
+			for item := range sendChan {
+				select {
+				case <-stopChan:
+					return
+				default:
+					data, err := EncryptAES(ns.Key, item.Data)
+					if err != nil {
+						errChan <- makeError(ErrEncrypt, err)
+						return
+					}
+					req, err := http.NewRequest(http.MethodPost, ns.url(urlFileAdd), bytes.NewReader(data))
+					if err != nil {
+						errChan <- makeError(ErrRequest, err)
+						return
+					}
+					req.Header.Add("index", strconv.Itoa(item.Index))
+					req.Header.Add("pos", strconv.Itoa(int(item.Pos)))
+					req.Header.Add("size", strconv.Itoa(item.Size))
+					req.Header.Add("fid", strconv.Itoa(fid))
+					req.Header.Add(Authorization, ns.JWTToken)
+					resp, err := client.Do(req)
+					if err != nil {
+						errChan <- makeError(ErrResponse, err)
+						return
+					}
+					if err = resp.Body.Close(); err != nil {
+						errChan <- fmt.Errorf("close response body error: %w", err)
+						return
+					}
+					if resp.StatusCode != http.StatusOK {
+						errChan <- makeError(ErrResponseStatusCode, resp.StatusCode)
+						return
+					}
+				}
+			}
+		}()
+	}
+	select {
+	case <-reader:
+		wg.Wait()
+		close(stopChan)
+		if len(errChan) > 0 {
+			defer close(errChan)
+			return <-errChan
+		}
+		close(errChan)
+		return ns.fihishFileTrasfer(fid)
+	case err := <-errChan:
+		close(stopChan)
+		wg.Wait()
+		close(errChan)
+		return err
 	}
 }

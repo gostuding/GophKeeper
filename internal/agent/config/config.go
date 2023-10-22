@@ -50,25 +50,6 @@ func (c *Config) Read(path string) error {
 	return nil
 }
 
-// FillServerConfig asks user to fill server address
-func (c *Config) FillServerConfig() {
-	fmt.Print("Выберите тип хранилища (1-Только на сервере, 2-локально): ")
-	var t int
-	if _, err := fmt.Scanln(&t); err == nil {
-		if t == 2 {
-			c.LocalMode = true
-		}
-	}
-	if c.LocalMode {
-		c.ServerAddres = defaultAddres
-	} else {
-		fmt.Fprintf(os.Stdout, "Введите адрес сервера (default: %s): ", defaultAddres)
-		if _, err := fmt.Scanln(&c.ServerAddres); err != nil {
-			c.ServerAddres = defaultAddres
-		}
-	}
-}
-
 // checkFileExist checks config file exists. Createss default config if the file wasn't found.
 func checkFileExist(path string) error {
 	_, err := os.Stat(path)
@@ -79,7 +60,10 @@ func checkFileExist(path string) error {
 		return fmt.Errorf("config file access error: %w", err)
 	}
 	cfg := Config{path: path, LocalMode: false}
-	cfg.FillServerConfig()
+	fmt.Fprintf(os.Stdout, "Введите адрес сервера (default: %s): ", defaultAddres)
+	if _, err := fmt.Scanln(&cfg.ServerAddres); err != nil {
+		cfg.ServerAddres = defaultAddres
+	}
 	return cfg.Save()
 }
 

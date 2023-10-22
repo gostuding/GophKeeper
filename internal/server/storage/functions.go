@@ -12,10 +12,10 @@ type (
 	Users struct {
 		CreatedAt time.Time
 		UpdatedAt time.Time
-		Login     string `gorm:"unique" `
-		Pwd       string `gorm:"type:varchar(255)" `
-		Key       string `gorm:"type:varchar(32)" `
-		ID        uint   `gorm:"primarykey" `
+		Login     string `gorm:"unique"`
+		Pwd       string `gorm:"type:varchar(255)"`
+		Key       string `gorm:"type:varchar(32)"`
+		ID        uint   `gorm:"primarykey"`
 	}
 	// Cards is Gorm struct for user's cards information.
 	// Value field contains private card's data.
@@ -31,18 +31,26 @@ type (
 	Files struct {
 		CreatedAt time.Time `json:"created"`
 		Name      string    `gorm:"type:varchar(255)" json:"name"`
-		FileName  string    `gorm:"type:varchar(32)" json:"-"`
 		InitSize  int64     `gorm:"numeric" json:"size"`
 		UID       int       `gorm:"numeric" json:"-"`
 		ID        uint      `gorm:"primarykey" json:"id"`
-		Crypted   bool      `gorm:"bool" json:"crypted"`
 		Loaded    bool      `gorm:"bool" json:"loaded"`
+	}
+	// FileData is Gorm struct for save files data.
+	FileData struct {
+		Data  []byte `gorm:"array"`
+		Index int    `gorm:"numeric"`
+		Pos   int    `gorm:"numeric"`
+		Size  int    `gorm:"numeric"`
+		ID    uint   `gorm:"primarykey"`
+		FID   uint   `gorm:"numeric"`
+		UID   uint   `gorm:"numeric"`
 	}
 )
 
 // structCheck checks database structure.
 func structCheck(con *gorm.DB) error {
-	err := con.AutoMigrate(&Users{}, &Cards{}, &Files{})
+	err := con.AutoMigrate(&Users{}, &Cards{}, &Files{}, &FileData{})
 	if err != nil {
 		return fmt.Errorf("database structure error: %w", err)
 	}
