@@ -167,6 +167,7 @@ func decryptAES(key, msg []byte) ([]byte, error) {
 	return decrypt, nil
 }
 
+// FileSize returns file size as string.
 func fileSize(size int64) string {
 	var s int64 = 1024
 	if size < s {

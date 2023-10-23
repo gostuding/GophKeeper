@@ -265,35 +265,6 @@ func (s *Storage) DeleteFile(ctx context.Context, id, uid uint) error {
 	return nil
 }
 
-// func (s *Storage) SetOrderData(number string, status string, balance float32) error {
-// 	var order Orders
-// 	var user Users
-// 	err := s.con.Transaction(func(tx *gorm.DB) error {
-// 		result := tx.Where("number = ?", number).First(&order)
-// 		if result.Error != nil {
-// 			return fmt.Errorf("update order status, get order (%s) error: %w", number, result.Error)
-// 		}
-// 		result = tx.Where("id = ?", order.UID).First(&user)
-// 		if result.Error != nil {
-// 			return fmt.Errorf("update order status, get user (%d) error: %w", order.UID, result.Error)
-// 		}
-// 		user.Balance += balance
-// 		order.Status = status
-// 		order.Accrual = balance
-// 		if err := tx.Save(&user).Error; err != nil {
-// 			return fmt.Errorf("user balance update error: %w", err)
-// 		}
-// 		if err := tx.Save(&order).Error; err != nil {
-// 			return fmt.Errorf("update order status and accural error: %w", err)
-// 		}
-// 		return nil
-// 	})
-// 	if err != nil {
-// 		return fmt.Errorf("update order status transaction error: %w", err)
-// 	}
-// 	return nil
-// }
-
 // Close closes connection to database.
 func (s *Storage) Close() error {
 	db, err := s.con.DB()

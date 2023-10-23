@@ -17,6 +17,7 @@ import (
 )
 
 type errType int
+type urlType int
 
 const (
 	cards = "cards"
@@ -32,6 +33,15 @@ const (
 	ErrEncrypt
 	ErrDecrypt
 	ErrSaveConfig
+
+	urlCheck urlType = iota
+	urlRegistration
+	urlLogin
+	urlCardsList
+	urlCardsAdd
+	urlCard
+	urlFilesList
+	urlFileAdd
 )
 
 var (
@@ -52,6 +62,28 @@ func makeError(t errType, values ...any) error {
 		return fmt.Errorf("save configuration error: %w", values...)
 	default:
 		return fmt.Errorf("undefined error: %w", values...)
+	}
+}
+func (a *Agent) url(t urlType) string {
+	switch t {
+	case urlCheck:
+		return fmt.Sprintf("%s/api/get/key", a.Config.ServerAddres)
+	case urlRegistration:
+		return fmt.Sprintf("%s/api/user/register", a.Config.ServerAddres)
+	case urlLogin:
+		return fmt.Sprintf("%s/api/user/login", a.Config.ServerAddres)
+	case urlCardsList:
+		return fmt.Sprintf("%s/api/cards/list", a.Config.ServerAddres)
+	case urlCardsAdd:
+		return fmt.Sprintf("%s/api/cards/add", a.Config.ServerAddres)
+	case urlCard:
+		return fmt.Sprintf("%s/api/cards", a.Config.ServerAddres)
+	case urlFilesList:
+		return fmt.Sprintf("%s/api/files", a.Config.ServerAddres)
+	case urlFileAdd:
+		return fmt.Sprintf("%s/api/files/add", a.Config.ServerAddres)
+	default:
+		return "undefined"
 	}
 }
 
@@ -93,7 +125,7 @@ func (a *Agent) Run() error {
 		syscall.SIGTERM, syscall.SIGINT, syscall.SIGQUIT,
 	)
 	defer cancelFunc()
-	if err := a.Storage.Check(); err != nil {
+	if err := a.Storage.Check(a.url(urlCheck)); err != nil {
 		return fmt.Errorf("storage check error: %w", err)
 	}
 	err := a.authentification()
@@ -184,7 +216,7 @@ func (a *Agent) registration() error {
 	if p != r {
 		return errors.New("passwords are not equal")
 	}
-	err = a.Storage.Registration(l, p)
+	err = a.Storage.Registration(a.url(urlRegistration), l, p)
 	if err != nil {
 		return fmt.Errorf("registration error: %w", err)
 	}

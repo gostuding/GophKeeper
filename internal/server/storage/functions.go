@@ -7,8 +7,8 @@ import (
 	"gorm.io/gorm"
 )
 
-// Users is Gorm struct for users info.
 type (
+	// Users is Gorm struct for users info.
 	Users struct {
 		CreatedAt time.Time
 		UpdatedAt time.Time

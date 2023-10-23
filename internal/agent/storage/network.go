@@ -20,7 +20,6 @@ import (
 )
 
 type urlType int
-type CmdType string
 
 const (
 	readFileBlockSize         = 1024 * 1024 * 2 // read file block size
@@ -30,7 +29,7 @@ const (
 	Authorization             = "Authorization" // JWT token header name.
 	urlSD                     = "%s/%d"
 	urlGetKey         urlType = iota
-	urlRegistration
+	// urlRegistration
 	urlLogin
 	urlCardsList
 	urlCardsAdd
@@ -114,10 +113,6 @@ func NewNetStorage(c *config.Config) (*NetStorage, error) {
 // Returns string with url for send client requests.
 func (ns *NetStorage) url(t urlType) string {
 	switch t {
-	case urlGetKey:
-		return fmt.Sprintf("%s/api/get/key", ns.Config.ServerAddres)
-	case urlRegistration:
-		return fmt.Sprintf("%s/api/user/register", ns.Config.ServerAddres)
 	case urlLogin:
 		return fmt.Sprintf("%s/api/user/login", ns.Config.ServerAddres)
 	case urlCardsList:
@@ -154,10 +149,8 @@ func (ns *NetStorage) doEncryptRequest(msg []byte, url string, method string) (*
 }
 
 // Check sends request to server for public key get.
-// If success public key got, tries to register or login at server.
-// Also do key exchange with server.
-func (ns *NetStorage) Check() error {
-	resp, err := ns.Client.Get(ns.url(urlGetKey))
+func (ns *NetStorage) Check(url string) error {
+	resp, err := ns.Client.Get(url)
 	if err != nil {
 		return fmt.Errorf("check server connection error: %w", err)
 	}
@@ -179,14 +172,14 @@ func (ns *NetStorage) Check() error {
 }
 
 // Registration new user at server.
-func (ns *NetStorage) Registration(l, p string) error {
+func (ns *NetStorage) Registration(url, l, p string) error {
 	user := loginPwd{Login: l, Pwd: p}
 	user.PublicKey = hex.EncodeToString(ns.PublicKey)
 	data, err := json.Marshal(user)
 	if err != nil {
 		return makeError(ErrJSONMarshal, err)
 	}
-	res, err := ns.doEncryptRequest(data, ns.url(urlRegistration), http.MethodPost)
+	res, err := ns.doEncryptRequest(data, url, http.MethodPost)
 	if err != nil {
 		return err
 	}
@@ -205,7 +198,7 @@ func (ns *NetStorage) Registration(l, p string) error {
 		}
 		return nil
 	default:
-		return fmt.Errorf("status code error: %d", res.StatusCode)
+		return makeError(ErrResponseStatusCode, res.StatusCode)
 	}
 }
 

@@ -8,20 +8,16 @@ import (
 )
 
 const (
-	keySize                           = 4096
-	fBits                 os.FileMode = 0600
-	defaultAddres                     = "http://127.0.0.1:8080"
-	defaultPrivateKeyPath             = "./agent_private_key.pem"
+	fBits         os.FileMode = 0600                    // default save config file mode.
+	defaultAddres             = "http://127.0.0.1:8080" // default server address.
 )
 
 // Config is agent's config structure.
 type Config struct {
-	ServerAddres     string `json:"server_addres"`      // server's address
-	Login            string `json:"login"`              // login for authorization on server
-	path             string `json:"-"`                  // path to json configuration file
-	Key              string `json:"key"`                // key to encrypt messages
-	LocalStoragePath string `json:"local_storage_path"` // TODO добавить путь до локального хранилища
-	LocalMode        bool   `json:"local_mode"`         // type of storage (true: file, false: server)
+	ServerAddres string `json:"server_addres"` // server's address
+	Login        string `json:"login"`         // login for authorization on server
+	path         string `json:"-"`             // path to json configuration file
+	Key          string `json:"key"`           // key for encrypt messages
 }
 
 // Save writes configuration data in file.
@@ -59,7 +55,7 @@ func checkFileExist(path string) error {
 	if !os.IsNotExist(err) {
 		return fmt.Errorf("config file access error: %w", err)
 	}
-	cfg := Config{path: path, LocalMode: false}
+	cfg := Config{path: path}
 	fmt.Fprintf(os.Stdout, "Введите адрес сервера (default: %s): ", defaultAddres)
 	if _, err := fmt.Scanln(&cfg.ServerAddres); err != nil {
 		cfg.ServerAddres = defaultAddres
