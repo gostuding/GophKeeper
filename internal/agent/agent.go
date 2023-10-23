@@ -161,6 +161,7 @@ func (a *Agent) authentification() error {
 	return nil
 }
 
+// Registration gets data from user and send registration request.
 func (a *Agent) registration() error {
 	var l, p, r string
 	fmt.Println("Регистрация пользователя на сервере.")
@@ -194,7 +195,7 @@ func (a *Agent) registration() error {
 	return nil
 }
 
-// login gets data from user and send login request.
+// Login gets data from user and send login request.
 func (a *Agent) login() error {
 	fmt.Println("Авторизация пользователя на сервере.")
 	fmt.Printf("Введите пароль (%s): ", a.Config.Login)
@@ -352,7 +353,7 @@ func (a *Agent) getSwitcher(id string) (string, error) {
 			return "", fmt.Errorf("get error: %w", err)
 		}
 		info := fmt.Sprintf("Название: %s\nНомер: %s\nВладелец: %s\nСрок: %s\nCSV: %s\nДата изменения: %s",
-			card.Label, card.Number, card.User, card.Duration, card.Csv, card.Updated)
+			card.Label, card.Number, card.User, card.Duration, card.Csv, card.Updated.Format("02.01.2006 15:04:05"))
 		return info, nil
 	default:
 		return "", ErrUndefinedTarget
@@ -368,6 +369,8 @@ func (a *Agent) deleteSwitcher(id string) error {
 	switch a.currentCommand {
 	case cards:
 		return a.Storage.DeleteCard(i) //nolint:wrapcheck //<-
+	case files:
+		return a.Storage.DeleteFile(i) //nolint:wrapcheck //<-
 	default:
 		return ErrUndefinedTarget
 	}

@@ -1,7 +1,5 @@
 {
     "server_addres": "http://127.0.0.1:8080",
     "login": "admin",
-    "key": "d71f7c5e84d2f2029a0b4876fa1e2835599bf431c0980a1bea",
-    "local_storage_path": "",
-    "local_mode": false
+    "key": "d71f7c5e84d2f2029a0b4876fa1e2835599bf431c0980a1bea"
 }

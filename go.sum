@@ -20,8 +20,8 @@ github.com/go-openapi/swag v0.19.15 h1:D2NRCBzS9/pEY3gP9Nl8aDqGUcPFrwG2p+CNFrLyr
 github.com/go-openapi/swag v0.19.15/go.mod h1:QYRuS/SOXUCsnplDa677K7+DxSOj6IPNl/eQntq43wQ=
 github.com/golang-jwt/jwt/v4 v4.5.0 h1:7cYmW1XlMY7h7ii7UhUyChSgS5wUJEnm9uZVTGqOWzg=
 github.com/golang-jwt/jwt/v4 v4.5.0/go.mod h1:m21LjoU+eqJr34lmDMbreY2eSTRJ1cv77w39/MY0Ch0=
-github.com/gostuding/middlewares v0.0.0-20231010150859-ec3ef7810677 h1:f2OqdzU/WJ/GbQFOVX+w1G8ZVxDhK0oWHFb5CWhmrKQ=
-github.com/gostuding/middlewares v0.0.0-20231010150859-ec3ef7810677/go.mod h1:ji1ChKnoqEruzRsDsp398EDCJkTuptepXrmeWhU9Wfk=
+github.com/gostuding/middlewares v0.0.0-20231017221122-7302ed82eece h1:TAXIoU6liyz9QJ1Ac5P2zpjvK9Kykyvmqnm4ayL5j5w=
+github.com/gostuding/middlewares v0.0.0-20231017221122-7302ed82eece/go.mod h1:ji1ChKnoqEruzRsDsp398EDCJkTuptepXrmeWhU9Wfk=
 github.com/howeyc/gopass v0.0.0-20210920133722-c8aef6fb66ef h1:A9HsByNhogrvm9cWb28sjiS3i7tcKCkflWFEkHfuAgM=
 github.com/howeyc/gopass v0.0.0-20210920133722-c8aef6fb66ef/go.mod h1:lADxMC39cJJqL93Duh1xhAs4I2Zs8mKS89XWXFGp9cs=
 github.com/jackc/pgerrcode v0.0.0-20220416144525-469b46aa5efa h1:s+4MhCQ6YrzisK6hFJUX53drDT4UsSW3DEhKn0ifuHw=

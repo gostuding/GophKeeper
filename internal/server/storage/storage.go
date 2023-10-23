@@ -246,6 +246,25 @@ func (s *Storage) AddFileFinish(
 	return nil
 }
 
+// DeleteFile removes info about file from database.
+func (s *Storage) DeleteFile(ctx context.Context, id, uid uint) error {
+	err := s.con.Transaction(func(tx *gorm.DB) error {
+		result := tx.WithContext(ctx).Where(&FileData{UID: uid, FID: id}).Delete(FileData{})
+		if result.Error != nil {
+			return makeError(ErrDatabase, result.Error)
+		}
+		result = tx.WithContext(ctx).Where(&Files{UID: int(uid), ID: id}).Delete(Files{})
+		if result.Error != nil {
+			return makeError(ErrDatabase, result.Error)
+		}
+		return nil
+	})
+	if err != nil {
+		return fmt.Errorf("transaction error: %w", err)
+	}
+	return nil
+}
+
 // func (s *Storage) SetOrderData(number string, status string, balance float32) error {
 // 	var order Orders
 // 	var user Users

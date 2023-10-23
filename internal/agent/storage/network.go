@@ -276,7 +276,7 @@ func (ns *NetStorage) GetCardsList() (string, error) {
 	case http.StatusUnauthorized:
 		return "", makeError(ErrAuthorization, nil)
 	case http.StatusBadRequest:
-		return "", errors.New("encript message error")
+		return "", makeError(ErrServerDecrypt, nil)
 	case http.StatusOK:
 		data, err := io.ReadAll(res.Body)
 		if err != nil {
@@ -293,7 +293,7 @@ func (ns *NetStorage) GetCardsList() (string, error) {
 		}
 		cards := ""
 		for _, val := range lst {
-			cards += fmt.Sprintf("Card: %d. '%s'\t'%s'\n", val.ID, val.Label, val.Updated)
+			cards += fmt.Sprintf("Card: %d. '%s'\t'%s'\n", val.ID, val.Label, val.Updated.Format("02.01.2006 15:04:05"))
 		}
 		return cards, nil
 	default:
@@ -347,22 +347,7 @@ func (ns *NetStorage) GetCard(id int) (*CardInfo, error) {
 
 // DeleteCard requests to delete card's info from server.
 func (ns *NetStorage) DeleteCard(id int) error {
-	url := fmt.Sprintf(urlSD, ns.url(urlCard), id)
-	res, err := ns.doEncryptRequest(nil, url, http.MethodDelete)
-	if err != nil {
-		return err
-	}
-	defer res.Body.Close() //nolint:errcheck //<-senselessly
-	switch res.StatusCode {
-	case http.StatusUnauthorized:
-		return makeError(ErrAuthorization, nil)
-	case http.StatusNotFound:
-		return makeError(ErrNotFound, nil)
-	case http.StatusOK:
-		return nil
-	default:
-		return makeError(ErrResponseStatusCode, res.StatusCode)
-	}
+	return ns.deleteItem(fmt.Sprintf(urlSD, ns.url(urlCard), id))
 }
 
 // addUpdateCard common in add and update card functions.
@@ -472,7 +457,7 @@ func (ns *NetStorage) getNewFileID(info os.FileInfo) (int, error) {
 
 // fihishFileTrasfer sends get request to server for confirm add finish.
 func (ns *NetStorage) fihishFileTrasfer(fid int) error {
-	url := fmt.Sprintf("%s/?fid=%d", ns.url(urlFileAdd), fid)
+	url := fmt.Sprintf("%s?fid=%d", ns.url(urlFileAdd), fid)
 	req, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
 		return makeError(ErrRequest, err)
@@ -593,4 +578,27 @@ func (ns *NetStorage) AddFile(path string, info os.FileInfo) error {
 		close(errChan)
 		return err
 	}
+}
+
+func (ns *NetStorage) deleteItem(url string) error {
+	res, err := ns.doEncryptRequest(nil, url, http.MethodDelete)
+	if err != nil {
+		return err
+	}
+	defer res.Body.Close() //nolint:errcheck //<-senselessly
+	switch res.StatusCode {
+	case http.StatusUnauthorized:
+		return makeError(ErrAuthorization, nil)
+	case http.StatusNotFound:
+		return makeError(ErrNotFound, nil)
+	case http.StatusOK:
+		return nil
+	default:
+		return makeError(ErrResponseStatusCode, res.StatusCode)
+	}
+}
+
+// DeleteFile requests to delete file's info from server.
+func (ns *NetStorage) DeleteFile(id int) error {
+	return ns.deleteItem(fmt.Sprintf(urlSD, ns.url(urlFilesList), id))
 }

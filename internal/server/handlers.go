@@ -308,6 +308,7 @@ func UpdateCardInfo(
 	return http.StatusOK, nil
 }
 
+// GetListCommon is internal function.
 func getListCommon(
 	ctx context.Context,
 	pk string,
@@ -370,7 +371,7 @@ func AddFile(
 	}
 	data, err := strg.AddFile(ctx, uint(uid), body)
 	if err != nil {
-		return nil, http.StatusInternalServerError, makeError(InternalError)
+		return nil, http.StatusInternalServerError, makeError(InternalError, err)
 	}
 	return data, http.StatusOK, nil
 }
@@ -446,6 +447,35 @@ func AddFileFinish(
 			return http.StatusNotFound, makeError(ErrNotFound, fid)
 		}
 		return http.StatusInternalServerError, makeError(InternalError)
+	}
+	return http.StatusOK, nil
+}
+
+// DeleteFile deletes information about one file from database.
+// @Tags Файлы
+// @Summary Удаление информации о файле пользователя.
+// @Security ApiKeyAuth
+// @Param Authorization header string false "Токен авторизации"
+// @Router /api/files/{id} [delete]
+// @Success 200 "Инфорация удалена"
+// @failure 400 "Ошибка шифрования"
+// @failure 401 "Пользователь не авторизован"
+// @failure 500 "Внутренняя ошибка сервиса.".
+func DeleteFile(
+	ctx context.Context,
+	strg *storage.Storage,
+	id uint,
+) (int, error) {
+	uid, ok := ctx.Value(middlewares.AuthUID).(int)
+	if !ok {
+		return http.StatusUnauthorized, makeError(ErrUserAuthorization, nil)
+	}
+	err := strg.DeleteFile(ctx, id, uint(uid))
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return http.StatusNotFound, makeError(ErrNotFound, id)
+		}
+		return http.StatusInternalServerError, makeError(InternalError, err)
 	}
 	return http.StatusOK, nil
 }
