@@ -74,6 +74,7 @@ func makeRouter(s *Server) http.Handler {
 	docs.SwaggerInfo.Host = net.JoinHostPort(s.Config.IP, strconv.Itoa(s.Config.Port))
 	cardsURL := "/api/cards/{id}"
 	filesURL := "/api/files/add"
+	fileIDURL := "/api/files/{id}"
 	redURL := "/"
 	router.Use(middleware.RealIP, middleware.Recoverer, middlewares.LoggerMiddleware(s.Logger),
 		cors.Handler(cors.Options{
@@ -203,7 +204,7 @@ func makeRouter(s *Server) http.Handler {
 			}
 			writeResponseData(w, data, status, s.Logger)
 		})
-		r.Post("/api/files/{id}", func(w http.ResponseWriter, r *http.Request) {
+		r.Post(fileIDURL, func(w http.ResponseWriter, r *http.Request) {
 			body, err := readRequestBody(w, r, s.Logger)
 			if err != nil {
 				return
@@ -265,7 +266,7 @@ func makeRouter(s *Server) http.Handler {
 			}
 			writeResponseData(w, nil, status, s.Logger)
 		})
-		r.Delete("/api/files/{id}", func(w http.ResponseWriter, r *http.Request) {
+		r.Delete(fileIDURL, func(w http.ResponseWriter, r *http.Request) {
 			id, err := strconv.Atoi(chi.URLParam(r, idString))
 			if err != nil {
 				s.Logger.Warnf(makeError(ErrConvertError, idString, err).Error())
@@ -278,16 +279,17 @@ func makeRouter(s *Server) http.Handler {
 			}
 			writeResponseData(w, nil, status, s.Logger)
 		})
-		r.Get("/api/files/{id}", func(w http.ResponseWriter, r *http.Request) {
+		r.Get(fileIDURL, func(w http.ResponseWriter, r *http.Request) {
 			id, err := strconv.Atoi(chi.URLParam(r, idString))
 			if err != nil {
 				s.Logger.Warnf(makeError(ErrConvertError, idString, err).Error())
 				writeResponseData(w, nil, http.StatusBadRequest, s.Logger)
 				return
 			}
-			index, err := strconv.Atoi(r.Header.Get("index"))
+			ind := "index"
+			index, err := strconv.Atoi(r.Header.Get(ind))
 			if err != nil {
-				s.Logger.Warnf(makeError(ErrConvertError, "index", err).Error())
+				s.Logger.Warnf(makeError(ErrConvertError, ind, err).Error())
 				writeResponseData(w, nil, http.StatusBadRequest, s.Logger)
 				return
 			}
@@ -297,7 +299,7 @@ func makeRouter(s *Server) http.Handler {
 				writeResponseData(w, nil, http.StatusUnauthorized, s.Logger)
 				return
 			}
-			data, err := s.Storage.GetFileData(r.Context(), uint(id), uid, index)
+			data, err := s.Storage.GetFileData(r.Context(), id, uid, index)
 			if err != nil {
 				if errors.Is(err, gorm.ErrRecordNotFound) {
 					s.Logger.Warnf("file data not found error:", err)

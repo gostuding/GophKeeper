@@ -36,7 +36,7 @@ type Server struct {
 
 // NewServer create new server.
 func NewServer(config *Config) (*Server, error) {
-	strg, err := storage.NewStorage(config.DSN, config.MaxConnectCount, "./storage")
+	strg, err := storage.NewStorage(config.DSN, config.MaxConnectCount, config.StoragePath)
 	if err != nil {
 		return nil, makeError(ErrConfig, err)
 	}

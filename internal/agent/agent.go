@@ -217,6 +217,9 @@ func (a *Agent) registration() error {
 		return errors.New("passwords are not equal")
 	}
 	err = a.Storage.Registration(a.url(urlRegistration), l, p)
+	if errors.Is(err, storage.ErrorLoginRepeat) {
+		err = a.Storage.Authorization(a.url(urlLogin), l, p)
+	}
 	if err != nil {
 		return fmt.Errorf("registration error: %w", err)
 	}
@@ -235,7 +238,7 @@ func (a *Agent) login() error {
 	if err != nil {
 		return makeError(ErrScanValue, err)
 	}
-	err = a.Storage.Authorization(a.Config.Login, string(pwd))
+	err = a.Storage.Authorization(a.url(urlLogin), a.Config.Login, string(pwd))
 	if err != nil {
 		a.Config.Login = ""
 		return fmt.Errorf("authorization error: %w", err)

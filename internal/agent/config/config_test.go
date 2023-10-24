@@ -21,7 +21,7 @@ func TestConfig_Save(t *testing.T) {
 func TestConfig_Read(t *testing.T) {
 	cfg := Config{
 		Login: "test", Key: "test key",
-		path: path.Join(t.TempDir(), cfgName)
+		path: path.Join(t.TempDir(), cfgName),
 	}
 	if err := cfg.Save(); err != nil {
 		t.Errorf("Config.Save() before read error = %v", err)

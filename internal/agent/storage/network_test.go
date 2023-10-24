@@ -1,8 +1,9 @@
 package storage
 
 import (
-	"crypto/rsa"
+	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -68,46 +69,150 @@ func TestNetStorage_Check(t *testing.T) {
 }
 
 func TestNetStorage_Registration(t *testing.T) {
-	type fields struct {
-		Config          *config.Config
-		Client          *http.Client
-		ServerPublicKey *rsa.PublicKey
-		PrivateKey      *rsa.PrivateKey
-		Pwd             string
-		JWTToken        string
-		Key             []byte
-		ServerAESKey    []byte
-		PublicKey       []byte
+	storage, err := NewNetStorage(&config.Config{})
+	if err != nil {
+		t.Errorf("NewNetStorage() error: %v", err)
+		return
 	}
-	type args struct {
-		url string
-		l   string
-		p   string
+	storage.ServerPublicKey = &storage.PrivateKey.PublicKey
+	handler := func(w http.ResponseWriter, r *http.Request) {
+		data, err := io.ReadAll(r.Body)
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		data, err = decryptRSAMessage(storage.PrivateKey, data)
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		var l loginPwd
+		err = json.Unmarshal(data, &l)
+		if err != nil {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		var token string
+		switch l.Login {
+		case "admin":
+			token = `{"token": "token", "key": "key"}`
+		case "user":
+			token = "{bad json}"
+		case "user1":
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		case "not":
+			w.WriteHeader(http.StatusConflict)
+			return
+		}
+		data, err = encryptRSAMessage([]byte(token), &storage.PrivateKey.PublicKey)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		w.Write(data)
 	}
-	tests := []struct {
-		name    string
-		fields  fields
-		args    args
-		wantErr bool
-	}{
-		// TODO: Add test cases.
+	server := httptest.NewServer(http.HandlerFunc(handler))
+	defer server.Close()
+	t.Run("Успешная регистрация", func(t *testing.T) {
+		if err := storage.Registration(server.URL, "admin", "pwd"); err != nil {
+			t.Errorf("NetStorage.Registration() error: %v", err)
+		}
+	})
+	t.Run("Ошибка регистрации на сервере", func(t *testing.T) {
+		if err := storage.Registration(server.URL, "user1", "passwd"); err == nil {
+			t.Errorf("NetStorage.Registration() error is null")
+		}
+	})
+	t.Run("Ошибка получения токена", func(t *testing.T) {
+		if err := storage.Registration(server.URL, "user", "p"); !errors.Is(err, ErrorJSON) {
+			t.Errorf("NetStorage.Registration() error, want: %v, got: %v", ErrorJSON, err)
+		}
+	})
+	t.Run("Повтор логина пользователя при регистрации", func(t *testing.T) {
+		if err := storage.Registration(server.URL, "not", "p"); !errors.Is(err, ErrorLoginRepeat) {
+			t.Errorf("NetStorage.Registration() error, want: %v, got: %v", ErrorLoginRepeat, err)
+		}
+	})
+}
+
+func TestNetStorage_Authorization(t *testing.T) {
+	storage, err := NewNetStorage(&config.Config{})
+	if err != nil {
+		t.Errorf("NewNetStorage() error: %v", err)
+		return
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			ns := &NetStorage{
-				Config:          tt.fields.Config,
-				Client:          tt.fields.Client,
-				ServerPublicKey: tt.fields.ServerPublicKey,
-				PrivateKey:      tt.fields.PrivateKey,
-				Pwd:             tt.fields.Pwd,
-				JWTToken:        tt.fields.JWTToken,
-				Key:             tt.fields.Key,
-				ServerAESKey:    tt.fields.ServerAESKey,
-				PublicKey:       tt.fields.PublicKey,
-			}
-			if err := ns.Registration(tt.args.url, tt.args.l, tt.args.p); (err != nil) != tt.wantErr {
-				t.Errorf("NetStorage.Registration() error = %v, wantErr %v", err, tt.wantErr)
-			}
-		})
+	storage.ServerPublicKey = &storage.PrivateKey.PublicKey
+	handler := func(w http.ResponseWriter, r *http.Request) {
+		data, err := io.ReadAll(r.Body)
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		data, err = decryptRSAMessage(storage.PrivateKey, data)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		var l loginPwd
+		err = json.Unmarshal(data, &l)
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		var token string
+		switch l.Login {
+		case "admin":
+			token = `{"token": "token", "key": "key"}`
+		case "user":
+			token = "{bad json}"
+		case "user1":
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		case "not":
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		data, err = encryptRSAMessage([]byte(token), &storage.PrivateKey.PublicKey)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		w.Write(data)
+	}
+	server := httptest.NewServer(http.HandlerFunc(handler))
+	defer server.Close()
+	t.Run("Успешная авторизация", func(t *testing.T) {
+		if err := storage.Authorization(server.URL, "admin", "pwd"); err != nil {
+			t.Errorf("NetStorage.Authorization() error: %v", err)
+		}
+	})
+	t.Run("Ошибка авторизации на сервере", func(t *testing.T) {
+		if err := storage.Authorization(server.URL, "user1", "passwd"); err == nil {
+			t.Errorf("NetStorage.Authorization() error is null")
+		}
+	})
+	t.Run("Ошибка получения токена", func(t *testing.T) {
+		if err := storage.Authorization(server.URL, "user", "p"); !errors.Is(err, ErrorJSON) {
+			t.Errorf("NetStorage.Authorization() error, want: %v, got: %v", ErrorJSON, err)
+		}
+	})
+	t.Run("Пользователь не найден", func(t *testing.T) {
+		if err := storage.Authorization(server.URL, "not", "p"); !errors.Is(err, ErrorUserNotFound) {
+			t.Errorf("NetStorage.Authorization() error, want: %v, got: %v", ErrorUserNotFound, err)
+		}
+	})
+}
+
+func TestNetStorage_SetUserAESKey(t *testing.T) {
+	storage, err := NewNetStorage(&config.Config{})
+	if err != nil {
+		t.Errorf("NewNetStorage() error: %v", err)
+		return
+	}
+	storage.ServerAESKey = []byte("server key")
+	key := "key"
+	if err := storage.SetUserAESKey(key); err != nil {
+		t.Errorf("NetStorage.SetUserAESKey() error: %v", err)
 	}
 }

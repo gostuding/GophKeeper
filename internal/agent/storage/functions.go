@@ -33,6 +33,9 @@ const (
 var (
 	ErrorAuthorization = errors.New("authorization error")
 	ErrorStatusCode    = errors.New("response status code error")
+	ErrorUserNotFound  = errors.New("login or password incorrect")
+	ErrorLoginRepeat   = errors.New("such login already exist")
+	ErrorJSON          = errors.New("json error")
 )
 
 func makeError(t ErrType, values ...any) error {
@@ -42,9 +45,9 @@ func makeError(t ErrType, values ...any) error {
 	case ErrGetToken:
 		return fmt.Errorf("get token error: %w", values...)
 	case ErrJSONMarshal:
-		return fmt.Errorf("json marshal error: %w ", values...)
+		return fmt.Errorf("%w, marshal error: %v", ErrorJSON, values)
 	case ErrJSONUnmarshal:
-		return fmt.Errorf("json unmarshal error: %w ", values...)
+		return fmt.Errorf("%w, unmarshal error: %v ", ErrorJSON, values)
 	case ErrNotFound:
 		return fmt.Errorf("not found. Check id and repeat")
 	case ErrDublicate:

@@ -17,11 +17,12 @@ const (
 	fBits                 os.FileMode = 0600
 	defaultPort                       = 8080
 	defaultConCount                   = 10
-	defaultTokenLiveTime              = 60 * 24
+	defaultTokenLiveTime              = 60 * 60 * 24
 	defaultIP                         = "127.0.0.1"
 	defaultPrivateKeyPath             = "./srv_private_key.pem"
 	defaultDSN                        = "host=localhost user=postgres database=gophkeeper"
 	defaultTokenKey                   = "token key"
+	defaulStoragePath                 = "./storage"
 )
 
 // Config is server's config structure.
@@ -29,6 +30,7 @@ type Config struct {
 	IP               string          `json:"ip"`                   // server's IP address
 	DSN              string          `json:"dsn"`                  // database connection string
 	KeyPath          string          `json:"private_key"`          // path to private key file
+	StoragePath      string          `json:"file_storage_path"`    // path to file storage dir
 	PrivateKey       *rsa.PrivateKey `json:"-"`                    // private key
 	TokenKey         []byte          `json:"token_key"`            // key for JWT token create
 	Port             int             `json:"port"`                 // server's PORT
@@ -67,6 +69,7 @@ func checkFileExist(path string) error {
 		MaxConnectCount:  defaultConCount,
 		TokenKey:         []byte(defaultTokenKey),
 		MaxTokenLiveTime: defaultTokenLiveTime,
+		StoragePath:      defaulStoragePath,
 	}
 	data, err := json.MarshalIndent(cfg, "", "    ")
 	if err != nil {

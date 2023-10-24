@@ -28,7 +28,7 @@ const (
 	emptyJSON  = "[]"
 	uidInQuery = "uid = ?"
 	idOrder    = "id desc"
-	fileMode   = 0600
+	fileMode   = 0740
 )
 
 type (
@@ -237,6 +237,7 @@ func (s *Storage) AddFile(ctx context.Context, uid uint, data []byte) ([]byte, e
 	}
 	err = os.MkdirAll(path.Join(s.Path, strconv.Itoa(int(uid)), strconv.Itoa(int(f.ID))), fileMode)
 	if err != nil {
+		s.con.Delete(f)
 		return nil, fmt.Errorf("storage create dir error: %w", err)
 	}
 	return []byte(strconv.Itoa(int(f.ID))), nil
@@ -265,9 +266,10 @@ func (s *Storage) AddFileData(
 // AddFileFinish sets file loaded flag.
 func (s *Storage) AddFileFinish(
 	ctx context.Context,
-	id, uid uint,
+	id uint,
+	uid int,
 ) error {
-	c := Files{ID: id, UID: int(uid)}
+	c := Files{ID: id, UID: uid}
 	result := s.con.WithContext(ctx).Model(&c).Updates(Files{Loaded: true})
 	if result.Error != nil {
 		return makeError(ErrDatabase, result.Error)
@@ -314,15 +316,13 @@ func (s *Storage) GetPreloadFileInfo(ctx context.Context, id uint, uid int) ([]b
 	return []byte(v), nil
 }
 
-// GetFileData returns one file data from database.
-func (s *Storage) GetFileData(ctx context.Context, id uint, uid int, index int) ([]byte, error) {
-	f := FileData{UID: uint(uid), FID: id, Index: index}
-	result := s.con.WithContext(ctx).First(&f)
-	if result.Error != nil {
-		return nil, makeError(ErrDatabase, result.Error)
+// GetFileData returns one file data from file store.
+func (s *Storage) GetFileData(ctx context.Context, id int, uid int, index int) ([]byte, error) {
+	data, err := os.ReadFile(path.Join(s.Path, strconv.Itoa(uid), strconv.Itoa(id), strconv.Itoa(index)))
+	if err != nil {
+		return nil, fmt.Errorf("read file index error: %w", err)
 	}
-	fmt.Println(len(f.Data))
-	return f.Data, nil
+	return data, nil
 }
 
 // Close closes connection to database.

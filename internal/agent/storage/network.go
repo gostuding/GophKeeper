@@ -29,8 +29,6 @@ const (
 	Authorization             = "Authorization" // JWT token header name.
 	urlSD                     = "%s/%d"
 	urlGetKey         urlType = iota
-	// urlRegistration
-	urlLogin
 	urlCardsList
 	urlCardsAdd
 	urlCard
@@ -113,8 +111,6 @@ func NewNetStorage(c *config.Config) (*NetStorage, error) {
 // Returns string with url for send client requests.
 func (ns *NetStorage) url(t urlType) string {
 	switch t {
-	case urlLogin:
-		return fmt.Sprintf("%s/api/user/login", ns.Config.ServerAddres)
 	case urlCardsList:
 		return fmt.Sprintf("%s/api/cards/list", ns.Config.ServerAddres)
 	case urlCardsAdd:
@@ -189,11 +185,7 @@ func (ns *NetStorage) Registration(url, l, p string) error {
 	defer res.Body.Close() //nolint:errcheck //<-senselessly
 	switch res.StatusCode {
 	case http.StatusConflict:
-		if err := ns.Authorization(l, p); err != nil {
-			return errors.New("such login already exist")
-		}
-		ns.Pwd = user.Pwd
-		return nil
+		return ErrorLoginRepeat
 	case http.StatusOK:
 		ns.Pwd = user.Pwd
 		if err = ns.getToken(res.Body); err != nil {
@@ -206,21 +198,21 @@ func (ns *NetStorage) Registration(url, l, p string) error {
 }
 
 // Authorization user at server.
-func (ns *NetStorage) Authorization(l, p string) error {
+func (ns *NetStorage) Authorization(url, l, p string) error {
 	user := loginPwd{Login: l, Pwd: p}
 	user.PublicKey = hex.EncodeToString(ns.PublicKey)
 	data, err := json.Marshal(user)
 	if err != nil {
 		return makeError(ErrJSONMarshal, err)
 	}
-	res, err := ns.doEncryptRequest(data, ns.url(urlLogin), http.MethodPost)
+	res, err := ns.doEncryptRequest(data, url, http.MethodPost)
 	if err != nil {
 		return err
 	}
 	defer res.Body.Close() //nolint:errcheck //<-senselessly
 	switch res.StatusCode {
 	case http.StatusUnauthorized:
-		return errors.New("login or password incorrect")
+		return ErrorUserNotFound
 	case http.StatusOK:
 		ns.Pwd = user.Pwd
 		if err = ns.getToken(res.Body); err != nil {
@@ -236,15 +228,15 @@ func (ns *NetStorage) Authorization(l, p string) error {
 func (ns *NetStorage) getToken(body io.Reader) error {
 	data, err := io.ReadAll(body)
 	if err != nil {
-		return fmt.Errorf("read error: %w", err)
+		return makeError(ErrResponseRead, err)
 	}
 	data, err = decryptRSAMessage(ns.PrivateKey, data)
 	if err != nil {
-		return fmt.Errorf("decrypt error: %w", err)
+		return makeError(ErrDecryptMessage, err)
 	}
 	var t tokenKey
 	if err := json.Unmarshal(data, &t); err != nil {
-		return fmt.Errorf("unmarshal error: %w", err)
+		return makeError(ErrJSONUnmarshal, err)
 	}
 	ns.JWTToken = t.Token
 	ns.ServerAESKey = []byte(t.Key)
@@ -253,6 +245,7 @@ func (ns *NetStorage) getToken(body io.Reader) error {
 
 // SetUserAESKey decripts user key.
 func (ns *NetStorage) SetUserAESKey(key string) error {
+	key = string(aesKey([]byte(key)))
 	k, err := decryptAES(ns.ServerAESKey, []byte(key))
 	if err != nil {
 		return makeError(ErrDecryptMessage, err)

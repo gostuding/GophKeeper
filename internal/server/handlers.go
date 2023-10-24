@@ -441,7 +441,7 @@ func AddFileFinish(
 	if !ok {
 		return http.StatusUnauthorized, makeError(ErrUserAuthorization, nil)
 	}
-	err := strg.AddFileFinish(ctx, fid, uint(uid))
+	err := strg.AddFileFinish(ctx, fid, uid)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return http.StatusNotFound, makeError(ErrNotFound, fid)
