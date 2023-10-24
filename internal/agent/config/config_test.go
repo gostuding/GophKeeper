@@ -3,11 +3,16 @@ package config
 import (
 	"fmt"
 	"os"
+	"path"
 	"testing"
 )
 
+const (
+	cfgName = "config.json"
+)
+
 func TestConfig_Save(t *testing.T) {
-	cfg := Config{path: fmt.Sprintf("%s%vconfig.json", t.TempDir(), os.PathSeparator)}
+	cfg := Config{path: path.Join(t.TempDir(), cfgName)}
 	if err := cfg.Save(); err != nil {
 		t.Errorf("Config.Save() error = %v", err)
 	}
@@ -16,7 +21,7 @@ func TestConfig_Save(t *testing.T) {
 func TestConfig_Read(t *testing.T) {
 	cfg := Config{
 		Login: "test", Key: "test key",
-		path: fmt.Sprintf("%s%vconfig.json", t.TempDir(), os.PathSeparator),
+		path: path.Join(t.TempDir(), cfgName)
 	}
 	if err := cfg.Save(); err != nil {
 		t.Errorf("Config.Save() before read error = %v", err)
@@ -35,16 +40,16 @@ func TestConfig_Read(t *testing.T) {
 }
 
 func TestNewConfig(t *testing.T) {
-	path := fmt.Sprintf("%s%vconfig.json", t.TempDir(), os.PathSeparator)
+	p := path.Join(t.TempDir(), cfgName)
 	c := Config{
 		Login: "test", Key: "test key",
-		path: path,
+		path: p,
 	}
 	if err := c.Save(); err != nil {
 		t.Errorf("NewConfig Save() error = %v", err)
 		return
 	}
-	os.Args = append(os.Args, fmt.Sprintf("-i=%s", path))
+	os.Args = append(os.Args, fmt.Sprintf("-i=%s", p))
 	cfg, err := NewConfig()
 	if err != nil {
 		t.Errorf("NewConfig() error = %v", err)
@@ -57,8 +62,8 @@ func TestNewConfig(t *testing.T) {
 }
 
 func Test_checkFileExist(t *testing.T) {
-	path := fmt.Sprintf("%s%vconfig.json", t.TempDir(), os.PathSeparator)
-	if err := checkFileExist(path); err != nil {
+	p := path.Join(t.TempDir(), cfgName)
+	if err := checkFileExist(p); err != nil {
 		t.Errorf("checkFileExist error: %v", err)
 		return
 	}

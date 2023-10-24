@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -11,6 +12,7 @@ import (
 	"strconv"
 
 	"go.uber.org/zap"
+	"gorm.io/gorm"
 
 	"github.com/gostuding/GophKeeper/docs"
 	"github.com/gostuding/GophKeeper/internal/server/storage"
@@ -197,7 +199,25 @@ func makeRouter(s *Server) http.Handler {
 			}
 			data, status, err := AddFile(r.Context(), body, s.Storage)
 			if err != nil {
-				s.Logger.Warnf("new file info error: %v", err)
+				s.Logger.Warnf("get new file info error: %v", err)
+			}
+			writeResponseData(w, data, status, s.Logger)
+		})
+		r.Post("/api/files/{id}", func(w http.ResponseWriter, r *http.Request) {
+			body, err := readRequestBody(w, r, s.Logger)
+			if err != nil {
+				return
+			}
+			publicKey := hex.EncodeToString(body)
+			id, err := strconv.Atoi(chi.URLParam(r, idString))
+			if err != nil {
+				s.Logger.Warnf(makeError(ErrConvertError, idString, err).Error())
+				writeResponseData(w, nil, http.StatusBadRequest, s.Logger)
+				return
+			}
+			data, status, err := GetPreloadFileInfo(r.Context(), s.Storage, uint(id), publicKey)
+			if err != nil {
+				s.Logger.Warnf("get preload files's info error: %v", err)
 			}
 			writeResponseData(w, data, status, s.Logger)
 		})
@@ -257,6 +277,39 @@ func makeRouter(s *Server) http.Handler {
 				s.Logger.Warnf("delete files's info error: %v", err)
 			}
 			writeResponseData(w, nil, status, s.Logger)
+		})
+		r.Get("/api/files/{id}", func(w http.ResponseWriter, r *http.Request) {
+			id, err := strconv.Atoi(chi.URLParam(r, idString))
+			if err != nil {
+				s.Logger.Warnf(makeError(ErrConvertError, idString, err).Error())
+				writeResponseData(w, nil, http.StatusBadRequest, s.Logger)
+				return
+			}
+			index, err := strconv.Atoi(r.Header.Get("index"))
+			if err != nil {
+				s.Logger.Warnf(makeError(ErrConvertError, "index", err).Error())
+				writeResponseData(w, nil, http.StatusBadRequest, s.Logger)
+				return
+			}
+			uid, ok := r.Context().Value(middlewares.AuthUID).(int)
+			if !ok {
+				s.Logger.Warnf(makeError(ErrUserAuthorization, nil).Error())
+				writeResponseData(w, nil, http.StatusUnauthorized, s.Logger)
+				return
+			}
+			data, err := s.Storage.GetFileData(r.Context(), uint(id), uid, index)
+			if err != nil {
+				if errors.Is(err, gorm.ErrRecordNotFound) {
+					s.Logger.Warnf("file data not found error:", err)
+					writeResponseData(w, nil, http.StatusNotFound, s.Logger)
+					return
+				}
+				s.Logger.Warnf("internal database error: %v", err)
+				writeResponseData(w, nil, http.StatusInternalServerError, s.Logger)
+				return
+			}
+			s.Logger.Info(fmt.Sprintln(id, uid, index, len(data)))
+			writeResponseData(w, data, http.StatusOK, s.Logger)
 		})
 	})
 	return router

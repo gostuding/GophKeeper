@@ -480,6 +480,41 @@ func DeleteFile(
 	return http.StatusOK, nil
 }
 
+// GetPreloadFileInfo returns information about one file from database.
+// @Tags Файлы
+// @Summary Получение названия и количества частей у файла.
+// @Security ApiKeyAuth
+// @Param Authorization header string false "Токен авторизации"
+// @Router /api/files/{id} [post]
+// @Success 200 ""
+// @failure 400 "Ошибка шифрования"
+// @failure 401 "Пользователь не авторизован"
+// @failure 404 "Файл не найден в БД"
+// @failure 500 "Внутренняя ошибка сервиса.".
+func GetPreloadFileInfo(
+	ctx context.Context,
+	strg *storage.Storage,
+	id uint,
+	publicKey string,
+) ([]byte, int, error) {
+	uid, ok := ctx.Value(middlewares.AuthUID).(int)
+	if !ok {
+		return nil, http.StatusUnauthorized, makeError(ErrUserAuthorization, nil)
+	}
+	data, err := strg.GetPreloadFileInfo(ctx, id, uid)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, http.StatusNotFound, makeError(ErrNotFound, id)
+		}
+		return nil, http.StatusInternalServerError, makeError(InternalError, err)
+	}
+	data, err = encryptMessage(data, publicKey)
+	if err != nil {
+		return nil, http.StatusBadRequest, makeError(ErrEncryptMessage, err)
+	}
+	return data, http.StatusOK, nil
+}
+
 // encryption message by RSA.
 func encryptMessage(msg []byte, k string) ([]byte, error) {
 	// splitMessage byte slice to parts for RSA encription.

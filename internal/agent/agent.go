@@ -264,7 +264,7 @@ func (a *Agent) parceCommand(cmd string) string {
 		case files:
 			return "list - список файлов\n" +
 				"add </path/to/file> - добавление файла\n" +
-				"get <id> </path/save/to> - скачать файл\n" +
+				"get <id> - скачать файл\n" +
 				"del <id> - удалить файл"
 		default:
 			return fmt.Sprintf("undefined current command: '%s'", a.currentCommand)
@@ -387,6 +387,23 @@ func (a *Agent) getSwitcher(id string) (string, error) {
 		info := fmt.Sprintf("Название: %s\nНомер: %s\nВладелец: %s\nСрок: %s\nCSV: %s\nДата изменения: %s",
 			card.Label, card.Number, card.User, card.Duration, card.Csv, card.Updated.Format("02.01.2006 15:04:05"))
 		return info, nil
+	case files:
+		url := fmt.Sprintf("%s/%d", a.url(urlFilesList), i)
+		path, maxIndex, err := a.Storage.GetPreloadFileInfo(url)
+		if err != nil {
+			return "", fmt.Errorf("get file preload info error: %w", err)
+		}
+		var p string
+		if err := scanStdin(fmt.Sprintf("Введите путь для файла (%s): ", path), &p); err != nil {
+			return "", fmt.Errorf("read file path error: %w", err)
+		}
+		if p == "" {
+			p = path
+		}
+		if err = a.Storage.GetFile(url, p, maxIndex); err != nil {
+			return "", fmt.Errorf("file transfer error: %w", err)
+		}
+		return "", nil
 	default:
 		return "", ErrUndefinedTarget
 	}

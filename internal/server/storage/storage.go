@@ -9,6 +9,8 @@ import (
 	"errors"
 	"fmt"
 	"math/rand"
+	"os"
+	"path"
 	"strconv"
 	"time"
 
@@ -26,12 +28,14 @@ const (
 	emptyJSON  = "[]"
 	uidInQuery = "uid = ?"
 	idOrder    = "id desc"
+	fileMode   = 0600
 )
 
 type (
 	// Storage is struct for Gorm connection to database.
 	Storage struct {
-		con *gorm.DB
+		con  *gorm.DB
+		Path string
 	}
 	// SendCardsInfo struct sends card's information to clients.
 	sendCardsInfo struct {
@@ -43,7 +47,22 @@ type (
 )
 
 // NewStorage creates and checks database connection.
-func NewStorage(dsn string, maxCon int) (*Storage, error) {
+func NewStorage(dsn string, maxCon int, spath string) (*Storage, error) {
+	f, err := os.Stat(spath)
+	if err != nil {
+		return nil, fmt.Errorf("file storage path error: %w", err)
+	}
+	if !f.IsDir() {
+		return nil, fmt.Errorf("file storage is not a dir")
+	}
+	tmp := path.Join(spath, "tmp")
+	if err = os.Mkdir(tmp, fileMode); err != nil {
+		return nil, fmt.Errorf("file storage write temp dir error: %w", err)
+	}
+	if err = os.Remove(tmp); err != nil {
+		return nil, fmt.Errorf("file storage delete temp dir error: %w", err)
+	}
+
 	db, err := sql.Open("pgx", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("pqx database connection error: %w", err)
@@ -54,7 +73,8 @@ func NewStorage(dsn string, maxCon int) (*Storage, error) {
 		return nil, fmt.Errorf("gorm open connection error: %w", err)
 	}
 	storage := Storage{
-		con: con,
+		con:  con,
+		Path: spath,
 	}
 	return &storage, structCheck(con)
 }
@@ -215,6 +235,10 @@ func (s *Storage) AddFile(ctx context.Context, uid uint, data []byte) ([]byte, e
 	if result.Error != nil {
 		return nil, makeError(ErrDatabase, result.Error)
 	}
+	err = os.MkdirAll(path.Join(s.Path, strconv.Itoa(int(uid)), strconv.Itoa(int(f.ID))), fileMode)
+	if err != nil {
+		return nil, fmt.Errorf("storage create dir error: %w", err)
+	}
 	return []byte(strconv.Itoa(int(f.ID))), nil
 }
 
@@ -225,9 +249,14 @@ func (s *Storage) AddFileData(
 	index, pos, size int,
 	data []byte,
 ) error {
-	f := FileData{Index: index, Pos: pos, Size: size, UID: uid, FID: fid, Data: data}
+	name := path.Join(s.Path, strconv.Itoa(int(uid)), strconv.Itoa(int(fid)), strconv.Itoa(index))
+	if err := os.WriteFile(name, data, fileMode); err != nil {
+		return fmt.Errorf("write file data error: %w", err)
+	}
+	f := FileData{Index: index, Pos: pos, Size: size, UID: uid, FID: fid}
 	result := s.con.WithContext(ctx).Create(&f)
 	if result.Error != nil {
+		os.Remove(name) //nolint:errcheck //<-senselessly
 		return makeError(ErrDatabase, result.Error)
 	}
 	return nil
@@ -263,6 +292,37 @@ func (s *Storage) DeleteFile(ctx context.Context, id, uid uint) error {
 		return fmt.Errorf("transaction error: %w", err)
 	}
 	return nil
+}
+
+// GetPreloadFileInfo returns info about file from database.
+func (s *Storage) GetPreloadFileInfo(ctx context.Context, id uint, uid int) ([]byte, error) {
+	file := Files{UID: uid, ID: id}
+	result := s.con.WithContext(ctx).First(&file)
+	if result.Error != nil {
+		return nil, makeError(ErrDatabase, result.Error)
+	}
+	var maxIndex int
+	row := s.con.WithContext(ctx).Model(&FileData{}).Where(&FileData{UID: uint(uid), FID: id}).Select("max(index)")
+	if row.Error != nil {
+		return nil, makeError(ErrDatabase, result.Error)
+	}
+	result = row.Scan(&maxIndex)
+	if result.Error != nil {
+		return nil, makeError(ErrDatabase, result.Error)
+	}
+	v := fmt.Sprintf(`{"name": "%s", "maxindex": %d}`, file.Name, maxIndex)
+	return []byte(v), nil
+}
+
+// GetFileData returns one file data from database.
+func (s *Storage) GetFileData(ctx context.Context, id uint, uid int, index int) ([]byte, error) {
+	f := FileData{UID: uint(uid), FID: id, Index: index}
+	result := s.con.WithContext(ctx).First(&f)
+	if result.Error != nil {
+		return nil, makeError(ErrDatabase, result.Error)
+	}
+	fmt.Println(len(f.Data))
+	return f.Data, nil
 }
 
 // Close closes connection to database.

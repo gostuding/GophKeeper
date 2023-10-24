@@ -138,12 +138,12 @@ func (ns *NetStorage) doEncryptRequest(msg []byte, url string, method string) (*
 	}
 	req, err := http.NewRequest(method, url, bytes.NewReader(data))
 	if err != nil {
-		return nil, fmt.Errorf("make request error: %w", err)
+		return nil, fmt.Errorf("create request error: %w", err)
 	}
 	req.Header.Add(Authorization, ns.JWTToken)
 	res, err := ns.Client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("http request error: %w", err)
+		return nil, fmt.Errorf("http do request error: %w", err)
 	}
 	return res, nil
 }
@@ -155,6 +155,9 @@ func (ns *NetStorage) Check(url string) error {
 		return fmt.Errorf("check server connection error: %w", err)
 	}
 	defer resp.Body.Close() //nolint:errcheck //<-senselessly
+	if resp.StatusCode != http.StatusOK {
+		return makeError(ErrResponseStatusCode, resp.StatusCode)
+	}
 	keyData, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return makeError(ErrResponseRead, err)
@@ -252,7 +255,7 @@ func (ns *NetStorage) getToken(body io.Reader) error {
 func (ns *NetStorage) SetUserAESKey(key string) error {
 	k, err := decryptAES(ns.ServerAESKey, []byte(key))
 	if err != nil {
-		return makeError(ErrDecrypt, "user key error:", err)
+		return makeError(ErrDecryptMessage, err)
 	}
 	ns.Key = k
 	return nil
@@ -319,7 +322,7 @@ func (ns *NetStorage) GetCard(id int) (*CardInfo, error) {
 		}
 		msg, err := hex.DecodeString(l.Info)
 		if err != nil {
-			return nil, makeError(ErrDecrypt, err)
+			return nil, fmt.Errorf("hex decodeString error: %w", err)
 		}
 		info, err := decryptAES(ns.Key, msg)
 		if err != nil {
@@ -435,7 +438,7 @@ func (ns *NetStorage) getNewFileID(info os.FileInfo) (int, error) {
 	}
 	defer res.Body.Close() //nolint:errcheck //<-senselessly
 	if res.StatusCode != http.StatusOK {
-		return 0, makeError(ErrResponseStatusCode, res.StatusCode, "get file id error")
+		return 0, makeError(ErrResponseStatusCode, res.StatusCode)
 	}
 	f, err := io.ReadAll(res.Body)
 	if err != nil {
@@ -449,7 +452,7 @@ func (ns *NetStorage) getNewFileID(info os.FileInfo) (int, error) {
 }
 
 // fihishFileTrasfer sends get request to server for confirm add finish.
-func (ns *NetStorage) fihishFileTrasfer(fid int) error {
+func (ns *NetStorage) fihishFileTransfer(fid int) error {
 	url := fmt.Sprintf("%s?fid=%d", ns.url(urlFileAdd), fid)
 	req, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
@@ -461,10 +464,14 @@ func (ns *NetStorage) fihishFileTrasfer(fid int) error {
 		return makeError(ErrRequest, err)
 	}
 	defer res.Body.Close() //nolint:errcheck //<-senselessly
-	if res.StatusCode != http.StatusOK {
+	switch res.StatusCode {
+	case http.StatusOK:
+		return nil
+	case http.StatusUnauthorized:
+		return ErrorAuthorization
+	default:
 		return makeError(ErrResponseStatusCode, res.StatusCode, "finish file add error")
 	}
-	return nil
 }
 
 // AddFile sends file to server.
@@ -506,8 +513,8 @@ func (ns *NetStorage) AddFile(path string, info os.FileInfo) error {
 					return
 				}
 				index++
-				sendChan <- FileSend{Index: index, Pos: pos, Size: n, Data: data}
-				pos += int64(n)
+				sendChan <- FileSend{Index: index, Pos: pos, Size: len(data), Data: data}
+				pos += int64(len(data))
 			}
 		}
 	}()
@@ -523,12 +530,7 @@ func (ns *NetStorage) AddFile(path string, info os.FileInfo) error {
 				case <-stopChan:
 					return
 				default:
-					data, err := EncryptAES(ns.Key, item.Data)
-					if err != nil {
-						errChan <- makeError(ErrEncrypt, err)
-						return
-					}
-					req, err := http.NewRequest(http.MethodPost, ns.url(urlFileAdd), bytes.NewReader(data))
+					req, err := http.NewRequest(http.MethodPost, ns.url(urlFileAdd), bytes.NewReader(item.Data))
 					if err != nil {
 						errChan <- makeError(ErrRequest, err)
 						return
@@ -564,7 +566,7 @@ func (ns *NetStorage) AddFile(path string, info os.FileInfo) error {
 			return <-errChan
 		}
 		close(errChan)
-		return ns.fihishFileTrasfer(fid)
+		return ns.fihishFileTransfer(fid)
 	case err := <-errChan:
 		close(stopChan)
 		wg.Wait()
@@ -581,7 +583,7 @@ func (ns *NetStorage) deleteItem(url string) error {
 	defer res.Body.Close() //nolint:errcheck //<-senselessly
 	switch res.StatusCode {
 	case http.StatusUnauthorized:
-		return makeError(ErrAuthorization, nil)
+		return ErrorAuthorization
 	case http.StatusNotFound:
 		return makeError(ErrNotFound, nil)
 	case http.StatusOK:
@@ -594,4 +596,85 @@ func (ns *NetStorage) deleteItem(url string) error {
 // DeleteFile requests to delete file's info from server.
 func (ns *NetStorage) DeleteFile(id int) error {
 	return ns.deleteItem(fmt.Sprintf(urlSD, ns.url(urlFilesList), id))
+}
+
+// GetPreloadFileInfo requests file max index from database.
+func (ns *NetStorage) GetPreloadFileInfo(url string) (string, int, error) {
+	resp, err := ns.doEncryptRequest(ns.PublicKey, url, http.MethodPost)
+	if err != nil {
+		return "", 0, err
+	}
+	defer resp.Body.Close() //nolint:errcheck //<-senselessly
+	switch resp.StatusCode {
+	case http.StatusUnauthorized:
+		return "", 0, ErrorAuthorization
+	case http.StatusNotFound:
+		return "", 0, makeError(ErrNotFound, nil)
+	case http.StatusOK:
+		data, err := readAndDecryptRSA(resp.Body, ns.PrivateKey)
+		if err != nil {
+			return "", 0, makeError(ErrDecryptMessage, err)
+		}
+		type answer struct {
+			Name     string `json:"name"`
+			MaxIndex int    `json:"maxindex"`
+		}
+		var f answer
+		err = json.Unmarshal(data, &f)
+		if err != nil {
+			return "", 0, makeError(ErrJSONUnmarshal, err)
+		}
+		return f.Name, f.MaxIndex, nil
+	default:
+		return "", 0, makeError(ErrResponseStatusCode, resp.StatusCode)
+	}
+
+}
+
+// GetFile loads file from server, decrypts it and saves in path.
+func (ns *NetStorage) GetFile(url, path string, maxIndex int) error {
+	file, err := os.OpenFile(path, os.O_WRONLY|os.O_TRUNC|os.O_CREATE, 0600)
+	if err != nil {
+		return fmt.Errorf("save file path error: %w", err)
+	}
+	defer file.Close()
+	var indexName = "index"
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		return makeError(ErrRequest, err)
+	}
+	req.Header.Add(Authorization, ns.JWTToken)
+	req.Header.Add(indexName, "")
+	for i := 1; i <= maxIndex; i++ {
+		req.Header.Set(indexName, strconv.Itoa(i))
+		res, err := ns.Client.Do(req)
+		if err != nil {
+			return makeError(ErrResponse, err)
+		}
+		switch res.StatusCode {
+		case http.StatusUnauthorized:
+			return ErrorAuthorization
+		case http.StatusOK:
+			body, err := io.ReadAll(res.Body)
+			if err != nil {
+				return makeError(ErrResponseRead, err)
+			}
+			fmt.Println(i, len(body))
+			body, err = decryptAES(ns.Key, body)
+			if err != nil {
+				return makeError(ErrDecryptMessage, err)
+			}
+			fmt.Println("decrypt", len(body))
+			_, err = file.Write(body)
+			if err != nil {
+				return fmt.Errorf("write file error: %w", err)
+			}
+			if err = res.Body.Close(); err != nil {
+				return fmt.Errorf("response body close error: %w", err)
+			}
+		default:
+			return makeError(ErrResponseStatusCode, res.StatusCode)
+		}
+	}
+	return nil
 }

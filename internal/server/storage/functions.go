@@ -38,13 +38,13 @@ type (
 	}
 	// FileData is Gorm struct for save files data.
 	FileData struct {
-		Data  []byte `gorm:"array"`
-		Index int    `gorm:"numeric"`
-		Pos   int    `gorm:"numeric"`
-		Size  int    `gorm:"numeric"`
-		ID    uint   `gorm:"primarykey"`
-		FID   uint   `gorm:"numeric"`
-		UID   uint   `gorm:"numeric"`
+		Data  []byte
+		Index int  `gorm:"numeric"`
+		Pos   int  `gorm:"numeric"`
+		Size  int  `gorm:"numeric"`
+		ID    uint `gorm:"primarykey"`
+		FID   uint `gorm:"numeric"`
+		UID   uint `gorm:"numeric"`
 	}
 )
 

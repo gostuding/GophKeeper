@@ -21,7 +21,6 @@ const (
 	ErrDublicate
 	ErrServerDecrypt
 	ErrServerEncrypt
-	ErrDecrypt
 	ErrEncrypt
 	ErrResponseStatusCode
 	ErrResponseRead
@@ -31,10 +30,15 @@ const (
 	ErrGetToken
 )
 
+var (
+	ErrorAuthorization = errors.New("authorization error")
+	ErrorStatusCode    = errors.New("response status code error")
+)
+
 func makeError(t ErrType, values ...any) error {
 	switch t {
 	case ErrAuthorization:
-		return fmt.Errorf("authorization error")
+		return ErrorAuthorization
 	case ErrGetToken:
 		return fmt.Errorf("get token error: %w", values...)
 	case ErrJSONMarshal:
@@ -49,12 +53,10 @@ func makeError(t ErrType, values ...any) error {
 		return fmt.Errorf("server dencrypt message error")
 	case ErrServerEncrypt:
 		return fmt.Errorf("server encrypt message error")
-	case ErrDecrypt:
-		return fmt.Errorf("decrypt error")
 	case ErrEncrypt:
 		return fmt.Errorf("encrypt error")
 	case ErrResponseStatusCode:
-		return fmt.Errorf("response status code error. Status code is: %v", values...)
+		return fmt.Errorf("%w. Status code is: %v", ErrorStatusCode, values)
 	case ErrResponseRead:
 		return fmt.Errorf("response body read error: %w", values...)
 	case ErrDecryptMessage:
@@ -120,7 +122,7 @@ func readAndDecryptRSA(body io.ReadCloser, key *rsa.PrivateKey) ([]byte, error) 
 	}
 	data, err = decryptRSAMessage(key, data)
 	if err != nil {
-		return nil, makeError(ErrDecrypt, err)
+		return nil, makeError(ErrDecryptMessage, err)
 	}
 	return data, nil
 }
