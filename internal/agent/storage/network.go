@@ -22,14 +22,15 @@ import (
 type urlType int
 
 const (
-	readFileBlockSize         = 1024 * 1024 * 2 // read file block size
-	sendThreadCount           = 10              // count send requests to server
-	keySize                   = 4028            // default rsa key size.
-	requestTimeout            = 60              // default request timeout
-	Authorization             = "Authorization" // JWT token header name.
+	readFileBlockSize         = 1024 * 1024 * 2       // read file block size
+	sendThreadCount           = 10                    // count send requests to server
+	keySize                   = 4028                  // default rsa key size.
+	requestTimeout            = 60                    // default request timeout
+	Authorization             = "Authorization"       // JWT token header name.
+	TimeFormat                = "02.01.2006 15:04:05" //
+	writeFileMode             = 0600
 	urlSD                     = "%s/%d"
 	urlGetKey         urlType = iota
-	urlCardsList
 	urlCardsAdd
 	urlCard
 	urlFilesList
@@ -111,8 +112,6 @@ func NewNetStorage(c *config.Config) (*NetStorage, error) {
 // Returns string with url for send client requests.
 func (ns *NetStorage) url(t urlType) string {
 	switch t {
-	case urlCardsList:
-		return fmt.Sprintf("%s/api/cards/list", ns.Config.ServerAddres)
 	case urlCardsAdd:
 		return fmt.Sprintf("%s/api/cards/add", ns.Config.ServerAddres)
 	case urlCard:
@@ -170,8 +169,8 @@ func (ns *NetStorage) Check(url string) error {
 	return nil
 }
 
-// Registration new user at server.
-func (ns *NetStorage) Registration(url, l, p string) error {
+// Authentification is register or login in server.
+func (ns *NetStorage) Authentification(url string, l, p string) error {
 	user := loginPwd{Login: l, Pwd: p}
 	user.PublicKey = hex.EncodeToString(ns.PublicKey)
 	data, err := json.Marshal(user)
@@ -185,34 +184,9 @@ func (ns *NetStorage) Registration(url, l, p string) error {
 	defer res.Body.Close() //nolint:errcheck //<-senselessly
 	switch res.StatusCode {
 	case http.StatusConflict:
-		return ErrorLoginRepeat
-	case http.StatusOK:
-		ns.Pwd = user.Pwd
-		if err = ns.getToken(res.Body); err != nil {
-			return makeError(ErrGetToken, err)
-		}
-		return nil
-	default:
-		return makeError(ErrResponseStatusCode, res.StatusCode)
-	}
-}
-
-// Authorization user at server.
-func (ns *NetStorage) Authorization(url, l, p string) error {
-	user := loginPwd{Login: l, Pwd: p}
-	user.PublicKey = hex.EncodeToString(ns.PublicKey)
-	data, err := json.Marshal(user)
-	if err != nil {
-		return makeError(ErrJSONMarshal, err)
-	}
-	res, err := ns.doEncryptRequest(data, url, http.MethodPost)
-	if err != nil {
-		return err
-	}
-	defer res.Body.Close() //nolint:errcheck //<-senselessly
-	switch res.StatusCode {
+		return ErrLoginRepeat
 	case http.StatusUnauthorized:
-		return ErrorUserNotFound
+		return ErrUserNotFound
 	case http.StatusOK:
 		ns.Pwd = user.Pwd
 		if err = ns.getToken(res.Body); err != nil {
@@ -255,15 +229,15 @@ func (ns *NetStorage) SetUserAESKey(key string) error {
 }
 
 // GetCardsList requests cards list from server.
-func (ns *NetStorage) GetCardsList() (string, error) {
-	res, err := ns.doEncryptRequest(ns.PublicKey, ns.url(urlCardsList), http.MethodPost)
+func (ns *NetStorage) GetCardsList(url string) (string, error) {
+	res, err := ns.doEncryptRequest(ns.PublicKey, url, http.MethodPost)
 	if err != nil {
 		return "", err
 	}
 	defer res.Body.Close() //nolint:errcheck //<-senselessly
 	switch res.StatusCode {
 	case http.StatusUnauthorized:
-		return "", makeError(ErrAuthorization, nil)
+		return "", ErrAuthorization
 	case http.StatusBadRequest:
 		return "", makeError(ErrServerDecrypt, nil)
 	case http.StatusOK:
@@ -282,7 +256,7 @@ func (ns *NetStorage) GetCardsList() (string, error) {
 		}
 		cards := ""
 		for _, val := range lst {
-			cards += fmt.Sprintf("Card: %d. '%s'\t'%s'\n", val.ID, val.Label, val.Updated.Format("02.01.2006 15:04:05"))
+			cards += fmt.Sprintf("Card: %d. '%s'\t'%s'\n", val.ID, val.Label, val.Updated.Format(TimeFormat))
 		}
 		return cards, nil
 	default:
@@ -291,8 +265,7 @@ func (ns *NetStorage) GetCardsList() (string, error) {
 }
 
 // GetCard requests card info.
-func (ns *NetStorage) GetCard(id int) (*CardInfo, error) {
-	url := fmt.Sprintf(urlSD, ns.url(urlCard), id)
+func (ns *NetStorage) GetCard(url string) (*CardInfo, error) {
 	res, err := ns.doEncryptRequest(ns.PublicKey, url, http.MethodPost)
 	if err != nil {
 		return nil, err
@@ -300,9 +273,9 @@ func (ns *NetStorage) GetCard(id int) (*CardInfo, error) {
 	defer res.Body.Close() //nolint:errcheck //<-senselessly
 	switch res.StatusCode {
 	case http.StatusUnauthorized:
-		return nil, makeError(ErrAuthorization, nil)
+		return nil, ErrAuthorization
 	case http.StatusNotFound:
-		return nil, makeError(ErrNotFound, nil)
+		return nil, ErrNotFound
 	case http.StatusOK:
 		data, err := readAndDecryptRSA(res.Body, ns.PrivateKey)
 		if err != nil {
@@ -335,12 +308,12 @@ func (ns *NetStorage) GetCard(id int) (*CardInfo, error) {
 }
 
 // DeleteCard requests to delete card's info from server.
-func (ns *NetStorage) DeleteCard(id int) error {
-	return ns.deleteItem(fmt.Sprintf(urlSD, ns.url(urlCard), id))
+func (ns *NetStorage) DeleteCard(url string) error {
+	return ns.deleteItem(url)
 }
 
 // addUpdateCard common in add and update card functions.
-func (ns *NetStorage) addUpdateCard(url, method string, card CardInfo) error {
+func (ns *NetStorage) addUpdateCard(url, method string, card *CardInfo) error {
 	data, err := json.Marshal(&card)
 	if err != nil {
 		return makeError(ErrJSONMarshal, err)
@@ -361,7 +334,9 @@ func (ns *NetStorage) addUpdateCard(url, method string, card CardInfo) error {
 	defer res.Body.Close() //nolint:errcheck //<-senselessly
 	switch res.StatusCode {
 	case http.StatusConflict:
-		return makeError(ErrDublicate, nil)
+		return ErrDublicateError
+	case http.StatusUnauthorized:
+		return ErrAuthorization
 	case http.StatusOK:
 		return nil
 	default:
@@ -370,13 +345,13 @@ func (ns *NetStorage) addUpdateCard(url, method string, card CardInfo) error {
 }
 
 // AddCard adds one card info to server.
-func (ns *NetStorage) AddCard(card CardInfo) error {
-	return ns.addUpdateCard(ns.url(urlCardsAdd), http.MethodPost, card)
+func (ns *NetStorage) AddCard(url string, card *CardInfo) error {
+	return ns.addUpdateCard(url, http.MethodPost, card)
 }
 
 // UpdateCard edits one card info at server.
-func (ns *NetStorage) UpdateCard(id int, card CardInfo) error {
-	return ns.addUpdateCard(fmt.Sprintf(urlSD, ns.url(urlCard), id), http.MethodPut, card)
+func (ns *NetStorage) UpdateCard(url string, card *CardInfo) error {
+	return ns.addUpdateCard(url, http.MethodPut, card)
 }
 
 // GetFilesList requests user's files list from server.
@@ -388,7 +363,7 @@ func (ns *NetStorage) GetFilesList() (string, error) {
 	defer res.Body.Close() //nolint:errcheck //<-senselessly
 	switch res.StatusCode {
 	case http.StatusUnauthorized:
-		return "", makeError(ErrAuthorization, nil)
+		return "", ErrAuthorization
 	case http.StatusBadRequest:
 		return "", makeError(ErrServerEncrypt, nil)
 	case http.StatusOK:
@@ -408,7 +383,7 @@ func (ns *NetStorage) GetFilesList() (string, error) {
 		files := ""
 		for _, val := range lst {
 			files += fmt.Sprintf("File: %d. Название:'%s'\tРазмер:'%s'\tДата: %s",
-				val.ID, val.Name, fileSize(val.Size), val.CreatedAt.Format("02.01.2006 15:04:05"))
+				val.ID, val.Name, fileSize(val.Size), val.CreatedAt.Format(TimeFormat))
 			if !val.Loaded {
 				files += "\t'Загружен не полностью'"
 			}
@@ -461,7 +436,7 @@ func (ns *NetStorage) fihishFileTransfer(fid int) error {
 	case http.StatusOK:
 		return nil
 	case http.StatusUnauthorized:
-		return ErrorAuthorization
+		return ErrAuthorization
 	default:
 		return makeError(ErrResponseStatusCode, res.StatusCode, "finish file add error")
 	}
@@ -576,9 +551,9 @@ func (ns *NetStorage) deleteItem(url string) error {
 	defer res.Body.Close() //nolint:errcheck //<-senselessly
 	switch res.StatusCode {
 	case http.StatusUnauthorized:
-		return ErrorAuthorization
+		return ErrAuthorization
 	case http.StatusNotFound:
-		return makeError(ErrNotFound, nil)
+		return ErrNotFound
 	case http.StatusOK:
 		return nil
 	default:
@@ -587,8 +562,8 @@ func (ns *NetStorage) deleteItem(url string) error {
 }
 
 // DeleteFile requests to delete file's info from server.
-func (ns *NetStorage) DeleteFile(id int) error {
-	return ns.deleteItem(fmt.Sprintf(urlSD, ns.url(urlFilesList), id))
+func (ns *NetStorage) DeleteFile(url string) error {
+	return ns.deleteItem(url)
 }
 
 // GetPreloadFileInfo requests file max index from database.
@@ -600,9 +575,9 @@ func (ns *NetStorage) GetPreloadFileInfo(url string) (string, int, error) {
 	defer resp.Body.Close() //nolint:errcheck //<-senselessly
 	switch resp.StatusCode {
 	case http.StatusUnauthorized:
-		return "", 0, ErrorAuthorization
+		return "", 0, ErrAuthorization
 	case http.StatusNotFound:
-		return "", 0, makeError(ErrNotFound, nil)
+		return "", 0, ErrNotFound
 	case http.StatusOK:
 		data, err := readAndDecryptRSA(resp.Body, ns.PrivateKey)
 		if err != nil {
@@ -621,16 +596,15 @@ func (ns *NetStorage) GetPreloadFileInfo(url string) (string, int, error) {
 	default:
 		return "", 0, makeError(ErrResponseStatusCode, resp.StatusCode)
 	}
-
 }
 
 // GetFile loads file from server, decrypts it and saves in path.
 func (ns *NetStorage) GetFile(url, path string, maxIndex int) error {
-	file, err := os.OpenFile(path, os.O_WRONLY|os.O_TRUNC|os.O_CREATE, 0600)
+	file, err := os.OpenFile(path, os.O_WRONLY|os.O_TRUNC|os.O_CREATE, writeFileMode)
 	if err != nil {
 		return fmt.Errorf("save file path error: %w", err)
 	}
-	defer file.Close()
+	defer file.Close() //nolint:errcheck //<-
 	var indexName = "index"
 	req, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
@@ -646,7 +620,7 @@ func (ns *NetStorage) GetFile(url, path string, maxIndex int) error {
 		}
 		switch res.StatusCode {
 		case http.StatusUnauthorized:
-			return ErrorAuthorization
+			return ErrAuthorization
 		case http.StatusOK:
 			body, err := io.ReadAll(res.Body)
 			if err != nil {

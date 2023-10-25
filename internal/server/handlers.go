@@ -257,13 +257,13 @@ func GetCard(
 func DeleteCard(
 	ctx context.Context,
 	strg *storage.Storage,
-	id uint,
+	id int,
 ) (int, error) {
 	uid, ok := ctx.Value(middlewares.AuthUID).(int)
 	if !ok {
 		return http.StatusUnauthorized, makeError(ErrUserAuthorization, nil)
 	}
-	err := strg.DeleteCard(ctx, id, uint(uid))
+	err := strg.DeleteCard(ctx, uint(id), uint(uid))
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return http.StatusNotFound, makeError(ErrNotFound, id)
@@ -397,7 +397,7 @@ func AddFileData(
 	if !ok {
 		return http.StatusUnauthorized, makeError(ErrUserAuthorization, nil)
 	}
-	index, err := strconv.Atoi(r.Header.Get("index"))
+	index, err := strconv.Atoi(r.Header.Get(ind))
 	if err != nil {
 		return http.StatusBadRequest, makeError(ErrConvertError, err)
 	}
@@ -464,13 +464,13 @@ func AddFileFinish(
 func DeleteFile(
 	ctx context.Context,
 	strg *storage.Storage,
-	id uint,
+	id int,
 ) (int, error) {
 	uid, ok := ctx.Value(middlewares.AuthUID).(int)
 	if !ok {
 		return http.StatusUnauthorized, makeError(ErrUserAuthorization, nil)
 	}
-	err := strg.DeleteFile(ctx, id, uint(uid))
+	err := strg.DeleteFile(ctx, uint(id), uint(uid))
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return http.StatusNotFound, makeError(ErrNotFound, id)

@@ -14,11 +14,8 @@ import (
 type ErrType int
 
 const (
-	ErrAuthorization ErrType = iota
-	ErrJSONMarshal
+	ErrJSONMarshal ErrType = iota
 	ErrJSONUnmarshal
-	ErrNotFound
-	ErrDublicate
 	ErrServerDecrypt
 	ErrServerEncrypt
 	ErrEncrypt
@@ -31,27 +28,23 @@ const (
 )
 
 var (
-	ErrorAuthorization = errors.New("authorization error")
-	ErrorStatusCode    = errors.New("response status code error")
-	ErrorUserNotFound  = errors.New("login or password incorrect")
-	ErrorLoginRepeat   = errors.New("such login already exist")
-	ErrorJSON          = errors.New("json error")
+	ErrAuthorization  = errors.New("authorization error")
+	ErrStatusCode     = errors.New("response status code error")
+	ErrUserNotFound   = errors.New("login or password incorrect")
+	ErrLoginRepeat    = errors.New("such login already exist")
+	ErrJSON           = errors.New("json error")
+	ErrNotFound       = errors.New("not found. Check id and repeat")
+	ErrDublicateError = errors.New("values dublicate error")
 )
 
 func makeError(t ErrType, values ...any) error {
 	switch t {
-	case ErrAuthorization:
-		return ErrorAuthorization
 	case ErrGetToken:
 		return fmt.Errorf("get token error: %w", values...)
 	case ErrJSONMarshal:
-		return fmt.Errorf("%w, marshal error: %v", ErrorJSON, values)
+		return fmt.Errorf("%w, marshal error: %v", ErrJSON, values)
 	case ErrJSONUnmarshal:
-		return fmt.Errorf("%w, unmarshal error: %v ", ErrorJSON, values)
-	case ErrNotFound:
-		return fmt.Errorf("not found. Check id and repeat")
-	case ErrDublicate:
-		return fmt.Errorf("values dublicate error")
+		return fmt.Errorf("%w, unmarshal error: %v ", ErrJSON, values)
 	case ErrServerDecrypt:
 		return fmt.Errorf("server dencrypt message error")
 	case ErrServerEncrypt:
@@ -59,7 +52,7 @@ func makeError(t ErrType, values ...any) error {
 	case ErrEncrypt:
 		return fmt.Errorf("encrypt error")
 	case ErrResponseStatusCode:
-		return fmt.Errorf("%w. Status code is: %v", ErrorStatusCode, values)
+		return fmt.Errorf("%w. Status code is: %v", ErrStatusCode, values)
 	case ErrResponseRead:
 		return fmt.Errorf("response body read error: %w", values...)
 	case ErrDecryptMessage:

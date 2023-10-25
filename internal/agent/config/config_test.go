@@ -36,7 +36,6 @@ func TestConfig_Read(t *testing.T) {
 		t.Errorf("Config.Read() values not equal: want: %s, get: %s", cfg.Login, c.Login)
 		return
 	}
-
 }
 
 func TestNewConfig(t *testing.T) {
@@ -49,7 +48,7 @@ func TestNewConfig(t *testing.T) {
 		t.Errorf("NewConfig Save() error = %v", err)
 		return
 	}
-	os.Args = append(os.Args, fmt.Sprintf("-i=%s", p))
+	os.Args = append(os.Args, fmt.Sprintf("-i=%s", p)) //nolint:reassign //<-need for test
 	cfg, err := NewConfig()
 	if err != nil {
 		t.Errorf("NewConfig() error = %v", err)

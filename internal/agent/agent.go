@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"os/signal"
 	"strconv"
@@ -33,6 +34,7 @@ const (
 	ErrEncrypt
 	ErrDecrypt
 	ErrSaveConfig
+	ErrURLJoin
 
 	urlCheck urlType = iota
 	urlRegistration
@@ -60,6 +62,8 @@ func makeError(t errType, values ...any) error {
 		return fmt.Errorf("decrypt value error: %w", values...)
 	case ErrSaveConfig:
 		return fmt.Errorf("save configuration error: %w", values...)
+	case ErrURLJoin:
+		return fmt.Errorf("url join error: %w", values...)
 	default:
 		return fmt.Errorf("undefined error: %w", values...)
 	}
@@ -216,9 +220,9 @@ func (a *Agent) registration() error {
 	if p != r {
 		return errors.New("passwords are not equal")
 	}
-	err = a.Storage.Registration(a.url(urlRegistration), l, p)
-	if errors.Is(err, storage.ErrorLoginRepeat) {
-		err = a.Storage.Authorization(a.url(urlLogin), l, p)
+	err = a.Storage.Authentification(a.url(urlRegistration), l, p)
+	if errors.Is(err, storage.ErrLoginRepeat) {
+		err = a.Storage.Authentification(a.url(urlLogin), l, p)
 	}
 	if err != nil {
 		return fmt.Errorf("registration error: %w", err)
@@ -238,7 +242,7 @@ func (a *Agent) login() error {
 	if err != nil {
 		return makeError(ErrScanValue, err)
 	}
-	err = a.Storage.Authorization(a.url(urlLogin), a.Config.Login, string(pwd))
+	err = a.Storage.Authentification(a.url(urlLogin), a.Config.Login, string(pwd))
 	if err != nil {
 		a.Config.Login = ""
 		return fmt.Errorf("authorization error: %w", err)
@@ -341,7 +345,9 @@ func (a *Agent) addSwitcher(path string) error {
 		if err := scanStdin("Введите csv-код (3 цифры на обороте): ", &c); err != nil {
 			return makeError(ErrScanValue, err)
 		}
-		if err := a.Storage.AddCard(storage.CardInfo{Label: l, User: u, Number: n, Duration: d, Csv: c}); err != nil {
+		card := storage.CardInfo{Label: l, User: u, Number: n, Duration: d, Csv: c}
+		err := a.Storage.AddCard(a.url(urlCardsAdd), &card)
+		if err != nil {
 			return fmt.Errorf("card add error: %w", err)
 		}
 		return nil
@@ -367,7 +373,7 @@ func (a *Agent) addSwitcher(path string) error {
 func (a *Agent) listSwitcher() (string, error) {
 	switch a.currentCommand {
 	case cards:
-		return a.Storage.GetCardsList() //nolint:wrapcheck //<-
+		return a.Storage.GetCardsList(a.url(urlCardsList)) //nolint:wrapcheck //<-
 	case files:
 		return a.Storage.GetFilesList() //nolint:wrapcheck //<-
 	default:
@@ -377,13 +383,17 @@ func (a *Agent) listSwitcher() (string, error) {
 
 // getSwitcher makes get Storage's function according to currentCommand.
 func (a *Agent) getSwitcher(id string) (string, error) {
-	i, err := strconv.Atoi(id)
+	_, err := strconv.Atoi(id)
 	if err != nil {
 		return "", makeError(ErrIDConver, err)
 	}
 	switch a.currentCommand {
 	case cards:
-		card, err := a.Storage.GetCard(i)
+		u, err := url.JoinPath(a.url(urlCard), id)
+		if err != nil {
+			return "", makeError(ErrURLJoin, err)
+		}
+		card, err := a.Storage.GetCard(u)
 		if err != nil {
 			return "", fmt.Errorf("get error: %w", err)
 		}
@@ -391,8 +401,11 @@ func (a *Agent) getSwitcher(id string) (string, error) {
 			card.Label, card.Number, card.User, card.Duration, card.Csv, card.Updated.Format("02.01.2006 15:04:05"))
 		return info, nil
 	case files:
-		url := fmt.Sprintf("%s/%d", a.url(urlFilesList), i)
-		path, maxIndex, err := a.Storage.GetPreloadFileInfo(url)
+		u, err := url.JoinPath(a.url(urlFilesList), id)
+		if err != nil {
+			return "", makeError(ErrURLJoin, err)
+		}
+		path, maxIndex, err := a.Storage.GetPreloadFileInfo(u)
 		if err != nil {
 			return "", fmt.Errorf("get file preload info error: %w", err)
 		}
@@ -403,7 +416,7 @@ func (a *Agent) getSwitcher(id string) (string, error) {
 		if p == "" {
 			p = path
 		}
-		if err = a.Storage.GetFile(url, p, maxIndex); err != nil {
+		if err = a.Storage.GetFile(u, p, maxIndex); err != nil {
 			return "", fmt.Errorf("file transfer error: %w", err)
 		}
 		return "", nil
@@ -414,15 +427,23 @@ func (a *Agent) getSwitcher(id string) (string, error) {
 
 // deleteSwitcher makes delete Storage's function according to currentCommand.
 func (a *Agent) deleteSwitcher(id string) error {
-	i, err := strconv.Atoi(id)
+	_, err := strconv.Atoi(id)
 	if err != nil {
 		return makeError(ErrIDConver, err)
 	}
 	switch a.currentCommand {
 	case cards:
-		return a.Storage.DeleteCard(i) //nolint:wrapcheck //<-
+		u, err := url.JoinPath(a.url(urlCard), id)
+		if err != nil {
+			return makeError(ErrURLJoin, err)
+		}
+		return a.Storage.DeleteCard(u) //nolint:wrapcheck //<-
 	case files:
-		return a.Storage.DeleteFile(i) //nolint:wrapcheck //<-
+		u, err := url.JoinPath(a.url(urlFilesList), id)
+		if err != nil {
+			return makeError(ErrURLJoin, err)
+		}
+		return a.Storage.DeleteFile(u) //nolint:wrapcheck //<-
 	default:
 		return ErrUndefinedTarget
 	}
@@ -430,13 +451,17 @@ func (a *Agent) deleteSwitcher(id string) error {
 
 // editSwitcher makes edit Storage's function according to currentCommand.
 func (a *Agent) editSwitcher(id string) error {
-	i, err := strconv.Atoi(id)
+	_, err := strconv.Atoi(id)
 	if err != nil {
 		return makeError(ErrIDConver, err)
 	}
 	switch a.currentCommand {
 	case cards:
-		card, err := a.Storage.GetCard(i)
+		url, err := url.JoinPath(a.url(urlCard), id)
+		if err != nil {
+			return makeError(ErrURLJoin, err)
+		}
+		card, err := a.Storage.GetCard(url)
 		if err != nil {
 			return fmt.Errorf("get card error: %w", err)
 		}
@@ -471,7 +496,7 @@ func (a *Agent) editSwitcher(id string) error {
 		if c != "" {
 			card.Csv = c
 		}
-		if err := a.Storage.UpdateCard(i, *card); err != nil {
+		if err := a.Storage.UpdateCard(url, card); err != nil {
 			return fmt.Errorf("card edit error: %w", err)
 		}
 		return nil

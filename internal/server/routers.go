@@ -30,6 +30,7 @@ const (
 	ContentType = "Content-Type"
 	TextPlain   = "text/plain"
 	idString    = "id"
+	ind         = "index"
 )
 
 // writeResponseData is using for no duplicate code.
@@ -50,6 +51,24 @@ func readRequestBody(w http.ResponseWriter, r *http.Request, l *zap.SugaredLogge
 		return nil, makeError(ErrReadRequestBody, err)
 	}
 	return data, nil
+}
+
+// deleteCommon is using for no duplicate code.
+func deleteCommon(
+	w http.ResponseWriter, r *http.Request, s *Server,
+	f func(context.Context, *storage.Storage, int) (int, error),
+) {
+	id, err := strconv.Atoi(chi.URLParam(r, idString))
+	if err != nil {
+		s.Logger.Warnf(makeError(ErrConvertError, idString, err).Error())
+		writeResponseData(w, nil, http.StatusBadRequest, s.Logger)
+		return
+	}
+	status, err := f(r.Context(), s.Storage, id)
+	if err != nil {
+		s.Logger.Warnf("delete error: %v", err)
+	}
+	writeResponseData(w, nil, status, s.Logger)
 }
 
 // loginRegistrationCommon is using for no duplicate code.
@@ -254,30 +273,32 @@ func makeRouter(s *Server) http.Handler {
 			writeResponseData(w, nil, status, s.Logger)
 		})
 		r.Delete(cardsURL, func(w http.ResponseWriter, r *http.Request) {
-			id, err := strconv.Atoi(chi.URLParam(r, idString))
-			if err != nil {
-				s.Logger.Warnf(makeError(ErrConvertError, idString, err).Error())
-				writeResponseData(w, nil, http.StatusBadRequest, s.Logger)
-				return
-			}
-			status, err := DeleteCard(r.Context(), s.Storage, uint(id))
-			if err != nil {
-				s.Logger.Warnf("delete card's info error: %v", err)
-			}
-			writeResponseData(w, nil, status, s.Logger)
+			deleteCommon(w, r, s, DeleteCard)
+			// id, err := strconv.Atoi(chi.URLParam(r, idString))
+			// if err != nil {
+			// 	s.Logger.Warnf(makeError(ErrConvertError, idString, err).Error())
+			// 	writeResponseData(w, nil, http.StatusBadRequest, s.Logger)
+			// 	return
+			// }
+			// status, err := DeleteCard(r.Context(), s.Storage, uint(id))
+			// if err != nil {
+			// 	s.Logger.Warnf("delete card's info error: %v", err)
+			// }
+			// writeResponseData(w, nil, status, s.Logger)
 		})
 		r.Delete(fileIDURL, func(w http.ResponseWriter, r *http.Request) {
-			id, err := strconv.Atoi(chi.URLParam(r, idString))
-			if err != nil {
-				s.Logger.Warnf(makeError(ErrConvertError, idString, err).Error())
-				writeResponseData(w, nil, http.StatusBadRequest, s.Logger)
-				return
-			}
-			status, err := DeleteFile(r.Context(), s.Storage, uint(id))
-			if err != nil {
-				s.Logger.Warnf("delete files's info error: %v", err)
-			}
-			writeResponseData(w, nil, status, s.Logger)
+			deleteCommon(w, r, s, DeleteFile)
+			// id, err := strconv.Atoi(chi.URLParam(r, idString))
+			// if err != nil {
+			// 	s.Logger.Warnf(makeError(ErrConvertError, idString, err).Error())
+			// 	writeResponseData(w, nil, http.StatusBadRequest, s.Logger)
+			// 	return
+			// }
+			// status, err := DeleteFile(r.Context(), s.Storage, uint(id))
+			// if err != nil {
+			// 	s.Logger.Warnf("delete files's info error: %v", err)
+			// }
+			// writeResponseData(w, nil, status, s.Logger)
 		})
 		r.Get(fileIDURL, func(w http.ResponseWriter, r *http.Request) {
 			id, err := strconv.Atoi(chi.URLParam(r, idString))
@@ -286,7 +307,6 @@ func makeRouter(s *Server) http.Handler {
 				writeResponseData(w, nil, http.StatusBadRequest, s.Logger)
 				return
 			}
-			ind := "index"
 			index, err := strconv.Atoi(r.Header.Get(ind))
 			if err != nil {
 				s.Logger.Warnf(makeError(ErrConvertError, ind, err).Error())

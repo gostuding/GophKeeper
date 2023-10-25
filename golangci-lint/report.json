@@ -1,3 +1,184 @@
 [
-    
+    {
+        "FromLinter": "errcheck",
+        "Text": "Error return value of `w.Write` is not checked",
+        "Severity": "error",
+        "SourceLines": [
+            "\t\tw.Write(storage.PublicKey)"
+        ],
+        "Replacement": null,
+        "Pos": {
+            "Filename": "internal/agent/storage/network_test.go",
+            "Offset": 1501,
+            "Line": 68,
+            "Column": 10
+        },
+        "ExpectNoLint": false,
+        "ExpectedNoLintLinter": ""
+    },
+    {
+        "FromLinter": "errcheck",
+        "Text": "Error return value of `w.Write` is not checked",
+        "Severity": "error",
+        "SourceLines": [
+            "\t\tw.Write(storage.PublicKey)"
+        ],
+        "Replacement": null,
+        "Pos": {
+            "Filename": "internal/agent/storage/network_test.go",
+            "Offset": 1634,
+            "Line": 72,
+            "Column": 10
+        },
+        "ExpectNoLint": false,
+        "ExpectedNoLintLinter": ""
+    },
+    {
+        "FromLinter": "errcheck",
+        "Text": "Error return value of `w.Write` is not checked",
+        "Severity": "error",
+        "SourceLines": [
+            "\t\tw.Write(nil)"
+        ],
+        "Replacement": null,
+        "Pos": {
+            "Filename": "internal/agent/storage/network_test.go",
+            "Offset": 1730,
+            "Line": 75,
+            "Column": 10
+        },
+        "ExpectNoLint": false,
+        "ExpectedNoLintLinter": ""
+    },
+    {
+        "FromLinter": "errcheck",
+        "Text": "Error return value of `w.Write` is not checked",
+        "Severity": "error",
+        "SourceLines": [
+            "\t\tw.Write(data)"
+        ],
+        "Replacement": null,
+        "Pos": {
+            "Filename": "internal/agent/storage/network_test.go",
+            "Offset": 3549,
+            "Line": 145,
+            "Column": 10
+        },
+        "ExpectNoLint": false,
+        "ExpectedNoLintLinter": ""
+    },
+    {
+        "FromLinter": "errcheck",
+        "Text": "Error return value of `w.Write` is not checked",
+        "Severity": "error",
+        "SourceLines": [
+            "\t\tw.Write(data)"
+        ],
+        "Replacement": null,
+        "Pos": {
+            "Filename": "internal/agent/storage/network_test.go",
+            "Offset": 5835,
+            "Line": 210,
+            "Column": 10
+        },
+        "ExpectNoLint": false,
+        "ExpectedNoLintLinter": ""
+    },
+    {
+        "FromLinter": "errcheck",
+        "Text": "Error return value of `w.Write` is not checked",
+        "Severity": "error",
+        "SourceLines": [
+            "\t\tw.Write(data)"
+        ],
+        "Replacement": null,
+        "Pos": {
+            "Filename": "internal/agent/storage/network_test.go",
+            "Offset": 7460,
+            "Line": 263,
+            "Column": 10
+        },
+        "ExpectNoLint": false,
+        "ExpectedNoLintLinter": ""
+    },
+    {
+        "FromLinter": "godot",
+        "Text": "Sentence should start with a capital letter",
+        "Severity": "error",
+        "SourceLines": [
+            "// type RPCServer struct {"
+        ],
+        "Replacement": {
+            "NeedOnlyDelete": false,
+            "NewLines": [
+                "// Type RPCServer struct {"
+            ],
+            "Inline": null
+        },
+        "Pos": {
+            "Filename": "internal/server/server.go",
+            "Offset": 3080,
+            "Line": 118,
+            "Column": 4
+        },
+        "ExpectNoLint": false,
+        "ExpectedNoLintLinter": ""
+    },
+    {
+        "FromLinter": "dupword",
+        "Text": "Duplicate words (Storage) found",
+        "Severity": "error",
+        "SourceLines": [
+            "// \tStorage Storage            // Storage interface"
+        ],
+        "Replacement": null,
+        "Pos": {
+            "Filename": "internal/server/server.go",
+            "Offset": 3192,
+            "Line": 121,
+            "Column": 1
+        },
+        "ExpectNoLint": false,
+        "ExpectedNoLintLinter": ""
+    },
+    {
+        "FromLinter": "godot",
+        "Text": "Comment should end in a period",
+        "Severity": "error",
+        "SourceLines": [
+            "// }"
+        ],
+        "Replacement": {
+            "NeedOnlyDelete": false,
+            "NewLines": [
+                "// }."
+            ],
+            "Inline": null
+        },
+        "Pos": {
+            "Filename": "internal/server/server.go",
+            "Offset": 3080,
+            "Line": 192,
+            "Column": 5
+        },
+        "ExpectNoLint": false,
+        "ExpectedNoLintLinter": ""
+    },
+    {
+        "FromLinter": "gosec",
+        "Text": "G104: Errors unhandled.",
+        "Severity": "error",
+        "SourceLines": [
+            "\t\tos.Remove(name) //nolint:errcheck //<-senselessly"
+        ],
+        "Replacement": null,
+        "Pos": {
+            "Filename": "internal/server/storage/storage.go",
+            "Offset": 0,
+            "Line": 260,
+            "Column": 3
+        },
+        "ExpectNoLint": false,
+        "ExpectedNoLintLinter": ""
+    }
 ]

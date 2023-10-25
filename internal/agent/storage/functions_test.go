@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"bytes"
 	"testing"
 )
 
@@ -20,7 +21,7 @@ func TestEncryptAES(t *testing.T) {
 		t.Errorf("decryptAES() error: %v", err)
 		return
 	}
-	if string(msg) != string(arg.msg) {
+	if !bytes.Equal(msg, arg.msg) {
 		t.Errorf("EncryptAES() and decryptAES() error: values not equal: decrypt: %s", string(msg))
 	}
 }
