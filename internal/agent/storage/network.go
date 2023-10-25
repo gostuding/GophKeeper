@@ -70,27 +70,32 @@ type (
 	}
 	// CardInfo is struct for card information.
 	CardInfo struct {
-		Updated  time.Time `json:"-"`
-		Label    string    `json:"-"`
-		Number   string    `json:"number,omitempty"`
-		User     string    `json:"user,omitempty"`
-		Duration string    `json:"duration,omitempty"`
-		Csv      string    `json:"csv,omitempty"`
+		Updated  time.Time `json:"-"`                  // update time
+		Label    string    `json:"-"`                  // meta data for card
+		Number   string    `json:"number,omitempty"`   // card's number
+		User     string    `json:"user,omitempty"`     // card's holder
+		Duration string    `json:"duration,omitempty"` // card's duration
+		Csv      string    `json:"csv,omitempty"`      // card's csv code
 	}
 	// Files is struct for user's files.
 	Files struct {
-		CreatedAt time.Time `json:"created"`
-		Name      string    `json:"name"`
-		Size      int64     `json:"size"`
-		ID        uint      `json:"id"`
-		Loaded    bool      `json:"loaded"`
+		CreatedAt time.Time `json:"created"` // created date
+		Name      string    `json:"name"`    // file name
+		Size      int64     `json:"size"`    // file size in bytes
+		ID        uint      `json:"id"`      // file id in database
+		Loaded    bool      `json:"loaded"`  // flag that file load finished
 	}
 	// FileSend is struct for send file's data to server.
 	FileSend struct {
-		Data  []byte
-		Pos   int64
-		Index int
-		Size  int
+		Data  []byte // file content
+		Pos   int64  // position of content
+		Index int    // block index
+		Size  int    // block size
+	}
+	// filesPreloadedData id internal struct.
+	filesPreloadedData struct {
+		Name     string `json:"name"`
+		MaxIndex int    `json:"maxindex"`
 	}
 )
 
@@ -355,8 +360,8 @@ func (ns *NetStorage) UpdateCard(url string, card *CardInfo) error {
 }
 
 // GetFilesList requests user's files list from server.
-func (ns *NetStorage) GetFilesList() (string, error) {
-	res, err := ns.doEncryptRequest(ns.PublicKey, ns.url(urlFilesList), http.MethodPost)
+func (ns *NetStorage) GetFilesList(url string) (string, error) {
+	res, err := ns.doEncryptRequest(ns.PublicKey, url, http.MethodPost)
 	if err != nil {
 		return "", err
 	}
@@ -583,11 +588,7 @@ func (ns *NetStorage) GetPreloadFileInfo(url string) (string, int, error) {
 		if err != nil {
 			return "", 0, makeError(ErrDecryptMessage, err)
 		}
-		type answer struct {
-			Name     string `json:"name"`
-			MaxIndex int    `json:"maxindex"`
-		}
-		var f answer
+		var f filesPreloadedData
 		err = json.Unmarshal(data, &f)
 		if err != nil {
 			return "", 0, makeError(ErrJSONUnmarshal, err)
@@ -626,12 +627,10 @@ func (ns *NetStorage) GetFile(url, path string, maxIndex int) error {
 			if err != nil {
 				return makeError(ErrResponseRead, err)
 			}
-			fmt.Println(i, len(body))
 			body, err = decryptAES(ns.Key, body)
 			if err != nil {
 				return makeError(ErrDecryptMessage, err)
 			}
-			fmt.Println("decrypt", len(body))
 			_, err = file.Write(body)
 			if err != nil {
 				return fmt.Errorf("write file error: %w", err)

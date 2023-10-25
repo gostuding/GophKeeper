@@ -35,6 +35,7 @@ var (
 	ErrJSON           = errors.New("json error")
 	ErrNotFound       = errors.New("not found. Check id and repeat")
 	ErrDublicateError = errors.New("values dublicate error")
+	ErrDecryptError   = errors.New("decrypt error")
 )
 
 func makeError(t ErrType, values ...any) error {
@@ -56,7 +57,7 @@ func makeError(t ErrType, values ...any) error {
 	case ErrResponseRead:
 		return fmt.Errorf("response body read error: %w", values...)
 	case ErrDecryptMessage:
-		return fmt.Errorf("decrypt body error: %w", values...)
+		return fmt.Errorf("%w: %v", ErrDecryptError, values)
 	case ErrRequest:
 		return fmt.Errorf("request error: %w", values...)
 	case ErrResponse:
@@ -118,7 +119,7 @@ func readAndDecryptRSA(body io.ReadCloser, key *rsa.PrivateKey) ([]byte, error) 
 	}
 	data, err = decryptRSAMessage(key, data)
 	if err != nil {
-		return nil, makeError(ErrDecryptMessage, err)
+		return nil, err
 	}
 	return data, nil
 }

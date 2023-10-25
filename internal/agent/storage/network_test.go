@@ -25,6 +25,7 @@ var (
 	handlerBadRequest = func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 	}
+	wdr = "Write data error: %v"
 )
 
 func handlerCommon(r *http.Request, key *rsa.PrivateKey) ([]byte, error) {
@@ -67,20 +68,20 @@ func TestNetStorage_Check(t *testing.T) {
 	handlerOK := func(w http.ResponseWriter, _ *http.Request) {
 		_, err := w.Write(storage.PublicKey)
 		if err != nil {
-			t.Errorf("Write data error: %v", err)
+			t.Errorf(wdr, err)
 		}
 	}
 	handlerBad := func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 		_, err := w.Write(storage.PublicKey)
 		if err != nil {
-			t.Errorf("Write data error: %v", err)
+			t.Errorf(wdr, err)
 		}
 	}
 	handlerEmpty := func(w http.ResponseWriter, _ *http.Request) {
 		_, err := w.Write(nil)
 		if err != nil {
-			t.Errorf("Write data error: %v", err)
+			t.Errorf(wdr, err)
 		}
 	}
 	t.Run("Success storage check", func(t *testing.T) {
@@ -153,7 +154,7 @@ func TestNetStorage_Authentification(t *testing.T) {
 		}
 		_, err = w.Write(data)
 		if err != nil {
-			t.Errorf("Write data error: %v", err)
+			t.Errorf(wdr, err)
 		}
 	}
 	server := httptest.NewServer(http.HandlerFunc(handler))
@@ -221,7 +222,7 @@ func TestNetStorage_GetCardsList(t *testing.T) {
 		}
 		_, err = w.Write(data)
 		if err != nil {
-			t.Errorf("Write data error: %v", err)
+			t.Errorf(wdr, err)
 		}
 	}
 	server := httptest.NewServer(http.HandlerFunc(handler))
@@ -277,7 +278,7 @@ func TestNetStorage_GetCard(t *testing.T) {
 		}
 		_, err = w.Write(data)
 		if err != nil {
-			t.Errorf("Write data error: %v", err)
+			t.Errorf(wdr, err)
 		}
 	}
 	server := httptest.NewServer(http.HandlerFunc(handler))
@@ -417,6 +418,147 @@ func TestNetStorage_UpdateCard(t *testing.T) {
 	t.Run("Ошибка на сервере при обновлении карты", func(t *testing.T) {
 		if err := storage.UpdateCard(serverBadRequest.URL, &card); !errors.Is(err, ErrStatusCode) {
 			t.Errorf("NetStorage.UpdateCard() get unexpected error: %v, want: %v", err, ErrStatusCode)
+		}
+	})
+}
+
+func TestNetStorage_GetFilesList(t *testing.T) {
+	storage := storageCreation(t)
+	if storage == nil {
+		return
+	}
+	handler := func(w http.ResponseWriter, r *http.Request) {
+		_, err := handlerCommon(r, storage.PrivateKey)
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		files := []Files{{ID: 1, Name: "test file name"}, {ID: 2, Name: "file name"}}
+		data, err := json.Marshal(&files)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		data, err = encryptRSAMessage(data, &storage.PrivateKey.PublicKey)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		if _, err = w.Write(data); err != nil {
+			t.Errorf(wdr, err)
+		}
+	}
+	server := httptest.NewServer(http.HandlerFunc(handler))
+	defer server.Close()
+	serverAuthError := httptest.NewServer(http.HandlerFunc(handlerAuthError))
+	defer serverAuthError.Close()
+	t.Run("Успешный запрос списка файлов", func(t *testing.T) {
+		f, err := storage.GetFilesList(server.URL)
+		if err != nil {
+			t.Errorf("NetStorage.GetFilesList() error: %v", err)
+			return
+		}
+		if f == "" {
+			t.Error("NetStorage.GetFilesList() empty response data error")
+		}
+	})
+	t.Run("Ошибка авторизации при запросе списка файлов", func(t *testing.T) {
+		_, err := storage.GetFilesList(serverAuthError.URL)
+		if !errors.Is(err, ErrAuthorization) {
+			t.Errorf("NetStorage.GetFilesList() get unexpected error: %v, want: %v", err, ErrAuthorization)
+		}
+	})
+}
+
+func TestNetStorage_GetPreloadFileInfo(t *testing.T) {
+	storage := storageCreation(t)
+	if storage == nil {
+		return
+	}
+	handler := func(w http.ResponseWriter, r *http.Request) {
+		_, err := handlerCommon(r, storage.PrivateKey)
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		preload := filesPreloadedData{
+			Name:     "file preload data",
+			MaxIndex: requestTimeout,
+		}
+		data, err := json.Marshal(&preload)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		data, err = encryptRSAMessage(data, &storage.PrivateKey.PublicKey)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		if _, err = w.Write(data); err != nil {
+			t.Errorf(wdr, err)
+		}
+	}
+	handlerDecryptError := func(w http.ResponseWriter, r *http.Request) {
+		if _, err := w.Write([]byte("any data")); err != nil {
+			t.Errorf(wdr, err)
+		}
+	}
+	handlerJSONError := func(w http.ResponseWriter, r *http.Request) {
+		data, err := encryptRSAMessage([]byte("{error}"), &storage.PrivateKey.PublicKey)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		if _, err = w.Write(data); err != nil {
+			t.Errorf(wdr, err)
+		}
+	}
+	server := httptest.NewServer(http.HandlerFunc(handler))
+	defer server.Close()
+	serverDecryptError := httptest.NewServer(http.HandlerFunc(handlerDecryptError))
+	defer serverDecryptError.Close()
+	serverJSONError := httptest.NewServer(http.HandlerFunc(handlerJSONError))
+	defer serverJSONError.Close()
+	serverAuthError := httptest.NewServer(http.HandlerFunc(handlerAuthError))
+	defer serverAuthError.Close()
+	serverNotFound := httptest.NewServer(http.HandlerFunc(handlerNotFound))
+	defer serverNotFound.Close()
+	t.Run("Успешный запрос информации для загрузки файла", func(t *testing.T) {
+		name, index, err := storage.GetPreloadFileInfo(server.URL)
+		if err != nil {
+			t.Errorf("NetStorage.GetPreloadFileInfo() error: %v", err)
+			return
+		}
+		if index <= 0 {
+			t.Error("NetStorage.GetPreloadFileInfo() empty response index error")
+		}
+		if name == "" {
+			t.Error("NetStorage.GetPreloadFileInfo() empty response name error")
+		}
+	})
+	t.Run("Ошибка авторизации при запросе списка файлов", func(t *testing.T) {
+		_, _, err := storage.GetPreloadFileInfo(serverAuthError.URL)
+		if !errors.Is(err, ErrAuthorization) {
+			t.Errorf("NetStorage.GetPreloadFileInfo() get unexpected error: %v, want: %v", err, ErrAuthorization)
+		}
+	})
+	t.Run("Файл не найден при запросе списка файлов", func(t *testing.T) {
+		_, _, err := storage.GetPreloadFileInfo(serverNotFound.URL)
+		if !errors.Is(err, ErrNotFound) {
+			t.Errorf("NetStorage.GetPreloadFileInfo() get unexpected error: %v, want: %v", err, ErrNotFound)
+		}
+	})
+	t.Run("Ошибка расшифровки при запросе списка файлов", func(t *testing.T) {
+		_, _, err := storage.GetPreloadFileInfo(serverDecryptError.URL)
+		if !errors.Is(err, ErrDecryptError) {
+			t.Errorf("NetStorage.GetPreloadFileInfo() get unexpected error: %v, want: %v", err, ErrDecryptError)
+		}
+	})
+	t.Run("Ошибка json при запросе списка файлов", func(t *testing.T) {
+		_, _, err := storage.GetPreloadFileInfo(serverJSONError.URL)
+		if !errors.Is(err, ErrJSON) {
+			t.Errorf("NetStorage.GetPreloadFileInfo() get unexpected error: %v, want: %v", err, ErrJSON)
 		}
 	})
 }

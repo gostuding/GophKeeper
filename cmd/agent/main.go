@@ -1,13 +1,23 @@
 package main
 
 import (
+	"fmt"
 	"log"
+	"os"
 
 	"github.com/gostuding/GophKeeper/internal/agent"
 	"github.com/gostuding/GophKeeper/internal/agent/config"
 )
 
+var (
+	version = "N/A"
+	date    = "N/A"
+	commit  = "N/A"
+)
+
 func main() {
+	fmt.Fprintf(os.Stdout, "Version: %s, date: %s, commit: %s\n", version, date, commit)
+
 	cfg, err := config.NewConfig()
 	if err != nil {
 		log.Fatalf("config error: %v", err)

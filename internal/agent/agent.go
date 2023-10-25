@@ -243,13 +243,17 @@ func (a *Agent) registration() error {
 
 // Login gets data from user and send login request.
 func (a *Agent) login() error {
-	fmt.Println("Авторизация пользователя на сервере.")
-	fmt.Printf("Введите пароль (%s): ", a.Config.Login)
-	pwd, err := gopass.GetPasswdMasked()
-	if err != nil {
-		return makeError(ErrScanValue, err)
+	pwd := a.Config.Pwd
+	if a.Config.Pwd == " " {
+		fmt.Println("Авторизация пользователя на сервере.")
+		fmt.Printf("Введите пароль (%s): ", a.Config.Login)
+		p, err := gopass.GetPasswdMasked()
+		if err != nil {
+			return makeError(ErrScanValue, err)
+		}
+		pwd = string(p)
 	}
-	err = a.Storage.Authentification(a.url(urlLogin), a.Config.Login, string(pwd))
+	err := a.Storage.Authentification(a.url(urlLogin), a.Config.Login, pwd)
 	if err != nil {
 		a.Config.Login = ""
 		return fmt.Errorf("authorization error: %w", err)
@@ -435,7 +439,7 @@ func (a *Agent) listSwitcher() (string, error) {
 	case cards:
 		return a.Storage.GetCardsList(a.url(urlCardsList)) //nolint:wrapcheck //<-
 	case files:
-		return a.Storage.GetFilesList() //nolint:wrapcheck //<-
+		return a.Storage.GetFilesList(a.url(urlFilesList)) //nolint:wrapcheck //<-
 	default:
 		return "", ErrUndefinedTarget
 	}

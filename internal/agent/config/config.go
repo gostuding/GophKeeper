@@ -16,6 +16,7 @@ const (
 type Config struct {
 	ServerAddres string `json:"server_addres"` // server's address
 	Login        string `json:"login"`         // login for authorization on server
+	Pwd          string `json:"-"`             // contains password from args
 	path         string `json:"-"`             // path to json configuration file
 	Key          string `json:"key"`           // key for encrypt messages
 	Command      string `json:"-"`             // contains command from args
@@ -71,6 +72,7 @@ func NewConfig() (*Config, error) {
 	var path string
 	flag.StringVar(&path, "i", "config.json", "Path to configuration json file")
 	flag.StringVar(&cfg.Command, "c", "", "User command")
+	flag.StringVar(&cfg.Pwd, "p", "", "User password")
 	flag.Parse()
 	if err := checkFileExist(path); err != nil {
 		return nil, err
