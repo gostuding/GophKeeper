@@ -26,8 +26,10 @@ const (
 	exit  = "exit"
 	add   = "add"
 	list  = "list"
+	get   = "get"
 	del   = "del"
 	edit  = "edit"
+	hlp   = "help"
 
 	ErrIDConver errType = iota
 	ErrScanValue
@@ -68,6 +70,7 @@ func makeError(t errType, values ...any) error {
 		return fmt.Errorf("undefined error: %w", values...)
 	}
 }
+
 func (a *Agent) url(t urlType) string {
 	switch t {
 	case urlCheck:
@@ -100,7 +103,7 @@ type (
 	}
 )
 
-// scanStdin reads open values from StdIn.
+// scanStdin reads open values from os.StdIn.
 func scanStdin(text string, to *string) error {
 	fmt.Print(text)
 	scanner := bufio.NewScanner(os.Stdin)
@@ -152,6 +155,10 @@ func (a *Agent) Run() error {
 			fmt.Println("Agent work finish.")
 			return nil
 		default:
+			if a.Config.Command != "" {
+				fmt.Println(a.userCommand(a.Config.Command))
+				return nil
+			}
 			var cmd string
 			if err := scanStdin(fmt.Sprintf("#%s: ", a.currentCommand), &cmd); err != nil {
 				fmt.Printf("ОШИБКА: %v\n", err)
@@ -254,7 +261,7 @@ func (a *Agent) login() error {
 func (a *Agent) parceCommand(cmd string) string {
 	c := strings.Split(cmd, " ")
 	switch c[0] {
-	case "help":
+	case hlp:
 		if a.currentCommand == "" {
 			return "cards - переключиться на вкладку карт \n" +
 				"files - переключиться на вкладку файлов\n" +
@@ -294,7 +301,7 @@ func (a *Agent) parceCommand(cmd string) string {
 			return fmt.Sprintf("%s add error: %v", a.currentCommand, err)
 		}
 		return "Успешно добавлено"
-	case "get":
+	case get:
 		if len(c) <= 1 {
 			return fmt.Sprintf("%s get command error: %v", a.currentCommand, ErrUndefinedTarget)
 		}
@@ -323,6 +330,59 @@ func (a *Agent) parceCommand(cmd string) string {
 	default:
 		return fmt.Sprintf("undefined command: '%s'", cmd)
 	}
+}
+
+func (a *Agent) userCommand(cmd string) string {
+	switch cmd {
+	case "files_list":
+		a.currentCommand = files
+		return a.parceCommand(list)
+	case "files_add":
+		a.currentCommand = files
+		var p string
+		if err := scanStdin("Введите путь до файла: ", &p); err == nil && p != "" {
+			return a.parceCommand(fmt.Sprintf("add %s", p))
+		}
+	case "files_get":
+		a.currentCommand = files
+		var p string
+		if err := scanStdin("Введите идентификатор файла: ", &p); err == nil && p != "" {
+			return a.parceCommand(fmt.Sprintf("get %s", p))
+		}
+	case "files_del":
+		a.currentCommand = files
+		var p string
+		if err := scanStdin("Введите идентификатор файла: ", &p); err == nil && p != "" {
+			return a.parceCommand(fmt.Sprintf("del %s", p))
+		}
+	case "cards_list":
+		a.currentCommand = cards
+		return a.parceCommand(list)
+	case "cards_add":
+		a.currentCommand = cards
+		return a.parceCommand(add)
+	case "cards_get":
+		a.currentCommand = cards
+		var p string
+		if err := scanStdin("Введите идентификатор карты: ", &p); err == nil && p != "" {
+			return a.parceCommand(fmt.Sprintf("get %s", p))
+		}
+	case "cards_edit":
+		a.currentCommand = cards
+		var p string
+		if err := scanStdin("Введите идентификатор карты: ", &p); err == nil && p != "" {
+			return a.parceCommand(fmt.Sprintf("edit %s", p))
+		}
+	case "cards_del":
+		a.currentCommand = cards
+		var p string
+		if err := scanStdin("Введите идентификатор карты: ", &p); err == nil && p != "" {
+			return a.parceCommand(fmt.Sprintf("del %s", p))
+		}
+	default:
+		return ErrUndefinedTarget.Error()
+	}
+	return ""
 }
 
 // addSwitcher makes add Storage's function according to currentCommand.

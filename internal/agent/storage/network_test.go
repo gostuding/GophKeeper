@@ -65,14 +65,23 @@ func TestNetStorage_Check(t *testing.T) {
 		return
 	}
 	handlerOK := func(w http.ResponseWriter, _ *http.Request) {
-		w.Write(storage.PublicKey)
+		_, err := w.Write(storage.PublicKey)
+		if err != nil {
+			t.Errorf("Write data error: %v", err)
+		}
 	}
 	handlerBad := func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
-		w.Write(storage.PublicKey)
+		_, err := w.Write(storage.PublicKey)
+		if err != nil {
+			t.Errorf("Write data error: %v", err)
+		}
 	}
 	handlerEmpty := func(w http.ResponseWriter, _ *http.Request) {
-		w.Write(nil)
+		_, err := w.Write(nil)
+		if err != nil {
+			t.Errorf("Write data error: %v", err)
+		}
 	}
 	t.Run("Success storage check", func(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(handlerOK))
@@ -142,7 +151,10 @@ func TestNetStorage_Authentification(t *testing.T) {
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
-		w.Write(data)
+		_, err = w.Write(data)
+		if err != nil {
+			t.Errorf("Write data error: %v", err)
+		}
 	}
 	server := httptest.NewServer(http.HandlerFunc(handler))
 	defer server.Close()
@@ -207,7 +219,10 @@ func TestNetStorage_GetCardsList(t *testing.T) {
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
-		w.Write(data)
+		_, err = w.Write(data)
+		if err != nil {
+			t.Errorf("Write data error: %v", err)
+		}
 	}
 	server := httptest.NewServer(http.HandlerFunc(handler))
 	defer server.Close()
@@ -260,7 +275,10 @@ func TestNetStorage_GetCard(t *testing.T) {
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
-		w.Write(data)
+		_, err = w.Write(data)
+		if err != nil {
+			t.Errorf("Write data error: %v", err)
+		}
 	}
 	server := httptest.NewServer(http.HandlerFunc(handler))
 	defer server.Close()

@@ -18,6 +18,7 @@ type Config struct {
 	Login        string `json:"login"`         // login for authorization on server
 	path         string `json:"-"`             // path to json configuration file
 	Key          string `json:"key"`           // key for encrypt messages
+	Command      string `json:"-"`             // contains command from args
 }
 
 // Save writes configuration data in file.
@@ -69,6 +70,7 @@ func NewConfig() (*Config, error) {
 	cfg := Config{}
 	var path string
 	flag.StringVar(&path, "i", "config.json", "Path to configuration json file")
+	flag.StringVar(&cfg.Command, "c", "", "User command")
 	flag.Parse()
 	if err := checkFileExist(path); err != nil {
 		return nil, err
