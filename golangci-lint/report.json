@@ -4,77 +4,20 @@
         "Text": "Sentence should start with a capital letter",
         "Severity": "error",
         "SourceLines": [
-            "// type RPCServer struct {"
+            "// mockgen -destination=./internal/agent/mocks/mock_storage.go -package=mocks github.com/gostuding/GophKeeper/internal/agent Storage"
         ],
         "Replacement": {
             "NeedOnlyDelete": false,
             "NewLines": [
-                "// Type RPCServer struct {"
+                "// Mockgen -destination=./internal/agent/mocks/mock_storage.go -package=mocks github.com/gostuding/GophKeeper/internal/agent Storage."
             ],
             "Inline": null
         },
         "Pos": {
-            "Filename": "internal/server/server.go",
-            "Offset": 3080,
-            "Line": 118,
+            "Filename": "cmd/server/main.go",
+            "Offset": 1123,
+            "Line": 49,
             "Column": 4
-        },
-        "ExpectNoLint": false,
-        "ExpectedNoLintLinter": ""
-    },
-    {
-        "FromLinter": "dupword",
-        "Text": "Duplicate words (Storage) found",
-        "Severity": "error",
-        "SourceLines": [
-            "// \tStorage Storage            // Storage interface"
-        ],
-        "Replacement": null,
-        "Pos": {
-            "Filename": "internal/server/server.go",
-            "Offset": 3192,
-            "Line": 121,
-            "Column": 1
-        },
-        "ExpectNoLint": false,
-        "ExpectedNoLintLinter": ""
-    },
-    {
-        "FromLinter": "godot",
-        "Text": "Comment should end in a period",
-        "Severity": "error",
-        "SourceLines": [
-            "// }"
-        ],
-        "Replacement": {
-            "NeedOnlyDelete": false,
-            "NewLines": [
-                "// }."
-            ],
-            "Inline": null
-        },
-        "Pos": {
-            "Filename": "internal/server/server.go",
-            "Offset": 3080,
-            "Line": 192,
-            "Column": 5
-        },
-        "ExpectNoLint": false,
-        "ExpectedNoLintLinter": ""
-    },
-    {
-        "FromLinter": "gosec",
-        "Text": "G104: Errors unhandled.",
-        "Severity": "error",
-        "SourceLines": [
-            "\t\tos.Remove(name) //nolint:errcheck //<-senselessly"
-        ],
-        "Replacement": null,
-        "Pos": {
-            "Filename": "internal/server/storage/storage.go",
-            "Offset": 0,
-            "Line": 260,
-            "Column": 3
         },
         "ExpectNoLint": false,
         "ExpectedNoLintLinter": ""

@@ -369,6 +369,77 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/files/{id}": {
+            "post": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "tags": [
+                    "Файлы"
+                ],
+                "summary": "Получение названия и количества частей у файла.",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Токен авторизации",
+                        "name": "Authorization",
+                        "in": "header"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": ""
+                    },
+                    "400": {
+                        "description": "Ошибка шифрования"
+                    },
+                    "401": {
+                        "description": "Пользователь не авторизован"
+                    },
+                    "404": {
+                        "description": "Файл не найден в БД"
+                    },
+                    "500": {
+                        "description": "Внутренняя ошибка сервиса."
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "tags": [
+                    "Файлы"
+                ],
+                "summary": "Удаление информации о файле пользователя.",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Токен авторизации",
+                        "name": "Authorization",
+                        "in": "header"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Инфорация удалена"
+                    },
+                    "400": {
+                        "description": "Ошибка шифрования"
+                    },
+                    "401": {
+                        "description": "Пользователь не авторизован"
+                    },
+                    "500": {
+                        "description": "Внутренняя ошибка сервиса."
+                    }
+                }
+            }
+        },
         "/api/get/key": {
             "get": {
                 "tags": [

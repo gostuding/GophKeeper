@@ -7,6 +7,7 @@ import (
 
 	"github.com/gostuding/GophKeeper/internal/agent"
 	"github.com/gostuding/GophKeeper/internal/agent/config"
+	"github.com/gostuding/GophKeeper/internal/agent/storage"
 )
 
 var (
@@ -22,10 +23,11 @@ func main() {
 	if err != nil {
 		log.Fatalf("config error: %v", err)
 	}
-	agnt, err := agent.NewAgent(cfg)
+	strg, err := storage.NewNetStorage()
 	if err != nil {
-		log.Fatalf("create agent error: %v", err)
+		log.Fatalf("create storage error: %v", err)
 	}
+	agnt := agent.NewAgent(cfg, strg)
 	if err := agnt.Run(); err != nil {
 		log.Fatalf("run agent error: %v", err)
 	}

@@ -13,7 +13,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gostuding/GophKeeper/internal/agent/config"
 	"github.com/gostuding/GophKeeper/internal/agent/storage/mock"
 )
 
@@ -44,13 +43,13 @@ func handlerCommon(r *http.Request, key *rsa.PrivateKey) ([]byte, error) {
 
 func storageCreation(t *testing.T) *NetStorage {
 	t.Helper()
-	storage, err := NewNetStorage(&config.Config{})
+	storage, err := NewNetStorage()
 	if err != nil {
 		t.Errorf("NewNetStorage() error: %v", err)
 		return nil
 	}
 	storage.ServerPublicKey = &storage.PrivateKey.PublicKey
-	storage.ServerAESKey = []byte("server key")
+	storage.serverAESKey = []byte("server key")
 	storage.Key = aesKey([]byte("storage key"))
 	return storage
 }
@@ -358,7 +357,7 @@ func TestNetStorage_DeleteFile(t *testing.T) {
 }
 
 func TestNetStorage_AddCard(t *testing.T) {
-	storage, err := NewNetStorage(&config.Config{})
+	storage, err := NewNetStorage()
 	if err != nil {
 		t.Errorf("NewNetStorage() error: %v", err)
 		return

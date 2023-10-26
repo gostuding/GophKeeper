@@ -1,6 +1,46 @@
 # GophKeeper
 Менеджер паролей 
 
+# Клонирование репозитория
+```
+git clone https://github.com/gostuding/GophKeeper
+```
+# Перед запуском сервера проверить наличие
+
+1. СУБД postgres (см. документацию `https://postgrespro.ru/docs/postgresql/15/tutorial-install`)
+2. База данный для сервера (по умолчанию используется название БД `gokeeper`) (см. документацию `https://postgrespro.ru/docs/postgresql/15/tutorial-createdb`)
+3. Пользователь для работы с БД (по умолчанию используется `gopher`, пароль `password`) (см. документацию `https://postgrespro.ru/docs/postgresql/15/app-createuser`)
+4. Параметры запуска прописываются в соответствующих файлах настройки клиента и сервера.
+
+# Swager
+
+1. Запустить сервер 
+2. Открыть браузер по адресу: `http://$ADDRESS/swagger/` где `$ADDRESS` - адрес и порт сервера (default "localhost:8080")
+
+
+## Запуск тестов golangci-lint
+
+Установите локально golangci-lint (см. официальную документацию)
+В директории проекта выполните команду:
+```
+./golint_run.sh
+```
+Реузльтаты работы golangci-lint будут отображены в файле `./golangci-lint/report.json`
+
+## Запуск юнит-тестов 
+
+В пакете internal/serve/storage хранятся тесты для функций работы с БД.
+При выполнении команды ```go test ./...``` будут запущены тесты за исключением БД.
+```
+go test ./...
+```
+Для включения тестов к БД необходимо указать ```--tags=sql_storage```, 
+а также строку подключения к БД: ```-args dsn="connection"```.
+Пример запуска:
+```
+go test ./... --tags=sql_storage -args dsn="host=localhost user=postgres database=gokeeper"
+``` 
+
 ## Компиляция серверной части проекта
 
 Для компиляции серверной части проекта выполните команду:

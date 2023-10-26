@@ -173,6 +173,49 @@ paths:
         клиента.
       tags:
       - Файлы
+  /api/files/{id}:
+    delete:
+      parameters:
+      - description: Токен авторизации
+        in: header
+        name: Authorization
+        type: string
+      responses:
+        "200":
+          description: Инфорация удалена
+        "400":
+          description: Ошибка шифрования
+        "401":
+          description: Пользователь не авторизован
+        "500":
+          description: Внутренняя ошибка сервиса.
+      security:
+      - ApiKeyAuth: []
+      summary: Удаление информации о файле пользователя.
+      tags:
+      - Файлы
+    post:
+      parameters:
+      - description: Токен авторизации
+        in: header
+        name: Authorization
+        type: string
+      responses:
+        "200":
+          description: ""
+        "400":
+          description: Ошибка шифрования
+        "401":
+          description: Пользователь не авторизован
+        "404":
+          description: Файл не найден в БД
+        "500":
+          description: Внутренняя ошибка сервиса.
+      security:
+      - ApiKeyAuth: []
+      summary: Получение названия и количества частей у файла.
+      tags:
+      - Файлы
   /api/files/add:
     get:
       parameters:

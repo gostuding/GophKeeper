@@ -15,7 +15,6 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/gostuding/GophKeeper/docs"
-	"github.com/gostuding/GophKeeper/internal/server/storage"
 	"github.com/gostuding/middlewares"
 
 	"github.com/go-chi/chi"
@@ -56,7 +55,7 @@ func readRequestBody(w http.ResponseWriter, r *http.Request, l *zap.SugaredLogge
 // deleteCommon is using for no duplicate code.
 func deleteCommon(
 	w http.ResponseWriter, r *http.Request, s *Server,
-	f func(context.Context, *storage.Storage, int) (int, error),
+	f func(context.Context, Storage, int) (int, error),
 ) {
 	id, err := strconv.Atoi(chi.URLParam(r, idString))
 	if err != nil {
@@ -74,7 +73,7 @@ func deleteCommon(
 // loginRegistrationCommon is using for no duplicate code.
 func loginRegistrationCommon(
 	w http.ResponseWriter, r *http.Request, s *Server, name string,
-	f func(context.Context, []byte, []byte, *storage.Storage, int, *http.Request) ([]byte, int, error),
+	f func(context.Context, []byte, []byte, Storage, int, *http.Request) ([]byte, int, error),
 ) {
 	data, err := readRequestBody(w, r, s.Logger)
 	if err != nil {

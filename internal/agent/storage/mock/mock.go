@@ -15,8 +15,8 @@ const (
 
 type FileMock struct {
 	NameFile string
-	SizeFile int64
 	Body     []byte
+	SizeFile int64
 }
 
 func (f *FileMock) Name() string {
@@ -39,6 +39,7 @@ func (f *FileMock) Sys() any {
 }
 
 func CreateTMPFile(t *testing.T, text string) (string, error) {
+	t.Helper()
 	dirName := t.TempDir()
 	fileName := path.Join(dirName, "file.tmp")
 	if err := os.WriteFile(fileName, []byte(text), fMode); err != nil {

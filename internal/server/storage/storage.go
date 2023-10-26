@@ -257,7 +257,6 @@ func (s *Storage) AddFileData(
 	f := FileData{Index: index, Pos: pos, Size: size, UID: uid, FID: fid}
 	result := s.con.WithContext(ctx).Create(&f)
 	if result.Error != nil {
-		os.Remove(name) //nolint:errcheck //<-senselessly
 		return makeError(ErrDatabase, result.Error)
 	}
 	return nil

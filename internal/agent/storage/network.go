@@ -15,39 +15,29 @@ import (
 	"strconv"
 	"sync"
 	"time"
-
-	"github.com/gostuding/GophKeeper/internal/agent/config"
 )
 
-type urlType int
-
 const (
-	readFileBlockSize         = 1024 * 1024 * 2       // read file block size
-	sendThreadCount           = 10                    // count send requests to server
-	keySize                   = 4028                  // default rsa key size.
-	requestTimeout            = 60                    // default request timeout
-	Authorization             = "Authorization"       // JWT token header name.
-	TimeFormat                = "02.01.2006 15:04:05" //
-	writeFileMode             = 0600
-	urlSD                     = "%s/%d"
-	urlGetKey         urlType = iota
-	urlCardsAdd
-	urlCard
-	urlFilesList
-	urlFileAdd
+	readFileBlockSize = 1024 * 1024 * 2       // read file block size
+	sendThreadCount   = 10                    // count send requests to server
+	keySize           = 4028                  // default rsa key size.
+	requestTimeout    = 60                    // default request timeout
+	Authorization     = "Authorization"       // JWT token header name.
+	TimeFormat        = "02.01.2006 15:04:05" //
+	writeFileMode     = 0600
+	urlSD             = "%s/%d"
 )
 
 type (
 	// NetStorage storage in server.
 	NetStorage struct {
-		Config          *config.Config  // object with agent configuration
 		Client          *http.Client    // http client for work with server
 		ServerPublicKey *rsa.PublicKey  // public server key for encrypt messages
 		PrivateKey      *rsa.PrivateKey // private rsa key for decript mesages
 		Pwd             string          // user password
 		JWTToken        string          // authorization token
 		Key             []byte          // user pasphrace to encrypt and decrypt stored data
-		ServerAESKey    []byte          // server's key to encrypt or decrypt user pashprace
+		serverAESKey    []byte          // server's key to encrypt or decrypt user pashprace
 		PublicKey       []byte          // public key for exchange with server
 	}
 	// LoginPwd internal struct.
@@ -92,7 +82,7 @@ type (
 		Index int    // block index
 		Size  int    // block size
 	}
-	// filesPreloadedData id internal struct.
+	// FilesPreloadedData id internal struct.
 	filesPreloadedData struct {
 		Name     string `json:"name"`
 		MaxIndex int    `json:"maxindex"`
@@ -100,7 +90,7 @@ type (
 )
 
 // NewNetStorage creates new storage object for work with server by http.
-func NewNetStorage(c *config.Config) (*NetStorage, error) {
+func NewNetStorage() (*NetStorage, error) {
 	client := http.Client{Timeout: time.Duration(requestTimeout) * time.Second}
 	key, err := rsa.GenerateKey(rand.Reader, keySize)
 	if err != nil {
@@ -110,24 +100,7 @@ func NewNetStorage(c *config.Config) (*NetStorage, error) {
 	if err != nil {
 		return nil, fmt.Errorf("marshal public key error: %w", err)
 	}
-	return &NetStorage{Config: c, Client: &client, PrivateKey: key, PublicKey: p}, nil
-}
-
-// url is private function for url construction.
-// Returns string with url for send client requests.
-func (ns *NetStorage) url(t urlType) string {
-	switch t {
-	case urlCardsAdd:
-		return fmt.Sprintf("%s/api/cards/add", ns.Config.ServerAddres)
-	case urlCard:
-		return fmt.Sprintf("%s/api/cards", ns.Config.ServerAddres)
-	case urlFilesList:
-		return fmt.Sprintf("%s/api/files", ns.Config.ServerAddres)
-	case urlFileAdd:
-		return fmt.Sprintf("%s/api/files/add", ns.Config.ServerAddres)
-	default:
-		return "undefined"
-	}
+	return &NetStorage{Client: &client, PrivateKey: key, PublicKey: p}, nil
 }
 
 // doRequest is internal function for do requests with RSA encryption.
@@ -146,6 +119,10 @@ func (ns *NetStorage) doEncryptRequest(msg []byte, url string, method string) (*
 		return nil, fmt.Errorf("http do request error: %w", err)
 	}
 	return res, nil
+}
+
+func (ns *NetStorage) ServerAESKey() []byte {
+	return ns.serverAESKey
 }
 
 // Check sends request to server for public key get.
@@ -218,14 +195,14 @@ func (ns *NetStorage) getToken(body io.Reader) error {
 		return makeError(ErrJSONUnmarshal, err)
 	}
 	ns.JWTToken = t.Token
-	ns.ServerAESKey = []byte(t.Key)
+	ns.serverAESKey = []byte(t.Key)
 	return nil
 }
 
 // SetUserAESKey decripts user key.
 func (ns *NetStorage) SetUserAESKey(key string) error {
 	key = string(aesKey([]byte(key)))
-	k, err := decryptAES(ns.ServerAESKey, []byte(key))
+	k, err := decryptAES(ns.serverAESKey, []byte(key))
 	if err != nil {
 		return makeError(ErrDecryptMessage, err)
 	}
@@ -400,7 +377,7 @@ func (ns *NetStorage) GetFilesList(url string) (string, error) {
 	}
 }
 
-// GetNewFileID sends request to server for generate new file identificator
+// GetNewFileID sends request to server for generate new file identificator.
 func (ns *NetStorage) GetNewFileID(url string, info os.FileInfo) (int, error) {
 	data, err := json.Marshal(Files{Name: info.Name(), Size: info.Size()})
 	if err != nil {

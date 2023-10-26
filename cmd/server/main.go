@@ -6,6 +6,7 @@ import (
 	"os"
 
 	"github.com/gostuding/GophKeeper/internal/server"
+	"github.com/gostuding/GophKeeper/internal/server/storage"
 )
 
 var (
@@ -32,7 +33,11 @@ func main() {
 	if err != nil {
 		log.Fatalf("config error: %v", err)
 	}
-	srv, err := server.NewServer(cfg)
+	strg, err := storage.NewStorage(cfg.DSN, cfg.MaxConnectCount, cfg.StoragePath)
+	if err != nil {
+		log.Fatalf("storage error: %v", err)
+	}
+	srv, err := server.NewServer(cfg, strg)
 	if err != nil {
 		log.Fatalf("create server error: %v", err)
 	}
@@ -40,3 +45,5 @@ func main() {
 		log.Fatalf("server error: %v", err)
 	}
 }
+
+// mockgen -destination=./internal/agent/mocks/mock_storage.go -package=mocks github.com/gostuding/GophKeeper/internal/agent Storage

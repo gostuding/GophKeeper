@@ -14,7 +14,6 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/gostuding/GophKeeper/internal/server/storage"
 	"github.com/gostuding/middlewares"
 	"gorm.io/gorm"
 )
@@ -94,7 +93,7 @@ func GetPublicKey(key *rsa.PrivateKey) ([]byte, error) {
 func Register(
 	ctx context.Context,
 	body, key []byte,
-	strg *storage.Storage,
+	strg Storage,
 	t int,
 	r *http.Request,
 ) ([]byte, int, error) {
@@ -130,7 +129,7 @@ func Register(
 func Login(
 	ctx context.Context,
 	body, key []byte,
-	strg *storage.Storage,
+	strg Storage,
 	t int,
 	r *http.Request,
 ) ([]byte, int, error) {
@@ -164,7 +163,7 @@ func Login(
 func GetCardsList(
 	ctx context.Context,
 	key string,
-	strg *storage.Storage,
+	strg Storage,
 ) ([]byte, int, error) {
 	return getListCommon(ctx, key, strg.GetCardsList)
 }
@@ -186,7 +185,7 @@ func GetCardsList(
 func AddCardInfo(
 	ctx context.Context,
 	body []byte,
-	strg *storage.Storage,
+	strg Storage,
 ) (int, error) {
 	uid, ok := ctx.Value(middlewares.AuthUID).(int)
 	if !ok {
@@ -222,7 +221,7 @@ func AddCardInfo(
 func GetCard(
 	ctx context.Context,
 	key string,
-	strg *storage.Storage,
+	strg Storage,
 	id uint,
 ) ([]byte, int, error) {
 	uid, ok := ctx.Value(middlewares.AuthUID).(int)
@@ -256,7 +255,7 @@ func GetCard(
 // @failure 500 "Внутренняя ошибка сервиса.".
 func DeleteCard(
 	ctx context.Context,
-	strg *storage.Storage,
+	strg Storage,
 	id int,
 ) (int, error) {
 	uid, ok := ctx.Value(middlewares.AuthUID).(int)
@@ -289,7 +288,7 @@ func DeleteCard(
 func UpdateCardInfo(
 	ctx context.Context,
 	body []byte,
-	strg *storage.Storage,
+	strg Storage,
 	id uint,
 ) (int, error) {
 	uid, ok := ctx.Value(middlewares.AuthUID).(int)
@@ -344,7 +343,7 @@ func getListCommon(
 func GetFilesList(
 	ctx context.Context,
 	publicKey string,
-	strg *storage.Storage,
+	strg Storage,
 ) ([]byte, int, error) {
 	return getListCommon(ctx, publicKey, strg.GetFilesList)
 }
@@ -363,7 +362,7 @@ func GetFilesList(
 func AddFile(
 	ctx context.Context,
 	body []byte,
-	strg *storage.Storage,
+	strg Storage,
 ) ([]byte, int, error) {
 	uid, ok := ctx.Value(middlewares.AuthUID).(int)
 	if !ok {
@@ -390,7 +389,7 @@ func AddFile(
 func AddFileData(
 	ctx context.Context,
 	body []byte,
-	strg *storage.Storage,
+	strg Storage,
 	r *http.Request,
 ) (int, error) {
 	uid, ok := ctx.Value(middlewares.AuthUID).(int)
@@ -434,7 +433,7 @@ func AddFileData(
 // @failure 500 "Внутренняя ошибка сервиса.".
 func AddFileFinish(
 	ctx context.Context,
-	strg *storage.Storage,
+	strg Storage,
 	fid uint,
 ) (int, error) {
 	uid, ok := ctx.Value(middlewares.AuthUID).(int)
@@ -463,7 +462,7 @@ func AddFileFinish(
 // @failure 500 "Внутренняя ошибка сервиса.".
 func DeleteFile(
 	ctx context.Context,
-	strg *storage.Storage,
+	strg Storage,
 	id int,
 ) (int, error) {
 	uid, ok := ctx.Value(middlewares.AuthUID).(int)
@@ -493,7 +492,7 @@ func DeleteFile(
 // @failure 500 "Внутренняя ошибка сервиса.".
 func GetPreloadFileInfo(
 	ctx context.Context,
-	strg *storage.Storage,
+	strg Storage,
 	id uint,
 	publicKey string,
 ) ([]byte, int, error) {

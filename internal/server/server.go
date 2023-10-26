@@ -13,7 +13,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/gostuding/GophKeeper/internal/server/storage"
 	"go.uber.org/zap"
 )
 
@@ -24,27 +23,44 @@ const (
 	storageFinishedString  = "Storage finished"       //
 )
 
-// Server is struct for object.
-type Server struct {
-	Config  *Config            // server's options
-	Storage *storage.Storage   // Storage interface
-	Logger  *zap.SugaredLogger // server's logger
-	srv     http.Server        // internal server
-	mutex   sync.Mutex
-	isRun   bool // flag to check is server run
-}
+type (
+	// Server is struct for object.
+	Server struct {
+		Config  *Config            // server's options
+		Storage Storage            // Storage interface
+		Logger  *zap.SugaredLogger // server's logger
+		srv     http.Server        // internal server
+		mutex   sync.Mutex
+		isRun   bool // flag to check is server run
+	}
+	// Storage for server.
+	Storage interface {
+		Registration(context.Context, string, string) (string, int, error)
+		Login(context.Context, string, string) (string, int, error)
+		GetCardsList(context.Context, uint) ([]byte, error)
+		GetCard(context.Context, uint, uint) ([]byte, error)
+		AddCard(context.Context, uint, string, string) error
+		DeleteCard(context.Context, uint, uint) error
+		UpdateCard(context.Context, uint, uint, string, string) error
+		GetFilesList(context.Context, uint) ([]byte, error)
+		AddFile(context.Context, uint, []byte) ([]byte, error)
+		AddFileData(context.Context, uint, uint, int, int, int, []byte) error
+		AddFileFinish(context.Context, uint, int) error
+		DeleteFile(context.Context, uint, uint) error
+		GetPreloadFileInfo(context.Context, uint, int) ([]byte, error)
+		GetFileData(context.Context, int, int, int) ([]byte, error)
+		Close() error
+		IsUniqueViolation(error) bool
+	}
+)
 
 // NewServer create new server.
-func NewServer(config *Config) (*Server, error) {
-	strg, err := storage.NewStorage(config.DSN, config.MaxConnectCount, config.StoragePath)
-	if err != nil {
-		return nil, makeError(ErrConfig, err)
-	}
+func NewServer(config *Config, s Storage) (*Server, error) {
 	logger, err := zap.NewDevelopment()
 	if err != nil {
 		return nil, makeError(ErrCreateLogger)
 	}
-	return &Server{Config: config, Storage: strg, Logger: logger.Sugar()}, nil
+	return &Server{Config: config, Storage: s, Logger: logger.Sugar()}, nil
 }
 
 // RunServer func run server. If the storage type is memory,
@@ -114,79 +130,3 @@ func (s *Server) StopServer() error {
 	s.mutex.Unlock()
 	return nil
 }
-
-// type RPCServer struct {
-// 	pb.UnimplementedMetricsServer
-// 	Config  *Config            // server's options
-// 	Storage Storage            // Storage interface
-// 	Logger  *zap.SugaredLogger // server's logger
-// 	srv     *grpc.Server       //
-// 	isRun   bool               // flag to check is server run
-// }
-// func (s *RPCServer) AddMetrics(ctx context.Context, in *pb.MetricsRequest) (*pb.MetricsResponse, error) {
-// 	var response pb.MetricsResponse
-// 	s.Logger.Debugln("Update metrics bytes")
-// 	_, err := bytesErrorRepeater(ctx, s.Storage.UpdateJSONSlice, in.Metrics)
-// 	if err != nil {
-// 		s.Logger.Debugln("Update metrics error", err)
-// 		response.Error = fmt.Sprintf("update metrics list error: %v", err)
-// 	}
-// 	return &response, nil
-// }
-// func NewRPCServer(config *Config, logger *zap.SugaredLogger, storage Storage) *RPCServer {
-// 	return &RPCServer{
-// 		Config:  config,
-// 		Logger:  logger,
-// 		Storage: storage,
-// 	}
-// }
-// func (s *RPCServer) RunServer() error {
-// 	if err := checkConfig(s.isRun, s.Config, s.Logger, s.Storage); err != nil {
-// 		return err
-// 	}
-// 	listen, err := net.Listen("tcp", s.Config.IPAddress)
-// 	if err != nil {
-// 		return fmt.Errorf("start RPC server error: %w", err)
-// 	}
-// 	s.srv = grpc.NewServer(
-// 		grpc.ChainUnaryInterceptor(
-// 			interseptors.HashInterceptor([]byte(s.Config.Key)),
-// 			interseptors.GzipInterceptor,
-// 			interseptors.DecriptInterceptor(s.Config.PrivateKey),
-// 			interseptors.LogInterceptor(s.Logger),
-// 		))
-// 	pb.RegisterMetricsServer(s.srv, s)
-// 	ctx, cancelFunc := signal.NotifyContext(
-// 		context.Background(), os.Interrupt,
-// 		syscall.SIGTERM, syscall.SIGINT, syscall.SIGQUIT,
-// 	)
-// 	defer cancelFunc()
-// 	if s.Config.ConnectDBString == "" {
-// 		go saveStorageInterval(ctx, s.Config.StoreInterval, s.Storage, s.Logger)
-// 	}
-// 	s.Logger.Debugln("Server gRPC run at", s.Config.IPAddress)
-// 	s.isRun = true
-// 	go func() {
-// 		<-ctx.Done()
-// 		if err := s.StopServer(); err != nil {
-// 			s.Logger.Warnf(stopServerString, err)
-// 		}
-// 	}()
-// 	if err := s.srv.Serve(listen); err != nil {
-// 		s.isRun = false
-// 		return fmt.Errorf("server RPC error: %w", err)
-// 	}
-// 	return nil
-// }
-// func (s *RPCServer) StopServer() error {
-// 	if !s.isRun {
-// 		return fmt.Errorf("server not running yet")
-// 	}
-// 	if serr := s.Storage.Stop(); serr != nil {
-// 		s.Logger.Warnf(stopStorageErrorString, serr)
-// 	} else {
-// 		s.Logger.Debugln(storageFinishedString)
-// 	}
-// 	s.srv.Stop()
-// 	return nil
-// }

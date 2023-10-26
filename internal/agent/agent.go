@@ -96,15 +96,33 @@ func (a *Agent) url(t urlType) string {
 }
 
 type (
+	// Storage is interfaice for send requests to server.
+	Storage interface {
+		Check(string) error
+		ServerAESKey() []byte
+		Authentification(string, string, string) error
+		SetUserAESKey(string) error
+		GetCardsList(string) (string, error)
+		AddCard(string, *storage.CardInfo) error
+		UpdateCard(string, *storage.CardInfo) error
+		GetCard(string) (*storage.CardInfo, error)
+		DeleteCard(string) error
+		GetFilesList(string) (string, error)
+		GetNewFileID(string, os.FileInfo) (int, error)
+		AddFile(string, string, int) error
+		FihishFileTransfer(string, int) error
+		DeleteFile(string) error
+		GetPreloadFileInfo(string) (string, int, error)
+		GetFile(string, string, int) error
+	}
 	// Agent struct.
 	Agent struct {
-		Config         *config.Config      // configuration object.
-		Storage        *storage.NetStorage // object for work with srver
-		currentCommand string              // current user command
-		mutex          sync.Mutex
-		ctx            context.Context
+		Storage        Storage         // interfaice for work with srver
+		Config         *config.Config  // configuration object.
+		ctx            context.Context //nolint:containedctx //<-
 		cancelFunc     context.CancelFunc
-		testMode       bool // flag for test mode not get info from StdIn
+		currentCommand string // current user command
+		mutex          sync.Mutex
 		isRun          bool // flag that agent is run
 	}
 )
@@ -122,13 +140,9 @@ func scanStdin(text string, to *string) error {
 }
 
 // NewAgent creates new agent object.
-func NewAgent(c *config.Config) (*Agent, error) {
-	strg, err := storage.NewNetStorage(c)
-	if err != nil {
-		return nil, fmt.Errorf("create storage error: %w", err)
-	}
-	agent := Agent{Config: c, Storage: strg}
-	return &agent, nil
+func NewAgent(c *config.Config, s Storage) *Agent {
+	agent := Agent{Config: c, Storage: s}
+	return &agent
 }
 
 // Run starts agent work.
@@ -227,7 +241,7 @@ func (a *Agent) authentification() error {
 		if err := scanStdin("Введите ключ шифрования Ваших приватных данных: ", &k); err != nil {
 			return makeError(ErrScanValue, err)
 		}
-		key, err := storage.EncryptAES([]byte(k), a.Storage.ServerAESKey)
+		key, err := storage.EncryptAES([]byte(k), a.Storage.ServerAESKey())
 		if err != nil {
 			return makeError(ErrEncrypt, "user AES key:", err)
 		}
@@ -283,7 +297,7 @@ func (a *Agent) registration() error {
 // Login gets data from user and send login request.
 func (a *Agent) login() error {
 	pwd := a.Config.Pwd
-	if a.Config.Pwd == " " {
+	if a.Config.Pwd == "" {
 		fmt.Println("Авторизация пользователя на сервере.")
 		fmt.Printf("Введите пароль (%s): ", a.Config.Login)
 		p, err := gopass.GetPasswdMasked()
@@ -376,6 +390,9 @@ func (a *Agent) parceCommand(cmd string) string {
 }
 
 func (a *Agent) userCommand(cmd string) string {
+	getString := "get %s"
+	delString := "del %s"
+	insID := "Введите идентификатор: "
 	switch cmd {
 	case "files_list":
 		a.currentCommand = files
@@ -389,14 +406,14 @@ func (a *Agent) userCommand(cmd string) string {
 	case "files_get":
 		a.currentCommand = files
 		var p string
-		if err := scanStdin("Введите идентификатор файла: ", &p); err == nil && p != "" {
-			return a.parceCommand(fmt.Sprintf("get %s", p))
+		if err := scanStdin(insID, &p); err == nil && p != "" {
+			return a.parceCommand(fmt.Sprintf(getString, p))
 		}
 	case "files_del":
 		a.currentCommand = files
 		var p string
-		if err := scanStdin("Введите идентификатор файла: ", &p); err == nil && p != "" {
-			return a.parceCommand(fmt.Sprintf("del %s", p))
+		if err := scanStdin(insID, &p); err == nil && p != "" {
+			return a.parceCommand(fmt.Sprintf(delString, p))
 		}
 	case "cards_list":
 		a.currentCommand = cards
@@ -407,20 +424,20 @@ func (a *Agent) userCommand(cmd string) string {
 	case "cards_get":
 		a.currentCommand = cards
 		var p string
-		if err := scanStdin("Введите идентификатор карты: ", &p); err == nil && p != "" {
-			return a.parceCommand(fmt.Sprintf("get %s", p))
+		if err := scanStdin(insID, &p); err == nil && p != "" {
+			return a.parceCommand(fmt.Sprintf(getString, p))
 		}
 	case "cards_edit":
 		a.currentCommand = cards
 		var p string
-		if err := scanStdin("Введите идентификатор карты: ", &p); err == nil && p != "" {
+		if err := scanStdin(insID, &p); err == nil && p != "" {
 			return a.parceCommand(fmt.Sprintf("edit %s", p))
 		}
 	case "cards_del":
 		a.currentCommand = cards
 		var p string
-		if err := scanStdin("Введите идентификатор карты: ", &p); err == nil && p != "" {
-			return a.parceCommand(fmt.Sprintf("del %s", p))
+		if err := scanStdin(insID, &p); err == nil && p != "" {
+			return a.parceCommand(fmt.Sprintf(delString, p))
 		}
 	default:
 		return ErrUndefinedTarget.Error()

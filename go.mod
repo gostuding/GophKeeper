@@ -5,6 +5,7 @@ go 1.20
 require (
 	github.com/go-chi/chi v1.5.5
 	github.com/go-chi/cors v1.2.1
+	github.com/golang/mock v1.6.0
 	github.com/gostuding/middlewares v0.0.0-20231017221122-7302ed82eece
 	github.com/howeyc/gopass v0.0.0-20210920133722-c8aef6fb66ef
 	github.com/jackc/pgerrcode v0.0.0-20220416144525-469b46aa5efa
