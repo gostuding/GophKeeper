@@ -9,10 +9,12 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"path"
 	"testing"
 	"time"
 
 	"github.com/gostuding/GophKeeper/internal/agent/config"
+	"github.com/gostuding/GophKeeper/internal/agent/storage/mock"
 )
 
 var (
@@ -559,6 +561,203 @@ func TestNetStorage_GetPreloadFileInfo(t *testing.T) {
 		_, _, err := storage.GetPreloadFileInfo(serverJSONError.URL)
 		if !errors.Is(err, ErrJSON) {
 			t.Errorf("NetStorage.GetPreloadFileInfo() get unexpected error: %v, want: %v", err, ErrJSON)
+		}
+	})
+}
+
+func TestNetStorage_GetNewFileID(t *testing.T) {
+	fileIDstr := "1"
+	fileIDint := 1
+	file := mock.FileMock{NameFile: "test file", SizeFile: 100}
+	storage := storageCreation(t)
+	if storage == nil {
+		return
+	}
+	handler := func(w http.ResponseWriter, r *http.Request) {
+		data, err := handlerCommon(r, storage.PrivateKey)
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		var f Files
+		err = json.Unmarshal(data, &f)
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		if f.Name != file.Name() || f.Size != file.Size() {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		if _, err = w.Write([]byte(fileIDstr)); err != nil {
+			t.Errorf(wdr, err)
+		}
+	}
+	server := httptest.NewServer(http.HandlerFunc(handler))
+	defer server.Close()
+	serverAuthError := httptest.NewServer(http.HandlerFunc(handlerAuthError))
+	defer serverAuthError.Close()
+	serverNotFound := httptest.NewServer(http.HandlerFunc(handlerNotFound))
+	defer serverNotFound.Close()
+	t.Run("Генерация идентификатора перед загрузкой файла", func(t *testing.T) {
+		id, err := storage.GetNewFileID(server.URL, &file)
+		if err != nil {
+			t.Errorf("NetStorage.GetNewFileID() error: %v", err)
+			return
+		}
+
+		if id != fileIDint {
+			t.Error("NetStorage.GetNewFileID() response id error")
+		}
+	})
+	t.Run("Ошибка авторизации при запросе", func(t *testing.T) {
+		_, err := storage.GetNewFileID(serverAuthError.URL, &file)
+		if !errors.Is(err, ErrAuthorization) {
+			t.Errorf("NetStorage.GetNewFileID() get unexpected error: %v, want: %v", err, ErrAuthorization)
+		}
+	})
+	t.Run("Ошибка расшифровки запроса", func(t *testing.T) {
+		_, err := storage.GetNewFileID(serverNotFound.URL, &file)
+		if !errors.Is(err, ErrStatusCode) {
+			t.Errorf("NetStorage.GetNewFileID() get unexpected error: %v, want: %v", err, ErrNotFound)
+		}
+	})
+}
+
+func TestNetStorage_AddFile(t *testing.T) {
+	fid := 1
+	filePath, err := mock.CreateTMPFile(t, "temp data")
+	if err != nil {
+		t.Errorf("NetStorage.AddFile() error: %v", err)
+		return
+	}
+	storage := storageCreation(t)
+	if storage == nil {
+		return
+	}
+	handler := func(w http.ResponseWriter, r *http.Request) {
+		data, err := io.ReadAll(r.Body)
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		if data == nil {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		for _, i := range []string{"index", "pos", "size", "fid"} {
+			if r.Header.Get(i) == "" {
+				w.WriteHeader(http.StatusBadRequest)
+				return
+			}
+		}
+		if _, err = w.Write(nil); err != nil {
+			t.Errorf(wdr, err)
+		}
+	}
+	server := httptest.NewServer(http.HandlerFunc(handler))
+	defer server.Close()
+	serverAuthError := httptest.NewServer(http.HandlerFunc(handlerAuthError))
+	defer serverAuthError.Close()
+	serverNotFound := httptest.NewServer(http.HandlerFunc(handlerNotFound))
+	defer serverNotFound.Close()
+	t.Run("Загрузка части файла", func(t *testing.T) {
+		err := storage.AddFile(server.URL, filePath, fid)
+		if err != nil {
+			t.Errorf("NetStorage.AddFile() error: %v", err)
+			return
+		}
+	})
+	t.Run("Ошибка авторизации при запросе", func(t *testing.T) {
+		err := storage.AddFile(serverAuthError.URL, filePath, fid)
+		if !errors.Is(err, ErrAuthorization) {
+			t.Errorf("NetStorage.AddFile() get unexpected error: %v, want: %v", err, ErrAuthorization)
+		}
+	})
+	t.Run("Ошибка расшифровки запроса", func(t *testing.T) {
+		err := storage.AddFile(serverNotFound.URL, filePath, fid)
+		if !errors.Is(err, ErrStatusCode) {
+			t.Errorf("NetStorage.AddFile() get unexpected error: %v, want: %v", err, ErrNotFound)
+		}
+	})
+}
+
+func TestNetStorage_FihishFileTransfer(t *testing.T) {
+	fid := 1
+	storage := storageCreation(t)
+	if storage == nil {
+		return
+	}
+	handler := func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}
+	server := httptest.NewServer(http.HandlerFunc(handler))
+	defer server.Close()
+	serverAuthError := httptest.NewServer(http.HandlerFunc(handlerAuthError))
+	defer serverAuthError.Close()
+	serverNotFound := httptest.NewServer(http.HandlerFunc(handlerNotFound))
+	defer serverNotFound.Close()
+	t.Run("Завершение отправки файла", func(t *testing.T) {
+		err := storage.FihishFileTransfer(server.URL, fid)
+		if err != nil {
+			t.Errorf("NetStorage.FihishFileTransfer() error: %v", err)
+			return
+		}
+	})
+	t.Run("Ошибка авторизации при запросе", func(t *testing.T) {
+		err := storage.FihishFileTransfer(serverAuthError.URL, fid)
+		if !errors.Is(err, ErrAuthorization) {
+			t.Errorf("NetStorage.FihishFileTransfer() get unexpected error: %v, want: %v", err, ErrAuthorization)
+		}
+	})
+	t.Run("Ошибка расшифровки запроса", func(t *testing.T) {
+		err := storage.FihishFileTransfer(serverNotFound.URL, fid)
+		if !errors.Is(err, ErrStatusCode) {
+			t.Errorf("NetStorage.FihishFileTransfer() get unexpected error: %v, want: %v", err, ErrNotFound)
+		}
+	})
+}
+
+func TestNetStorage_GetFile(t *testing.T) {
+	maxIdent := 1
+	fileName := path.Join(t.TempDir(), "file.tmp")
+	storage := storageCreation(t)
+	if storage == nil {
+		return
+	}
+	handler := func(w http.ResponseWriter, r *http.Request) {
+		data, err := EncryptAES(storage.Key, []byte("file encrypted data"))
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		if _, err = w.Write(data); err != nil {
+			t.Errorf(wdr, err)
+		}
+	}
+	server := httptest.NewServer(http.HandlerFunc(handler))
+	defer server.Close()
+	serverAuthError := httptest.NewServer(http.HandlerFunc(handlerAuthError))
+	defer serverAuthError.Close()
+	serverNotFound := httptest.NewServer(http.HandlerFunc(handlerNotFound))
+	defer serverNotFound.Close()
+	t.Run("Получение файла", func(t *testing.T) {
+		err := storage.GetFile(server.URL, fileName, maxIdent)
+		if err != nil {
+			t.Errorf("NetStorage.GetFile() error: %v", err)
+			return
+		}
+	})
+	t.Run("Ошибка авторизации при запросе", func(t *testing.T) {
+		err := storage.GetFile(serverAuthError.URL, fileName, maxIdent)
+		if !errors.Is(err, ErrAuthorization) {
+			t.Errorf("NetStorage.GetFile() get unexpected error: %v, want: %v", err, ErrAuthorization)
+		}
+	})
+	t.Run("Ошибка расшифровки запроса", func(t *testing.T) {
+		err := storage.GetFile(serverNotFound.URL, fileName, maxIdent)
+		if !errors.Is(err, ErrStatusCode) {
+			t.Errorf("NetStorage.GetFile() get unexpected error: %v, want: %v", err, ErrNotFound)
 		}
 	})
 }

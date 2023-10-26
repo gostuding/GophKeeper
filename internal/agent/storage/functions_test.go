@@ -2,6 +2,9 @@ package storage
 
 import (
 	"bytes"
+	"crypto/rand"
+	"crypto/rsa"
+	"reflect"
 	"testing"
 )
 
@@ -23,5 +26,84 @@ func TestEncryptAES(t *testing.T) {
 	}
 	if !bytes.Equal(msg, arg.msg) {
 		t.Errorf("EncryptAES() and decryptAES() error: values not equal: decrypt: %s", string(msg))
+	}
+}
+
+func Test_decryptAES(t *testing.T) {
+	k := []byte("keys")
+	m := []byte("message for encrypt")
+	msg, err := EncryptAES(k, m)
+	if err != nil {
+		t.Errorf("encrypt message error: %v", err)
+		return
+	}
+	type args struct {
+		key []byte
+		msg []byte
+	}
+	tests := []struct {
+		name    string
+		args    args
+		want    []byte
+		wantErr bool
+	}{
+		{"Успешная расшифровка", args{key: k, msg: msg}, m, false},
+		{"Ошибока длины сообщения", args{key: k, msg: nil}, nil, true},
+	}
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := decryptAES(tt.args.key, tt.args.msg)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("decryptAES() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("decryptAES() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func Test_encryptRSAMessage(t *testing.T) {
+	key, err := rsa.GenerateKey(rand.Reader, keySize)
+	if err != nil {
+		t.Errorf("generate private key error: %v", err)
+		return
+	}
+	msg := []byte("rsa encrypt message")
+	enc, err := encryptRSAMessage(msg, &key.PublicKey)
+	if err != nil {
+		t.Errorf("encrypt error: %v", err)
+		return
+	}
+	dec, err := decryptRSAMessage(key, enc)
+	if err != nil {
+		t.Errorf("decrypt error: %v", err)
+		return
+	}
+	if !bytes.Equal(msg, dec) {
+		t.Error("messages not equal")
+	}
+}
+
+func Test_aesKey(t *testing.T) {
+	type args struct {
+		key []byte
+	}
+	tests := []struct {
+		name string
+		args args
+		want []byte
+	}{
+		{"Короткий ключ", args{key: []byte("k")}, []byte("k               ")},
+		{"Длинный ключ ", args{key: []byte("1234567890123456789")}, []byte("1234567890123456")},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := aesKey(tt.args.key); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("aesKey() = %v, want %v", got, tt.want)
+			}
+		})
 	}
 }

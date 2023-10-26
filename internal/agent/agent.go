@@ -10,6 +10,7 @@ import (
 	"os/signal"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 
 	"github.com/gostuding/GophKeeper/internal/agent/config"
@@ -100,6 +101,11 @@ type (
 		Config         *config.Config      // configuration object.
 		Storage        *storage.NetStorage // object for work with srver
 		currentCommand string              // current user command
+		mutex          sync.Mutex
+		ctx            context.Context
+		cancelFunc     context.CancelFunc
+		testMode       bool // flag for test mode not get info from StdIn
+		isRun          bool // flag that agent is run
 	}
 )
 
@@ -127,22 +133,32 @@ func NewAgent(c *config.Config) (*Agent, error) {
 
 // Run starts agent work.
 func (a *Agent) Run() error {
-	ctx, cancelFunc := signal.NotifyContext(
+	a.mutex.Lock()
+	if a.isRun {
+		a.mutex.Unlock()
+		return errors.New("agent already run")
+	}
+	a.isRun = true
+	a.mutex.Unlock()
+	a.ctx, a.cancelFunc = signal.NotifyContext(
 		context.Background(), os.Interrupt,
 		syscall.SIGTERM, syscall.SIGINT, syscall.SIGQUIT,
 	)
-	defer cancelFunc()
+	defer a.cancelFunc()
 	if err := a.Storage.Check(a.url(urlCheck)); err != nil {
 		return fmt.Errorf("storage check error: %w", err)
 	}
 	err := a.authentification()
 	for err != nil {
 		if errors.Is(err, gopass.ErrInterrupted) {
-			cancelFunc()
+			a.cancelFunc()
 		}
 		select {
-		case <-ctx.Done():
+		case <-a.ctx.Done():
 			fmt.Println("Stop work")
+			a.mutex.Lock()
+			a.isRun = false
+			a.mutex.Unlock()
 			return nil
 		default:
 			fmt.Printf("ОШИБКА авторизации: %v\n", err)
@@ -151,12 +167,18 @@ func (a *Agent) Run() error {
 	}
 	for {
 		select {
-		case <-ctx.Done():
+		case <-a.ctx.Done():
 			fmt.Println("Agent work finish.")
+			a.mutex.Lock()
+			a.isRun = false
+			a.mutex.Unlock()
 			return nil
 		default:
 			if a.Config.Command != "" {
 				fmt.Println(a.userCommand(a.Config.Command))
+				a.mutex.Lock()
+				a.isRun = false
+				a.mutex.Unlock()
 				return nil
 			}
 			var cmd string
@@ -165,12 +187,29 @@ func (a *Agent) Run() error {
 				continue
 			}
 			if cmd == exit {
-				cancelFunc()
+				a.cancelFunc()
 			} else {
 				fmt.Println(a.parceCommand(cmd))
 			}
 		}
 	}
+}
+
+func (a *Agent) Stop() error {
+	a.mutex.Lock()
+	defer a.mutex.Unlock()
+	if a.isRun {
+		a.cancelFunc()
+	} else {
+		return fmt.Errorf("agent is not run")
+	}
+	return nil
+}
+
+func (a *Agent) IsRun() bool {
+	a.mutex.Lock()
+	defer a.mutex.Unlock()
+	return a.isRun
 }
 
 func (a *Agent) authentification() error {
@@ -423,9 +462,15 @@ func (a *Agent) addSwitcher(path string) error {
 		if f.IsDir() {
 			return fmt.Errorf("path incorrect, set path to file")
 		}
-		err = a.Storage.AddFile(path, f)
+		fid, err := a.Storage.GetNewFileID(a.url(urlFileAdd), f)
 		if err != nil {
+			return fmt.Errorf("file add init request error: %w", err)
+		}
+		if err = a.Storage.AddFile(a.url(urlFileAdd), path, fid); err != nil {
 			return fmt.Errorf("file add error: %w", err)
+		}
+		if err = a.Storage.FihishFileTransfer(a.url(urlFileAdd), fid); err != nil {
+			return fmt.Errorf("confirm file add error: %w", err)
 		}
 		return nil
 	default:

@@ -400,59 +400,39 @@ func (ns *NetStorage) GetFilesList(url string) (string, error) {
 	}
 }
 
-func (ns *NetStorage) getNewFileID(info os.FileInfo) (int, error) {
+// GetNewFileID sends request to server for generate new file identificator
+func (ns *NetStorage) GetNewFileID(url string, info os.FileInfo) (int, error) {
 	data, err := json.Marshal(Files{Name: info.Name(), Size: info.Size()})
 	if err != nil {
 		return 0, makeError(ErrJSONMarshal, err)
 	}
-	res, err := ns.doEncryptRequest(data, ns.url(urlFileAdd), http.MethodPut)
+	res, err := ns.doEncryptRequest(data, url, http.MethodPut)
 	if err != nil {
 		return 0, err
 	}
 	defer res.Body.Close() //nolint:errcheck //<-senselessly
-	if res.StatusCode != http.StatusOK {
+	switch res.StatusCode {
+	case http.StatusUnauthorized:
+		return 0, ErrAuthorization
+	case http.StatusBadRequest:
+		return 0, makeError(ErrServerDecrypt, nil)
+	case http.StatusOK:
+		f, err := io.ReadAll(res.Body)
+		if err != nil {
+			return 0, makeError(ErrResponseRead, err)
+		}
+		fid, err := strconv.Atoi(string(f))
+		if err != nil {
+			return 0, fmt.Errorf("convert file id error: %w", err)
+		}
+		return fid, nil
+	default:
 		return 0, makeError(ErrResponseStatusCode, res.StatusCode)
 	}
-	f, err := io.ReadAll(res.Body)
-	if err != nil {
-		return 0, makeError(ErrResponseRead, err)
-	}
-	fid, err := strconv.Atoi(string(f))
-	if err != nil {
-		return 0, fmt.Errorf("convert file id error: %w", err)
-	}
-	return fid, nil
 }
 
-// fihishFileTrasfer sends get request to server for confirm add finish.
-func (ns *NetStorage) fihishFileTransfer(fid int) error {
-	url := fmt.Sprintf("%s?fid=%d", ns.url(urlFileAdd), fid)
-	req, err := http.NewRequest(http.MethodGet, url, nil)
-	if err != nil {
-		return makeError(ErrRequest, err)
-	}
-	req.Header.Add(Authorization, ns.JWTToken)
-	res, err := ns.Client.Do(req)
-	if err != nil {
-		return makeError(ErrRequest, err)
-	}
-	defer res.Body.Close() //nolint:errcheck //<-senselessly
-	switch res.StatusCode {
-	case http.StatusOK:
-		return nil
-	case http.StatusUnauthorized:
-		return ErrAuthorization
-	default:
-		return makeError(ErrResponseStatusCode, res.StatusCode, "finish file add error")
-	}
-}
-
-// AddFile sends file to server.
-func (ns *NetStorage) AddFile(path string, info os.FileInfo) error {
-	fid, err := ns.getNewFileID(info)
-	if err != nil {
-		return fmt.Errorf("get file id error: %w", err)
-	}
+// AddFile sends file's body to server.
+func (ns *NetStorage) AddFile(url, fPath string, fid int) error {
 	sendChan := make(chan (FileSend), sendThreadCount)
 	errChan := make(chan (error), sendThreadCount)
 	stopChan := make(chan (interface{}))
@@ -460,7 +440,7 @@ func (ns *NetStorage) AddFile(path string, info os.FileInfo) error {
 	go func() {
 		defer close(sendChan)
 		defer close(reader)
-		file, err := os.Open(path)
+		file, err := os.Open(fPath)
 		if err != nil {
 			errChan <- fmt.Errorf("open file error: %w", err)
 			return
@@ -503,7 +483,7 @@ func (ns *NetStorage) AddFile(path string, info os.FileInfo) error {
 				case <-stopChan:
 					return
 				default:
-					req, err := http.NewRequest(http.MethodPost, ns.url(urlFileAdd), bytes.NewReader(item.Data))
+					req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(item.Data))
 					if err != nil {
 						errChan <- makeError(ErrRequest, err)
 						return
@@ -522,9 +502,15 @@ func (ns *NetStorage) AddFile(path string, info os.FileInfo) error {
 						errChan <- fmt.Errorf("close response body error: %w", err)
 						return
 					}
-					if resp.StatusCode != http.StatusOK {
-						errChan <- makeError(ErrResponseStatusCode, resp.StatusCode)
+					switch resp.StatusCode {
+					case http.StatusUnauthorized:
+						errChan <- ErrAuthorization
 						return
+					default:
+						if resp.StatusCode != http.StatusOK {
+							errChan <- makeError(ErrResponseStatusCode, resp.StatusCode)
+							return
+						}
 					}
 				}
 			}
@@ -539,12 +525,35 @@ func (ns *NetStorage) AddFile(path string, info os.FileInfo) error {
 			return <-errChan
 		}
 		close(errChan)
-		return ns.fihishFileTransfer(fid)
+		return nil
 	case err := <-errChan:
 		close(stopChan)
 		wg.Wait()
 		close(errChan)
 		return err
+	}
+}
+
+// FihishFileTransfer sends get request to server for confirm send finishing.
+func (ns *NetStorage) FihishFileTransfer(url string, fid int) error {
+	url = fmt.Sprintf("%s?fid=%d", url, fid)
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		return makeError(ErrRequest, err)
+	}
+	req.Header.Add(Authorization, ns.JWTToken)
+	res, err := ns.Client.Do(req)
+	if err != nil {
+		return makeError(ErrRequest, err)
+	}
+	defer res.Body.Close() //nolint:errcheck //<-senselessly
+	switch res.StatusCode {
+	case http.StatusOK:
+		return nil
+	case http.StatusUnauthorized:
+		return ErrAuthorization
+	default:
+		return makeError(ErrResponseStatusCode, res.StatusCode)
 	}
 }
 
