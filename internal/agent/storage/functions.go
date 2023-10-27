@@ -25,6 +25,7 @@ const (
 	ErrResponse
 	ErrDecryptMessage
 	ErrGetToken
+	ErrDecode
 )
 
 var (
@@ -62,6 +63,8 @@ func makeError(t ErrType, values ...any) error {
 		return fmt.Errorf("request error: %w", values...)
 	case ErrResponse:
 		return fmt.Errorf("response error: %w", values...)
+	case ErrDecode:
+		return fmt.Errorf("hex decodeString error: %w", values...)
 	}
 	return fmt.Errorf("undefined error: %w", values...)
 }

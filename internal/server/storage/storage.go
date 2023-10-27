@@ -140,7 +140,7 @@ func (s *Storage) GetCardsList(ctx context.Context, uid uint) ([]byte, error) {
 	}
 	cards := make([]SendDataInfo, 0)
 	for _, item := range c {
-		cards = append(cards, SendDataInfo{ID: item.ID, Label: item.Label, Update: item.UpdatedAt})
+		cards = append(cards, SendDataInfo{ID: item.ID, Label: item.Label, UpdatedAt: item.UpdatedAt})
 	}
 	data, err := json.Marshal(cards)
 	if err != nil {
@@ -173,7 +173,7 @@ func (s *Storage) GetCard(ctx context.Context, id, uid uint) ([]byte, error) {
 	if result.Error != nil {
 		return nil, makeError(ErrDatabase, result.Error)
 	}
-	card := SendDataInfo{Label: c.Label, Info: c.Value, Update: c.UpdatedAt}
+	card := SendDataInfo{Label: c.Label, Info: c.Value, UpdatedAt: c.UpdatedAt}
 	data, err := json.Marshal(&card)
 	if err != nil {
 		return nil, fmt.Errorf("card info convert error: %w", err)

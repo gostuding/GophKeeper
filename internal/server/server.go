@@ -44,7 +44,9 @@ type (
 		AddCard(context.Context, uint, string, string) error
 		AddDataInfo(context.Context, uint, string, string) error
 		DeleteCard(context.Context, uint, uint) error
+		DeleteDataInfo(context.Context, uint, uint) error
 		UpdateCard(context.Context, uint, uint, string, string) error
+		UpdateDataInfo(context.Context, uint, uint, string, string) error
 		GetFilesList(context.Context, uint) ([]byte, error)
 		AddFile(context.Context, uint, []byte) ([]byte, error)
 		AddFileData(context.Context, uint, uint, int, int, int, []byte) error
@@ -132,4 +134,9 @@ func (s *Server) StopServer() error {
 	s.isRun = false
 	s.mutex.Unlock()
 	return nil
+}
+
+// IsRun returns flag is server run.
+func (s *Server) IsRun() bool {
+	return s.isRun
 }

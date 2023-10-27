@@ -45,5 +45,3 @@ func main() {
 		log.Fatalf("server error: %v", err)
 	}
 }
-
-// mockgen -destination=./internal/agent/mocks/mock_storage.go -package=mocks github.com/gostuding/GophKeeper/internal/agent Storage

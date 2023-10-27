@@ -46,9 +46,8 @@ func isValidateLoginPassword(body []byte) (*LoginPassword, error) {
 }
 
 // createToken is private function.
-func createToken(r *http.Request, key []byte, uid, time int, aesKey, pk string) ([]byte, int, error) {
-	ua := r.Header.Get("User-Agent")
-	ip, _, err := net.SplitHostPort(r.RemoteAddr)
+func createToken(key []byte, uid, time int, aesKey, pk, ua, adr string) ([]byte, int, error) {
+	ip, _, err := net.SplitHostPort(adr)
 	if err != nil {
 		return nil, http.StatusBadRequest, makeError(ErrIPIncorrect, err)
 	}
@@ -71,6 +70,9 @@ func createToken(r *http.Request, key []byte, uid, time int, aesKey, pk string) 
 // @Success 200 "Отправка ключа"
 // @failure 500 "Внутренняя ошибка сервиса".
 func GetPublicKey(key *rsa.PrivateKey) ([]byte, error) {
+	if key == nil {
+		return nil, errors.New("private key is null")
+	}
 	keyData, err := x509.MarshalPKIXPublicKey(key.Public())
 	if err != nil {
 		return nil, fmt.Errorf("marshal public key error: %w", err)
@@ -95,7 +97,7 @@ func Register(
 	body, key []byte,
 	strg Storage,
 	t int,
-	r *http.Request,
+	ua, addr string,
 ) ([]byte, int, error) {
 	user, err := isValidateLoginPassword(body)
 	if err != nil {
@@ -111,7 +113,7 @@ func Register(
 		}
 		return nil, status, err
 	}
-	return createToken(r, key, uid, t, aesKey, user.PublicKey)
+	return createToken(key, uid, t, aesKey, user.PublicKey, ua, addr)
 }
 
 // Login user.
@@ -131,7 +133,7 @@ func Login(
 	body, key []byte,
 	strg Storage,
 	t int,
-	r *http.Request,
+	ua, addr string,
 ) ([]byte, int, error) {
 	user, err := isValidateLoginPassword(body)
 	if err != nil {
@@ -145,7 +147,7 @@ func Login(
 			return nil, http.StatusInternalServerError, makeError(ErrGormGet, err)
 		}
 	}
-	return createToken(r, key, uid, t, aesKey, user.PublicKey)
+	return createToken(key, uid, t, aesKey, user.PublicKey, ua, addr)
 }
 
 // GetCardsList returns list of cards lables.
@@ -182,10 +184,7 @@ func addCommon(ctx context.Context, body []byte,
 	}
 	err = f(ctx, uint(uid), l.Label, l.Info)
 	if err != nil {
-		// if strg.IsUniqueViolation(err) {
-		// 	return http.StatusConflict, makeError(ErrGormDublicate, err)
-		// }
-		return http.StatusInternalServerError, makeError(InternalError)
+		return http.StatusInternalServerError, makeError(ErrGormGet, err)
 	}
 	return http.StatusOK, nil
 }
@@ -209,7 +208,14 @@ func AddCardInfo(
 	body []byte,
 	strg Storage,
 ) (int, error) {
-	return addCommon(ctx, body, strg.AddCard)
+	status, err := addCommon(ctx, body, strg.AddCard)
+	if err != nil {
+		if strg.IsUniqueViolation(err) {
+			return http.StatusConflict, makeError(ErrGormDublicate, err)
+		}
+		return status, err
+	}
+	return status, nil
 }
 
 func getCommon(ctx context.Context, key string, id uint,
@@ -254,6 +260,23 @@ func GetCard(
 	return getCommon(ctx, key, id, strg.GetCard)
 }
 
+func delCommon(ctx context.Context, id uint,
+	f func(context.Context, uint, uint) error,
+) (int, error) {
+	uid, ok := ctx.Value(middlewares.AuthUID).(int)
+	if !ok {
+		return http.StatusUnauthorized, makeError(ErrUserAuthorization, nil)
+	}
+	err := f(ctx, id, uint(uid))
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return http.StatusNotFound, makeError(ErrNotFound, id)
+		}
+		return http.StatusInternalServerError, makeError(InternalError, err)
+	}
+	return http.StatusOK, nil
+}
+
 // DeleteCard deletes information about one card from database.
 // @Tags Карты
 // @Summary Удаление информации о карте пользователя.
@@ -270,16 +293,23 @@ func DeleteCard(
 	strg Storage,
 	id int,
 ) (int, error) {
+	return delCommon(ctx, uint(id), strg.DeleteCard)
+}
+
+func updateCommon(ctx context.Context, body []byte, id uint,
+	f func(context.Context, uint, uint, string, string) error) (int, error) {
 	uid, ok := ctx.Value(middlewares.AuthUID).(int)
 	if !ok {
 		return http.StatusUnauthorized, makeError(ErrUserAuthorization, nil)
 	}
-	err := strg.DeleteCard(ctx, uint(id), uint(uid))
+	var l labelInfo
+	err := json.Unmarshal(body, &l)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return http.StatusNotFound, makeError(ErrNotFound, id)
-		}
-		return http.StatusInternalServerError, makeError(InternalError, err)
+		return http.StatusUnprocessableEntity, makeError(ErrUnmarshalJSON, err)
+	}
+	err = f(ctx, id, uint(uid), l.Label, l.Info)
+	if err != nil {
+		return http.StatusInternalServerError, makeError(InternalError)
 	}
 	return http.StatusOK, nil
 }
@@ -303,20 +333,7 @@ func UpdateCardInfo(
 	strg Storage,
 	id uint,
 ) (int, error) {
-	uid, ok := ctx.Value(middlewares.AuthUID).(int)
-	if !ok {
-		return http.StatusUnauthorized, makeError(ErrUserAuthorization, nil)
-	}
-	var l labelInfo
-	err := json.Unmarshal(body, &l)
-	if err != nil {
-		return http.StatusUnprocessableEntity, makeError(ErrUnmarshalJSON, err)
-	}
-	err = strg.UpdateCard(ctx, id, uint(uid), l.Label, l.Info)
-	if err != nil {
-		return http.StatusInternalServerError, makeError(InternalError)
-	}
-	return http.StatusOK, nil
+	return updateCommon(ctx, body, id, strg.UpdateCard)
 }
 
 // GetListCommon is internal function.
@@ -568,7 +585,7 @@ func AddDataInfo(
 }
 
 // GetDataInfo returns information about one data info.
-// @Tags Карты
+// @Tags Данные
 // @Summary Запрос информации.
 // @Param order body string true "Public key"
 // @Security ApiKeyAuth
@@ -585,72 +602,47 @@ func GetDataInfo(
 	strg Storage,
 	id uint,
 ) ([]byte, int, error) {
-	return return getCommon(ctx, key, id, strg.GetDataInfo)
+	return getCommon(ctx, key, id, strg.GetDataInfo)
 }
 
-// DeleteCard deletes information about one card from database.
-// @Tags Карты
-// @Summary Удаление информации о карте пользователя.
+// DeleteDataInfo deletes information about one data info from database.
+// @Tags Данные
+// @Summary Удаление информации.
 // @Security ApiKeyAuth
 // @Param Authorization header string false "Токен авторизации"
-// @Router /api/cards/{id} [delete]
+// @Router /api/data/{id} [delete]
 // @Success 200 "Инфорация удалена"
 // @failure 400 "Ошибка шифрования"
 // @failure 401 "Пользователь не авторизован"
 // @failure 404 "Карта не найдена"
 // @failure 500 "Внутренняя ошибка сервиса.".
-func DeleteCard(
+func DeleteDataInfo(
 	ctx context.Context,
 	strg Storage,
 	id int,
 ) (int, error) {
-	uid, ok := ctx.Value(middlewares.AuthUID).(int)
-	if !ok {
-		return http.StatusUnauthorized, makeError(ErrUserAuthorization, nil)
-	}
-	err := strg.DeleteCard(ctx, uint(id), uint(uid))
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return http.StatusNotFound, makeError(ErrNotFound, id)
-		}
-		return http.StatusInternalServerError, makeError(InternalError, err)
-	}
-	return http.StatusOK, nil
+	return delCommon(ctx, uint(id), strg.DeleteDataInfo)
 }
 
-// UpdateCardInfo updates card's info in database.
-// @Tags Карты
-// @Summary Редактирование информации о карте. Шифрование открытым ключём сервера.
+// UpdateDataInfo updates data's info in database.
+// @Tags Данные
+// @Summary Редактирование информации.
 // @Accept json
-// @Param order body storage.Cards true "Данные о карте. Value должно шифроваться на стороне клиента"
 // @Security ApiKeyAuth
 // @Param Authorization header string false "Токен авторизации"
-// @Router /api/cards/edit [put]
+// @Router /api/data/edit [put]
 // @Success 200 "Информация о карточке успешно обновлена"
 // @failure 400 "Ошибка при расшифровке тела запроса"
 // @failure 401 "Пользователь не авторизован"
 // @failure 422 "Ошибка при конвертации json"
 // @failure 500 "Внутренняя ошибка сервиса.".
-func UpdateCardInfo(
+func UpdateDataInfo(
 	ctx context.Context,
 	body []byte,
 	strg Storage,
 	id uint,
 ) (int, error) {
-	uid, ok := ctx.Value(middlewares.AuthUID).(int)
-	if !ok {
-		return http.StatusUnauthorized, makeError(ErrUserAuthorization, nil)
-	}
-	var l labelInfo
-	err := json.Unmarshal(body, &l)
-	if err != nil {
-		return http.StatusUnprocessableEntity, makeError(ErrUnmarshalJSON, err)
-	}
-	err = strg.UpdateCard(ctx, id, uint(uid), l.Label, l.Info)
-	if err != nil {
-		return http.StatusInternalServerError, makeError(InternalError)
-	}
-	return http.StatusOK, nil
+	return updateCommon(ctx, body, id, strg.UpdateDataInfo)
 }
 
 // encryption message by RSA.

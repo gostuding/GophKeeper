@@ -13,16 +13,14 @@ import (
 )
 
 const (
-	keySize                           = 4096
-	fBits                 os.FileMode = 0600
-	defaultPort                       = 8080
-	defaultConCount                   = 10
-	defaultTokenLiveTime              = 60 * 60 * 24
-	defaultIP                         = "127.0.0.1"
-	defaultPrivateKeyPath             = "./srv_private_key.pem"
-	defaultDSN                        = "host=localhost user=postgres database=gophkeeper"
-	defaultTokenKey                   = "token key"
-	defaulStoragePath                 = "./storage"
+	keySize                          = 4096
+	fBits                os.FileMode = 0600
+	defaultPort                      = 8080
+	defaultConCount                  = 10
+	defaultTokenLiveTime             = 60 * 60 * 24
+	defaultIP                        = "127.0.0.1"
+	defaultDSN                       = "host=localhost user=postgres database=gophkeeper"
+	defaultTokenKey                  = "token key"
 )
 
 // Config is server's config structure.
@@ -39,7 +37,7 @@ type Config struct {
 }
 
 // checkFileExist checks config file exists. Createss default config if the file wasn't found.
-func checkFileExist(path string) error {
+func checkFileExist(path, keyPath, storagePath string) error {
 	_, err := os.Stat(path)
 	if err == nil {
 		return nil
@@ -58,18 +56,18 @@ func checkFileExist(path string) error {
 			Bytes: prvBytes,
 		},
 	)
-	if err = os.WriteFile(defaultPrivateKeyPath, prvPem, fBits); err != nil {
+	if err = os.WriteFile(keyPath, prvPem, fBits); err != nil {
 		return fmt.Errorf("write private key error: %w", err)
 	}
 	cfg := Config{
 		IP:               defaultIP,
 		Port:             defaultPort,
 		DSN:              defaultDSN,
-		KeyPath:          defaultPrivateKeyPath,
+		KeyPath:          keyPath,
 		MaxConnectCount:  defaultConCount,
 		TokenKey:         []byte(defaultTokenKey),
 		MaxTokenLiveTime: defaultTokenLiveTime,
-		StoragePath:      defaulStoragePath,
+		StoragePath:      storagePath,
 	}
 	data, err := json.MarshalIndent(cfg, "", "    ")
 	if err != nil {
@@ -121,8 +119,10 @@ func NewConfig() (*Config, error) {
 	cfg := Config{}
 	var fPath string
 	flag.StringVar(&fPath, "i", "server_config.json", "Path to configuration json file")
+	flag.StringVar(&cfg.KeyPath, "k", "server_key.pem", "Private RSA key path")
+	flag.StringVar(&cfg.StoragePath, "s", "./storage", "File storage path")
 	flag.Parse()
-	if err := checkFileExist(fPath); err != nil {
+	if err := checkFileExist(fPath, cfg.KeyPath, cfg.StoragePath); err != nil {
 		return nil, err
 	}
 	return &cfg, readConfigFile(fPath, &cfg)

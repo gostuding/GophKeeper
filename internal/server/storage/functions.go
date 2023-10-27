@@ -48,11 +48,11 @@ type (
 	}
 	// SendDataInfo struct sends card's information to clients.
 	SendDataInfo struct {
-		Update time.Time `json:"updated"`
-		Label  string    `gorm:"type:varchar(255)" json:"label,omitempty"`
-		Info   string    `gorm:"type:text" json:"info,omitempty"`
-		ID     uint      `gorm:"primarykey" json:"id,omitempty"`
-		UID    uint      `gorm:"numeric" json:"-"`
+		UpdatedAt time.Time `json:"updated"`
+		Label     string    `gorm:"type:varchar(255)" json:"label,omitempty"`
+		Info      string    `gorm:"type:text" json:"info,omitempty"`
+		ID        uint      `gorm:"primarykey" json:"id,omitempty"`
+		UID       uint      `gorm:"numeric" json:"-"`
 	}
 )
 

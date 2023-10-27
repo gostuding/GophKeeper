@@ -743,3 +743,171 @@ func TestNetStorage_DeleteItem(t *testing.T) {
 		}
 	})
 }
+
+func addUpdateHandle(
+	t *testing.T,
+	rsaKey *rsa.PrivateKey,
+	aesKey []byte,
+	info *DataInfo,
+) func(w http.ResponseWriter, r *http.Request) {
+	t.Helper()
+	return func(w http.ResponseWriter, r *http.Request) {
+		data, err := handlerCommon(r, rsaKey)
+		if err != nil {
+			t.Errorf("info rsa decrypt error: %v", err)
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		var i DataInfo
+		if err := json.Unmarshal(data, &i); err != nil {
+			t.Errorf("info unmarshal error: %v", err)
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		data, err = hex.DecodeString(i.Info)
+		if err != nil {
+			t.Errorf("info decode error: %v", err)
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		fmt.Println(data)
+		data, err = decryptAES(aesKey, data)
+		if err != nil {
+			t.Errorf("info decrypt error: %v", err)
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		if info.Label != i.Label || info.Info != string(data) {
+			t.Errorf("info not equal: got - %s: %s, want: %s: %s", i.Label, i.Info, info.Label, info.Info)
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	}
+}
+
+func TestNetStorage_AddDataInfo(t *testing.T) {
+	storage, err := NewNetStorage()
+	if err != nil {
+		t.Errorf("NewNetStorage() error: %v", err)
+		return
+	}
+	storage.ServerPublicKey = &storage.PrivateKey.PublicKey
+	storage.Key = aesKey([]byte("add data info key"))
+	info := DataInfo{Label: "add data info label", Info: "data info"}
+	handler := addUpdateHandle(t, storage.PrivateKey, storage.Key, &info)
+	server := httptest.NewServer(http.HandlerFunc(handler))
+	defer server.Close()
+	serverAuthError := httptest.NewServer(http.HandlerFunc(handlerAuthError))
+	defer serverAuthError.Close()
+	serverBadRequest := httptest.NewServer(http.HandlerFunc(handlerBadRequest))
+	defer serverBadRequest.Close()
+	t.Run("Добавление информации", func(t *testing.T) {
+		if err := storage.AddDataInfo(server.URL, info.Label, info.Info); err != nil {
+			t.Errorf("NetStorage.AddDataInfo() error: %v", err)
+		}
+	})
+	t.Run("Ошибка авторизации при добавлении информации", func(t *testing.T) {
+		if err := storage.AddDataInfo(serverAuthError.URL, info.Label, info.Info); !errors.Is(err, ErrAuthorization) {
+			t.Errorf("NetStorage.AddDataInfo() get unexpected error: %v, want: %v", err, ErrAuthorization)
+		}
+	})
+	t.Run("Ошибка на сервере при добавлении информации", func(t *testing.T) {
+		if err := storage.AddDataInfo(serverBadRequest.URL, info.Label, info.Info); !errors.Is(err, ErrStatusCode) {
+			t.Errorf("NetStorage.AddDataInfo() get unexpected error: %v, want: %v", err, ErrStatusCode)
+		}
+	})
+}
+
+func TestNetStorage_UpdateDataInfo(t *testing.T) {
+	storage := storageCreation(t)
+	if storage == nil {
+		return
+	}
+	info := DataInfo{Label: "update data label", Info: "information"}
+	handler := addUpdateHandle(t, storage.PrivateKey, storage.Key, &info)
+	server := httptest.NewServer(http.HandlerFunc(handler))
+	defer server.Close()
+	serverAuthError := httptest.NewServer(http.HandlerFunc(handlerAuthError))
+	defer serverAuthError.Close()
+	serverBadRequest := httptest.NewServer(http.HandlerFunc(handlerBadRequest))
+	defer serverBadRequest.Close()
+	t.Run("Обновление информации", func(t *testing.T) {
+		if err := storage.UpdateDataInfo(server.URL, info.Label, info.Info); err != nil {
+			t.Errorf("NetStorage.UpdateDataInfo() error: %v", err)
+		}
+	})
+	t.Run("Ошибка авторизации при обновлении", func(t *testing.T) {
+		if err := storage.UpdateDataInfo(serverAuthError.URL, info.Label, info.Info); !errors.Is(err, ErrAuthorization) {
+			t.Errorf("NetStorage.UpdateDataInfo() get unexpected error: %v, want: %v", err, ErrAuthorization)
+		}
+	})
+	t.Run("Ошибка на сервере при обновлении", func(t *testing.T) {
+		if err := storage.UpdateDataInfo(serverBadRequest.URL, info.Label, info.Info); !errors.Is(err, ErrStatusCode) {
+			t.Errorf("NetStorage.UpdateDataInfo() get unexpected error: %v, want: %v", err, ErrStatusCode)
+		}
+	})
+}
+
+func TestNetStorage_GetDataInfo(t *testing.T) {
+	storage := storageCreation(t)
+	if storage == nil {
+		return
+	}
+	info := DataInfo{Label: "data", Info: "123"}
+	handler := func(w http.ResponseWriter, r *http.Request) {
+		_, err := handlerCommon(r, storage.PrivateKey)
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		data, err := EncryptAES(storage.Key, []byte(info.Info))
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		i := DataInfo{Label: info.Label, Info: hex.EncodeToString(data)}
+		data, err = json.Marshal(&i)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		data, err = encryptRSAMessage(data, &storage.PrivateKey.PublicKey)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		_, err = w.Write(data)
+		if err != nil {
+			t.Errorf(wdr, err)
+		}
+	}
+	server := httptest.NewServer(http.HandlerFunc(handler))
+	defer server.Close()
+	serverAuthError := httptest.NewServer(http.HandlerFunc(handlerAuthError))
+	defer serverAuthError.Close()
+	serverNotFound := httptest.NewServer(http.HandlerFunc(handlerNotFound))
+	defer serverNotFound.Close()
+	t.Run("Успешный запрос ", func(t *testing.T) {
+		d, err := storage.GetDataInfo(server.URL)
+		if err != nil {
+			t.Errorf("NetStorage.GetDataInfo() error: %v", err)
+			return
+		}
+		if d.Info != info.Info || d.Label != info.Label {
+			t.Errorf("NetStorage.GetDataInfo() not equal. Got: %v, want: %v", d, info)
+		}
+	})
+	t.Run("Ошибка авторизации запроса", func(t *testing.T) {
+		_, err := storage.GetDataInfo(serverAuthError.URL)
+		if !errors.Is(err, ErrAuthorization) {
+			t.Errorf("NetStorage.GetDataInfo() get unexpected error: %v, want: %v", err, ErrAuthorization)
+		}
+	})
+	t.Run("Данные не найдены", func(t *testing.T) {
+		_, err := storage.GetDataInfo(serverNotFound.URL)
+		if !errors.Is(err, ErrNotFound) {
+			t.Errorf("NetStorage.GetDataInfo() get unexpected error: %v, want: %v", err, ErrNotFound)
+		}
+	})
+}

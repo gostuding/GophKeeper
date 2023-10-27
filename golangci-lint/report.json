@@ -1,25 +1,4 @@
 [
-    {
-        "FromLinter": "godot",
-        "Text": "Sentence should start with a capital letter",
-        "Severity": "error",
-        "SourceLines": [
-            "// mockgen -destination=./internal/agent/mocks/mock_storage.go -package=mocks github.com/gostuding/GophKeeper/internal/agent Storage"
-        ],
-        "Replacement": {
-            "NeedOnlyDelete": false,
-            "NewLines": [
-                "// Mockgen -destination=./internal/agent/mocks/mock_storage.go -package=mocks github.com/gostuding/GophKeeper/internal/agent Storage."
-            ],
-            "Inline": null
-        },
-        "Pos": {
-            "Filename": "cmd/server/main.go",
-            "Offset": 1123,
-            "Line": 49,
-            "Column": 4
-        },
-        "ExpectNoLint": false,
-        "ExpectedNoLintLinter": ""
-    }
+    
+  
 ]

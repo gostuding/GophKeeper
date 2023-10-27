@@ -48,6 +48,20 @@ func (mr *MockStorageMockRecorder) AddCard(arg0, arg1, arg2, arg3 interface{}) *
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddCard", reflect.TypeOf((*MockStorage)(nil).AddCard), arg0, arg1, arg2, arg3)
 }
 
+// AddDataInfo mocks base method.
+func (m *MockStorage) AddDataInfo(arg0 context.Context, arg1 uint, arg2, arg3 string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "AddDataInfo", arg0, arg1, arg2, arg3)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// AddDataInfo indicates an expected call of AddDataInfo.
+func (mr *MockStorageMockRecorder) AddDataInfo(arg0, arg1, arg2, arg3 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddDataInfo", reflect.TypeOf((*MockStorage)(nil).AddDataInfo), arg0, arg1, arg2, arg3)
+}
+
 // AddFile mocks base method.
 func (m *MockStorage) AddFile(arg0 context.Context, arg1 uint, arg2 []byte) ([]byte, error) {
 	m.ctrl.T.Helper()
@@ -119,6 +133,20 @@ func (mr *MockStorageMockRecorder) DeleteCard(arg0, arg1, arg2 interface{}) *gom
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteCard", reflect.TypeOf((*MockStorage)(nil).DeleteCard), arg0, arg1, arg2)
 }
 
+// DeleteDataInfo mocks base method.
+func (m *MockStorage) DeleteDataInfo(arg0 context.Context, arg1, arg2 uint) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteDataInfo", arg0, arg1, arg2)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeleteDataInfo indicates an expected call of DeleteDataInfo.
+func (mr *MockStorageMockRecorder) DeleteDataInfo(arg0, arg1, arg2 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteDataInfo", reflect.TypeOf((*MockStorage)(nil).DeleteDataInfo), arg0, arg1, arg2)
+}
+
 // DeleteFile mocks base method.
 func (m *MockStorage) DeleteFile(arg0 context.Context, arg1, arg2 uint) error {
 	m.ctrl.T.Helper()
@@ -161,6 +189,36 @@ func (m *MockStorage) GetCardsList(arg0 context.Context, arg1 uint) ([]byte, err
 func (mr *MockStorageMockRecorder) GetCardsList(arg0, arg1 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetCardsList", reflect.TypeOf((*MockStorage)(nil).GetCardsList), arg0, arg1)
+}
+
+// GetDataInfo mocks base method.
+func (m *MockStorage) GetDataInfo(arg0 context.Context, arg1, arg2 uint) ([]byte, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetDataInfo", arg0, arg1, arg2)
+	ret0, _ := ret[0].([]byte)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetDataInfo indicates an expected call of GetDataInfo.
+func (mr *MockStorageMockRecorder) GetDataInfo(arg0, arg1, arg2 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetDataInfo", reflect.TypeOf((*MockStorage)(nil).GetDataInfo), arg0, arg1, arg2)
+}
+
+// GetDataInfoList mocks base method.
+func (m *MockStorage) GetDataInfoList(arg0 context.Context, arg1 uint) ([]byte, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetDataInfoList", arg0, arg1)
+	ret0, _ := ret[0].([]byte)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetDataInfoList indicates an expected call of GetDataInfoList.
+func (mr *MockStorageMockRecorder) GetDataInfoList(arg0, arg1 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetDataInfoList", reflect.TypeOf((*MockStorage)(nil).GetDataInfoList), arg0, arg1)
 }
 
 // GetFileData mocks base method.
@@ -266,4 +324,18 @@ func (m *MockStorage) UpdateCard(arg0 context.Context, arg1, arg2 uint, arg3, ar
 func (mr *MockStorageMockRecorder) UpdateCard(arg0, arg1, arg2, arg3, arg4 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateCard", reflect.TypeOf((*MockStorage)(nil).UpdateCard), arg0, arg1, arg2, arg3, arg4)
+}
+
+// UpdateDataInfo mocks base method.
+func (m *MockStorage) UpdateDataInfo(arg0 context.Context, arg1, arg2 uint, arg3, arg4 string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpdateDataInfo", arg0, arg1, arg2, arg3, arg4)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// UpdateDataInfo indicates an expected call of UpdateDataInfo.
+func (mr *MockStorageMockRecorder) UpdateDataInfo(arg0, arg1, arg2, arg3, arg4 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateDataInfo", reflect.TypeOf((*MockStorage)(nil).UpdateDataInfo), arg0, arg1, arg2, arg3, arg4)
 }

@@ -269,7 +269,7 @@ func (ns *NetStorage) GetCard(url string) (*CardInfo, error) {
 		}
 		msg, err := hex.DecodeString(l.Info)
 		if err != nil {
-			return nil, fmt.Errorf("hex decodeString error: %w", err)
+			return nil, makeError(ErrDecode, err)
 		}
 		info, err := decryptAES(ns.Key, msg)
 		if err != nil {
@@ -307,18 +307,26 @@ func (ns *NetStorage) addUpdateCommon(url, method string, data []byte) error {
 	}
 }
 
-// AddCard adds one card info to server.
-func (ns *NetStorage) AddCard(url string, card *CardInfo) error {
+func addCardCommon(key []byte, card *CardInfo) ([]byte, error) {
 	data, err := json.Marshal(&card)
 	if err != nil {
-		return makeError(ErrJSONMarshal, err)
+		return nil, makeError(ErrJSONMarshal, err)
 	}
-	infoString, err := EncryptAES(ns.Key, data)
+	infoString, err := EncryptAES(key, data)
 	if err != nil {
-		return makeError(ErrEncrypt, err)
+		return nil, makeError(ErrEncrypt, err)
 	}
 	send := DataInfo{Info: hex.EncodeToString(infoString), Label: card.Label}
 	data, err = json.Marshal(send)
+	if err != nil {
+		return nil, makeError(ErrJSONMarshal, err)
+	}
+	return data, nil
+}
+
+// AddCard adds one card info to server.
+func (ns *NetStorage) AddCard(url string, card *CardInfo) error {
+	data, err := addCardCommon(ns.Key, card)
 	if err != nil {
 		return makeError(ErrJSONMarshal, err)
 	}
@@ -327,16 +335,7 @@ func (ns *NetStorage) AddCard(url string, card *CardInfo) error {
 
 // UpdateCard edits one card info at server.
 func (ns *NetStorage) UpdateCard(url string, card *CardInfo) error {
-	data, err := json.Marshal(&card)
-	if err != nil {
-		return makeError(ErrJSONMarshal, err)
-	}
-	infoString, err := EncryptAES(ns.Key, data)
-	if err != nil {
-		return makeError(ErrEncrypt, err)
-	}
-	send := DataInfo{Info: hex.EncodeToString(infoString), Label: card.Label}
-	data, err = json.Marshal(send)
+	data, err := addCardCommon(ns.Key, card)
 	if err != nil {
 		return makeError(ErrJSONMarshal, err)
 	}
@@ -395,7 +394,7 @@ func (ns *NetStorage) GetDataInfo(url string) (*DataInfo, error) {
 		}
 		msg, err := hex.DecodeString(l.Info)
 		if err != nil {
-			return nil, fmt.Errorf("hex decodeString error: %w", err)
+			return nil, makeError(ErrDecode, err)
 		}
 		info, err := decryptAES(ns.Key, msg)
 		if err != nil {

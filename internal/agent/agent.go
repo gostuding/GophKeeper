@@ -103,7 +103,6 @@ func (a *Agent) url(t urlType) string {
 		return fmt.Sprintf("%s/api/data", a.Config.ServerAddres)
 	default:
 		return "undefined"
-
 	}
 }
 
@@ -412,9 +411,10 @@ func (a *Agent) parceCommand(cmd string) string {
 
 func (a *Agent) userCommand(cmd string) string {
 	insID := "Введите идентификатор: "
+	splt := "_"
 	switch cmd {
 	case "files_list", "cards_list", "data_list":
-		a.currentCommand = strings.Split(cmd, "_")[0]
+		a.currentCommand = strings.Split(cmd, splt)[0]
 		return a.parceCommand(list)
 	case "files_add":
 		a.currentCommand = files
@@ -423,22 +423,22 @@ func (a *Agent) userCommand(cmd string) string {
 			return a.parceCommand(fmt.Sprintf("add %s", p))
 		}
 	case "files_get", "cards_get", "data_get":
-		a.currentCommand = strings.Split(cmd, "_")[0]
+		a.currentCommand = strings.Split(cmd, splt)[0]
 		var p string
 		if err := scanStdin(insID, &p); err == nil && p != "" {
 			return a.parceCommand(fmt.Sprintf("get %s", p))
 		}
 	case "files_del", "cards_del", "data_del":
-		a.currentCommand = strings.Split(cmd, "_")[0]
+		a.currentCommand = strings.Split(cmd, splt)[0]
 		var p string
 		if err := scanStdin(insID, &p); err == nil && p != "" {
 			return a.parceCommand(fmt.Sprintf("del %s", p))
 		}
 	case "cards_add", "data_add":
-		a.currentCommand = strings.Split(cmd, "_")[0]
+		a.currentCommand = strings.Split(cmd, splt)[0]
 		return a.parceCommand(add)
 	case "cards_edit", "data_edit":
-		a.currentCommand = strings.Split(cmd, "_")[0]
+		a.currentCommand = strings.Split(cmd, splt)[0]
 		var p string
 		if err := scanStdin(insID, &p); err == nil && p != "" {
 			return a.parceCommand(fmt.Sprintf("edit %s", p))
@@ -502,9 +502,9 @@ func (a *Agent) addSwitcher(path string) error {
 		if err := scanStdin("Введите данные: ", &n); err != nil {
 			return makeError(ErrScanValue, err)
 		}
-		err := a.Storage.AddDataInfo(a.url(urlCardsAdd), l, n)
+		err := a.Storage.AddDataInfo(a.url(urlDataAdd), l, n)
 		if err != nil {
-			return fmt.Errorf("card add error: %w", err)
+			return fmt.Errorf("add error: %w", err)
 		}
 		return nil
 	default:
@@ -588,22 +588,22 @@ func (a *Agent) deleteSwitcher(id string) error {
 	if err != nil {
 		return makeError(ErrIDConver, err)
 	}
-	u := ""
+	var delURL string
 	switch a.currentCommand {
 	case cards:
-		u = a.url(urlCard)
+		delURL = a.url(urlCard)
 	case files:
-		u = a.url(urlFilesList)
+		delURL = a.url(urlFilesList)
 	case datas:
-		u = a.url(urlData)
+		delURL = a.url(urlData)
 	default:
 		return ErrUndefinedTarget
 	}
-	u, err = url.JoinPath(u, id)
+	delURL, err = url.JoinPath(delURL, id)
 	if err != nil {
 		return makeError(ErrURLJoin, err)
 	}
-	return a.Storage.DeleteItem(u)
+	return a.Storage.DeleteItem(delURL) //nolint:wrapcheck //<-
 }
 
 // editSwitcher makes edit Storage's function according to currentCommand.
