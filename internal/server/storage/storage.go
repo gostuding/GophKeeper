@@ -12,7 +12,6 @@ import (
 	"os"
 	"path"
 	"strconv"
-	"time"
 
 	"github.com/jackc/pgerrcode"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -36,13 +35,6 @@ type (
 	Storage struct {
 		con  *gorm.DB
 		Path string
-	}
-	// SendCardsInfo struct sends card's information to clients.
-	sendCardsInfo struct {
-		Update time.Time `json:"updated"`
-		Label  string    `json:"label,omitempty"`
-		Info   string    `json:"info,omitempty"`
-		ID     uint      `json:"id,omitempty"`
 	}
 )
 
@@ -146,11 +138,28 @@ func (s *Storage) GetCardsList(ctx context.Context, uid uint) ([]byte, error) {
 	if result.RowsAffected == 0 {
 		return []byte(emptyJSON), nil
 	}
-	cards := make([]sendCardsInfo, 0)
+	cards := make([]SendDataInfo, 0)
 	for _, item := range c {
-		cards = append(cards, sendCardsInfo{ID: item.ID, Label: item.Label, Update: item.UpdatedAt})
+		cards = append(cards, SendDataInfo{ID: item.ID, Label: item.Label, Update: item.UpdatedAt})
 	}
 	data, err := json.Marshal(cards)
+	if err != nil {
+		return nil, makeError(ErrJSONMarshal, err)
+	}
+	return data, nil
+}
+
+// GetDataInfoList returns users data info json.
+func (s *Storage) GetDataInfoList(ctx context.Context, uid uint) ([]byte, error) {
+	var c []SendDataInfo
+	result := s.con.WithContext(ctx).Order(idOrder).Where(uidInQuery, uid).Find(&c)
+	if result.Error != nil {
+		return nil, makeError(ErrDatabase, result.Error)
+	}
+	if result.RowsAffected == 0 {
+		return []byte(emptyJSON), nil
+	}
+	data, err := json.Marshal(&c)
 	if err != nil {
 		return nil, makeError(ErrJSONMarshal, err)
 	}
@@ -164,10 +173,24 @@ func (s *Storage) GetCard(ctx context.Context, id, uid uint) ([]byte, error) {
 	if result.Error != nil {
 		return nil, makeError(ErrDatabase, result.Error)
 	}
-	card := sendCardsInfo{Label: c.Label, Info: c.Value, Update: c.UpdatedAt}
+	card := SendDataInfo{Label: c.Label, Info: c.Value, Update: c.UpdatedAt}
 	data, err := json.Marshal(&card)
 	if err != nil {
 		return nil, fmt.Errorf("card info convert error: %w", err)
+	}
+	return data, nil
+}
+
+// GetDataInfo returns full info about one user's data info.
+func (s *Storage) GetDataInfo(ctx context.Context, id, uid uint) ([]byte, error) {
+	c := SendDataInfo{UID: uid, ID: id}
+	result := s.con.WithContext(ctx).First(&c)
+	if result.Error != nil {
+		return nil, makeError(ErrDatabase, result.Error)
+	}
+	data, err := json.Marshal(&c)
+	if err != nil {
+		return nil, fmt.Errorf("data info marshal error: %w", err)
 	}
 	return data, nil
 }
@@ -182,24 +205,48 @@ func (s *Storage) AddCard(ctx context.Context, uid uint, label, value string) er
 	return nil
 }
 
-// DeleteCard deletes info about one user's card.
-func (s *Storage) DeleteCard(ctx context.Context, id, uid uint) error {
-	c := Cards{UID: uid, ID: id}
-	result := s.con.WithContext(ctx).Delete(&c)
+// AddDataInfo adds new data in database.
+func (s *Storage) AddDataInfo(ctx context.Context, uid uint, label, value string) error {
+	info := SendDataInfo{Label: label, Info: value, UID: uid}
+	result := s.con.WithContext(ctx).Create(&info)
 	if result.Error != nil {
 		return makeError(ErrDatabase, result.Error)
 	}
 	return nil
 }
 
+func deleteCommon(ctx context.Context, con *gorm.DB, obj any) error {
+	result := con.WithContext(ctx).Delete(&obj)
+	if result.Error != nil {
+		return makeError(ErrDatabase, result.Error)
+	}
+	return nil
+}
+
+// DeleteCard deletes info about one user's card.
+func (s *Storage) DeleteCard(ctx context.Context, id, uid uint) error {
+	return deleteCommon(ctx, s.con, Cards{UID: uid, ID: id})
+}
+
+// DeleteDataInfo deletes info about one user's card.
+func (s *Storage) DeleteDataInfo(ctx context.Context, id, uid uint) error {
+	return deleteCommon(ctx, s.con, SendDataInfo{UID: uid, ID: id})
+}
+
 // UpdateCard updates user's card information.
-func (s *Storage) UpdateCard(
-	ctx context.Context,
-	id, uid uint,
-	label, value string,
-) error {
+func (s *Storage) UpdateCard(ctx context.Context, id, uid uint, label, value string) error {
 	c := Cards{UID: uid, ID: id}
 	result := s.con.WithContext(ctx).Model(&c).Updates(Cards{Label: label, Value: value})
+	if result.Error != nil {
+		return makeError(ErrDatabase, result.Error)
+	}
+	return nil
+}
+
+// UpdateDataInfo updates user's data information.
+func (s *Storage) UpdateDataInfo(ctx context.Context, id, uid uint, label, value string) error {
+	c := SendDataInfo{UID: uid, ID: id}
+	result := s.con.WithContext(ctx).Model(&c).Updates(SendDataInfo{Label: label, Info: value})
 	if result.Error != nil {
 		return makeError(ErrDatabase, result.Error)
 	}

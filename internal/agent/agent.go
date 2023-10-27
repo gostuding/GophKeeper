@@ -24,6 +24,7 @@ type urlType int
 const (
 	cards = "cards"
 	files = "files"
+	datas = "data"
 	exit  = "exit"
 	add   = "add"
 	list  = "list"
@@ -32,6 +33,7 @@ const (
 	edit  = "edit"
 	hlp   = "help"
 
+	timeFormat          = "02.01.2006 15:04:05"
 	ErrIDConver errType = iota
 	ErrScanValue
 	ErrEncrypt
@@ -47,6 +49,9 @@ const (
 	urlCard
 	urlFilesList
 	urlFileAdd
+	urlDataList
+	urlDataAdd
+	urlData
 )
 
 var (
@@ -90,8 +95,15 @@ func (a *Agent) url(t urlType) string {
 		return fmt.Sprintf("%s/api/files", a.Config.ServerAddres)
 	case urlFileAdd:
 		return fmt.Sprintf("%s/api/files/add", a.Config.ServerAddres)
+	case urlDataList:
+		return fmt.Sprintf("%s/api/data/list", a.Config.ServerAddres)
+	case urlDataAdd:
+		return fmt.Sprintf("%s/api/data/add", a.Config.ServerAddres)
+	case urlData:
+		return fmt.Sprintf("%s/api/data", a.Config.ServerAddres)
 	default:
 		return "undefined"
+
 	}
 }
 
@@ -102,16 +114,18 @@ type (
 		ServerAESKey() []byte
 		Authentification(string, string, string) error
 		SetUserAESKey(string) error
-		GetCardsList(string) (string, error)
-		AddCard(string, *storage.CardInfo) error
-		UpdateCard(string, *storage.CardInfo) error
-		GetCard(string) (*storage.CardInfo, error)
-		DeleteCard(string) error
+		GetItemsListCommon(string, string) (string, error)
 		GetFilesList(string) (string, error)
+		AddCard(string, *storage.CardInfo) error
+		AddDataInfo(string, string, string) error
+		UpdateCard(string, *storage.CardInfo) error
+		UpdateDataInfo(string, string, string) error
+		GetCard(string) (*storage.CardInfo, error)
+		GetDataInfo(string) (*storage.DataInfo, error)
+		DeleteItem(string) error
 		GetNewFileID(string, os.FileInfo) (int, error)
 		AddFile(string, string, int) error
 		FihishFileTransfer(string, int) error
-		DeleteFile(string) error
 		GetPreloadFileInfo(string) (string, int, error)
 		GetFile(string, string, int) error
 	}
@@ -212,10 +226,11 @@ func (a *Agent) Run() error {
 func (a *Agent) Stop() error {
 	a.mutex.Lock()
 	defer a.mutex.Unlock()
-	if a.isRun {
-		a.cancelFunc()
-	} else {
+	if !a.isRun {
 		return fmt.Errorf("agent is not run")
+	}
+	if a.cancelFunc != nil {
+		a.cancelFunc()
 	}
 	return nil
 }
@@ -327,7 +342,7 @@ func (a *Agent) parceCommand(cmd string) string {
 		}
 		switch a.currentCommand {
 		case cards:
-			return "list - список зарегистрированных карт \n" +
+			return "list - список карт \n" +
 				"add - добавление новой карты\n" +
 				"get <id> - отобразить данные карты\n" +
 				"edit <id> - изменить данные карты\n" +
@@ -337,10 +352,16 @@ func (a *Agent) parceCommand(cmd string) string {
 				"add </path/to/file> - добавление файла\n" +
 				"get <id> - скачать файл\n" +
 				"del <id> - удалить файл"
+		case datas:
+			return "list - список значений \n" +
+				"add - добавление новой информации\n" +
+				"get <id> - отобразить выбранную информацию\n" +
+				"edit <id> - изменить выбранную информацию\n" +
+				"del <id> - удалить выбранную информацию"
 		default:
 			return fmt.Sprintf("undefined current command: '%s'", a.currentCommand)
 		}
-	case cards, files, "data", "":
+	case cards, files, datas, "":
 		a.currentCommand = c[0]
 		return fmt.Sprintf("вкладка: %s", c[0])
 	case list:
@@ -390,12 +411,10 @@ func (a *Agent) parceCommand(cmd string) string {
 }
 
 func (a *Agent) userCommand(cmd string) string {
-	getString := "get %s"
-	delString := "del %s"
 	insID := "Введите идентификатор: "
 	switch cmd {
-	case "files_list":
-		a.currentCommand = files
+	case "files_list", "cards_list", "data_list":
+		a.currentCommand = strings.Split(cmd, "_")[0]
 		return a.parceCommand(list)
 	case "files_add":
 		a.currentCommand = files
@@ -403,41 +422,26 @@ func (a *Agent) userCommand(cmd string) string {
 		if err := scanStdin("Введите путь до файла: ", &p); err == nil && p != "" {
 			return a.parceCommand(fmt.Sprintf("add %s", p))
 		}
-	case "files_get":
-		a.currentCommand = files
+	case "files_get", "cards_get", "data_get":
+		a.currentCommand = strings.Split(cmd, "_")[0]
 		var p string
 		if err := scanStdin(insID, &p); err == nil && p != "" {
-			return a.parceCommand(fmt.Sprintf(getString, p))
+			return a.parceCommand(fmt.Sprintf("get %s", p))
 		}
-	case "files_del":
-		a.currentCommand = files
+	case "files_del", "cards_del", "data_del":
+		a.currentCommand = strings.Split(cmd, "_")[0]
 		var p string
 		if err := scanStdin(insID, &p); err == nil && p != "" {
-			return a.parceCommand(fmt.Sprintf(delString, p))
+			return a.parceCommand(fmt.Sprintf("del %s", p))
 		}
-	case "cards_list":
-		a.currentCommand = cards
-		return a.parceCommand(list)
-	case "cards_add":
-		a.currentCommand = cards
+	case "cards_add", "data_add":
+		a.currentCommand = strings.Split(cmd, "_")[0]
 		return a.parceCommand(add)
-	case "cards_get":
-		a.currentCommand = cards
-		var p string
-		if err := scanStdin(insID, &p); err == nil && p != "" {
-			return a.parceCommand(fmt.Sprintf(getString, p))
-		}
-	case "cards_edit":
-		a.currentCommand = cards
+	case "cards_edit", "data_edit":
+		a.currentCommand = strings.Split(cmd, "_")[0]
 		var p string
 		if err := scanStdin(insID, &p); err == nil && p != "" {
 			return a.parceCommand(fmt.Sprintf("edit %s", p))
-		}
-	case "cards_del":
-		a.currentCommand = cards
-		var p string
-		if err := scanStdin(insID, &p); err == nil && p != "" {
-			return a.parceCommand(fmt.Sprintf(delString, p))
 		}
 	default:
 		return ErrUndefinedTarget.Error()
@@ -490,6 +494,19 @@ func (a *Agent) addSwitcher(path string) error {
 			return fmt.Errorf("confirm file add error: %w", err)
 		}
 		return nil
+	case datas:
+		var l, n string
+		if err := scanStdin("Введите название: ", &l); err != nil {
+			return makeError(ErrScanValue, err)
+		}
+		if err := scanStdin("Введите данные: ", &n); err != nil {
+			return makeError(ErrScanValue, err)
+		}
+		err := a.Storage.AddDataInfo(a.url(urlCardsAdd), l, n)
+		if err != nil {
+			return fmt.Errorf("card add error: %w", err)
+		}
+		return nil
 	default:
 		return ErrUndefinedTarget
 	}
@@ -499,9 +516,11 @@ func (a *Agent) addSwitcher(path string) error {
 func (a *Agent) listSwitcher() (string, error) {
 	switch a.currentCommand {
 	case cards:
-		return a.Storage.GetCardsList(a.url(urlCardsList)) //nolint:wrapcheck //<-
+		return a.Storage.GetItemsListCommon(a.url(urlCardsList), "Card") //nolint:wrapcheck //<-
 	case files:
 		return a.Storage.GetFilesList(a.url(urlFilesList)) //nolint:wrapcheck //<-
+	case datas:
+		return a.Storage.GetItemsListCommon(a.url(urlDataList), "Data") //nolint:wrapcheck //<-
 	default:
 		return "", ErrUndefinedTarget
 	}
@@ -524,7 +543,7 @@ func (a *Agent) getSwitcher(id string) (string, error) {
 			return "", fmt.Errorf("get error: %w", err)
 		}
 		info := fmt.Sprintf("Название: %s\nНомер: %s\nВладелец: %s\nСрок: %s\nCSV: %s\nДата изменения: %s",
-			card.Label, card.Number, card.User, card.Duration, card.Csv, card.Updated.Format("02.01.2006 15:04:05"))
+			card.Label, card.Number, card.User, card.Duration, card.Csv, card.Updated.Format(timeFormat))
 		return info, nil
 	case files:
 		u, err := url.JoinPath(a.url(urlFilesList), id)
@@ -546,6 +565,18 @@ func (a *Agent) getSwitcher(id string) (string, error) {
 			return "", fmt.Errorf("file transfer error: %w", err)
 		}
 		return "", nil
+	case datas:
+		u, err := url.JoinPath(a.url(urlData), id)
+		if err != nil {
+			return "", makeError(ErrURLJoin, err)
+		}
+		info, err := a.Storage.GetDataInfo(u)
+		if err != nil {
+			return "", fmt.Errorf("get info error: %w", err)
+		}
+		txt := fmt.Sprintf("Название: %s\nДанные: %s\nДата изменения: %s",
+			info.Label, info.Info, info.Updated.Format(timeFormat))
+		return txt, nil
 	default:
 		return "", ErrUndefinedTarget
 	}
@@ -557,22 +588,22 @@ func (a *Agent) deleteSwitcher(id string) error {
 	if err != nil {
 		return makeError(ErrIDConver, err)
 	}
+	u := ""
 	switch a.currentCommand {
 	case cards:
-		u, err := url.JoinPath(a.url(urlCard), id)
-		if err != nil {
-			return makeError(ErrURLJoin, err)
-		}
-		return a.Storage.DeleteCard(u) //nolint:wrapcheck //<-
+		u = a.url(urlCard)
 	case files:
-		u, err := url.JoinPath(a.url(urlFilesList), id)
-		if err != nil {
-			return makeError(ErrURLJoin, err)
-		}
-		return a.Storage.DeleteFile(u) //nolint:wrapcheck //<-
+		u = a.url(urlFilesList)
+	case datas:
+		u = a.url(urlData)
 	default:
 		return ErrUndefinedTarget
 	}
+	u, err = url.JoinPath(u, id)
+	if err != nil {
+		return makeError(ErrURLJoin, err)
+	}
+	return a.Storage.DeleteItem(u)
 }
 
 // editSwitcher makes edit Storage's function according to currentCommand.
@@ -624,6 +655,32 @@ func (a *Agent) editSwitcher(id string) error {
 		}
 		if err := a.Storage.UpdateCard(url, card); err != nil {
 			return fmt.Errorf("card edit error: %w", err)
+		}
+		return nil
+	case datas:
+		url, err := url.JoinPath(a.url(urlData), id)
+		if err != nil {
+			return makeError(ErrURLJoin, err)
+		}
+		info, err := a.Storage.GetDataInfo(url)
+		if err != nil {
+			return fmt.Errorf("get data info error: %w", err)
+		}
+		var l, n string
+		if err := scanStdin(fmt.Sprintf("Название (%s): ", info.Label), &l); err != nil {
+			return fmt.Errorf("read data label error: %w", err)
+		}
+		if l != "" {
+			info.Label = l
+		}
+		if err := scanStdin(fmt.Sprintf("Данные (%s): ", info.Info), &n); err != nil {
+			return fmt.Errorf("read data info error: %w", err)
+		}
+		if n != "" {
+			info.Info = n
+		}
+		if err := a.Storage.UpdateDataInfo(url, info.Label, info.Info); err != nil {
+			return fmt.Errorf("data edit error: %w", err)
 		}
 		return nil
 	default:

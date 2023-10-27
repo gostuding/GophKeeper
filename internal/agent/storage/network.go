@@ -51,8 +51,8 @@ type (
 		Token string `json:"token"`
 		Key   string `json:"key"`
 	}
-	// IdLabelInfo internal struct.
-	idLabelInfo struct {
+	// DataInfo is struct for private data information.
+	DataInfo struct {
 		Updated time.Time `json:"updated"`
 		Label   string    `json:"label"`
 		Info    string    `json:"info,omitempty"`
@@ -82,7 +82,7 @@ type (
 		Index int    // block index
 		Size  int    // block size
 	}
-	// FilesPreloadedData id internal struct.
+	// FilesPreloadedData is internal struct.
 	filesPreloadedData struct {
 		Name     string `json:"name"`
 		MaxIndex int    `json:"maxindex"`
@@ -210,8 +210,7 @@ func (ns *NetStorage) SetUserAESKey(key string) error {
 	return nil
 }
 
-// GetCardsList requests cards list from server.
-func (ns *NetStorage) GetCardsList(url string) (string, error) {
+func (ns *NetStorage) GetItemsListCommon(url, name string) (string, error) {
 	res, err := ns.doEncryptRequest(ns.PublicKey, url, http.MethodPost)
 	if err != nil {
 		return "", err
@@ -231,16 +230,16 @@ func (ns *NetStorage) GetCardsList(url string) (string, error) {
 		if err != nil {
 			return "", makeError(ErrDecryptMessage, err)
 		}
-		var lst []idLabelInfo
+		var lst []DataInfo
 		err = json.Unmarshal(data, &lst)
 		if err != nil {
 			return "", makeError(ErrJSONUnmarshal, err)
 		}
-		cards := ""
+		datas := ""
 		for _, val := range lst {
-			cards += fmt.Sprintf("Card: %d. '%s'\t'%s'\n", val.ID, val.Label, val.Updated.Format(TimeFormat))
+			datas += fmt.Sprintf("%s: %d. '%s'\t'%s'\n", name, val.ID, val.Label, val.Updated.Format(TimeFormat))
 		}
-		return cards, nil
+		return datas, nil
 	default:
 		return "", makeError(ErrResponseStatusCode, res.StatusCode)
 	}
@@ -263,7 +262,7 @@ func (ns *NetStorage) GetCard(url string) (*CardInfo, error) {
 		if err != nil {
 			return nil, makeError(ErrResponse, err)
 		}
-		var l idLabelInfo
+		var l DataInfo
 		err = json.Unmarshal(data, &l)
 		if err != nil {
 			return nil, makeError(ErrJSONUnmarshal, err)
@@ -289,26 +288,8 @@ func (ns *NetStorage) GetCard(url string) (*CardInfo, error) {
 	}
 }
 
-// DeleteCard requests to delete card's info from server.
-func (ns *NetStorage) DeleteCard(url string) error {
-	return ns.deleteItem(url)
-}
-
 // addUpdateCard common in add and update card functions.
-func (ns *NetStorage) addUpdateCard(url, method string, card *CardInfo) error {
-	data, err := json.Marshal(&card)
-	if err != nil {
-		return makeError(ErrJSONMarshal, err)
-	}
-	infoString, err := EncryptAES(ns.Key, data)
-	if err != nil {
-		return makeError(ErrEncrypt, err)
-	}
-	send := idLabelInfo{Info: hex.EncodeToString(infoString), Label: card.Label}
-	data, err = json.Marshal(send)
-	if err != nil {
-		return makeError(ErrJSONMarshal, err)
-	}
+func (ns *NetStorage) addUpdateCommon(url, method string, data []byte) error {
 	res, err := ns.doEncryptRequest(data, url, method)
 	if err != nil {
 		return err
@@ -328,12 +309,103 @@ func (ns *NetStorage) addUpdateCard(url, method string, card *CardInfo) error {
 
 // AddCard adds one card info to server.
 func (ns *NetStorage) AddCard(url string, card *CardInfo) error {
-	return ns.addUpdateCard(url, http.MethodPost, card)
+	data, err := json.Marshal(&card)
+	if err != nil {
+		return makeError(ErrJSONMarshal, err)
+	}
+	infoString, err := EncryptAES(ns.Key, data)
+	if err != nil {
+		return makeError(ErrEncrypt, err)
+	}
+	send := DataInfo{Info: hex.EncodeToString(infoString), Label: card.Label}
+	data, err = json.Marshal(send)
+	if err != nil {
+		return makeError(ErrJSONMarshal, err)
+	}
+	return ns.addUpdateCommon(url, http.MethodPost, data)
 }
 
 // UpdateCard edits one card info at server.
 func (ns *NetStorage) UpdateCard(url string, card *CardInfo) error {
-	return ns.addUpdateCard(url, http.MethodPut, card)
+	data, err := json.Marshal(&card)
+	if err != nil {
+		return makeError(ErrJSONMarshal, err)
+	}
+	infoString, err := EncryptAES(ns.Key, data)
+	if err != nil {
+		return makeError(ErrEncrypt, err)
+	}
+	send := DataInfo{Info: hex.EncodeToString(infoString), Label: card.Label}
+	data, err = json.Marshal(send)
+	if err != nil {
+		return makeError(ErrJSONMarshal, err)
+	}
+	return ns.addUpdateCommon(url, http.MethodPut, data)
+}
+
+// AddDataInfo adds one private data info in server.
+func (ns *NetStorage) AddDataInfo(url string, label string, info string) error {
+	b, err := EncryptAES(ns.Key, []byte(info))
+	if err != nil {
+		return makeError(ErrEncrypt, err)
+	}
+	item := DataInfo{Label: label, Info: hex.EncodeToString(b)}
+	data, err := json.Marshal(&item)
+	if err != nil {
+		return makeError(ErrJSONMarshal, err)
+	}
+	return ns.addUpdateCommon(url, http.MethodPost, data)
+}
+
+// UpdateDataInfo adds one private data info in server.
+func (ns *NetStorage) UpdateDataInfo(url string, label string, info string) error {
+	b, err := EncryptAES(ns.Key, []byte(info))
+	if err != nil {
+		return makeError(ErrEncrypt, err)
+	}
+	item := DataInfo{Label: label, Info: hex.EncodeToString(b)}
+	data, err := json.Marshal(&item)
+	if err != nil {
+		return makeError(ErrJSONMarshal, err)
+	}
+	return ns.addUpdateCommon(url, http.MethodPut, data)
+}
+
+// GetDataInfo requests card info.
+func (ns *NetStorage) GetDataInfo(url string) (*DataInfo, error) {
+	res, err := ns.doEncryptRequest(ns.PublicKey, url, http.MethodPost)
+	if err != nil {
+		return nil, err
+	}
+	defer res.Body.Close() //nolint:errcheck //<-senselessly
+	switch res.StatusCode {
+	case http.StatusUnauthorized:
+		return nil, ErrAuthorization
+	case http.StatusNotFound:
+		return nil, ErrNotFound
+	case http.StatusOK:
+		data, err := readAndDecryptRSA(res.Body, ns.PrivateKey)
+		if err != nil {
+			return nil, makeError(ErrResponse, err)
+		}
+		var l DataInfo
+		err = json.Unmarshal(data, &l)
+		if err != nil {
+			return nil, makeError(ErrJSONUnmarshal, err)
+		}
+		msg, err := hex.DecodeString(l.Info)
+		if err != nil {
+			return nil, fmt.Errorf("hex decodeString error: %w", err)
+		}
+		info, err := decryptAES(ns.Key, msg)
+		if err != nil {
+			return nil, makeError(ErrDecryptMessage, err)
+		}
+		l.Info = string(info)
+		return &l, nil
+	default:
+		return nil, makeError(ErrResponseStatusCode, res.StatusCode)
+	}
 }
 
 // GetFilesList requests user's files list from server.
@@ -534,7 +606,8 @@ func (ns *NetStorage) FihishFileTransfer(url string, fid int) error {
 	}
 }
 
-func (ns *NetStorage) deleteItem(url string) error {
+// DeleteItem sends request for delete any from database.
+func (ns *NetStorage) DeleteItem(url string) error {
 	res, err := ns.doEncryptRequest(nil, url, http.MethodDelete)
 	if err != nil {
 		return err
@@ -550,11 +623,6 @@ func (ns *NetStorage) deleteItem(url string) error {
 	default:
 		return makeError(ErrResponseStatusCode, res.StatusCode)
 	}
-}
-
-// DeleteFile requests to delete file's info from server.
-func (ns *NetStorage) DeleteFile(url string) error {
-	return ns.deleteItem(url)
 }
 
 // GetPreloadFileInfo requests file max index from database.

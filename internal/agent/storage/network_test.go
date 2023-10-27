@@ -198,7 +198,7 @@ func TestNetStorage_SetUserAESKey(t *testing.T) {
 	}
 }
 
-func TestNetStorage_GetCardsList(t *testing.T) {
+func TestNetStorage_GetItemsListCommon(t *testing.T) {
 	storage := storageCreation(t)
 	if storage == nil {
 		return
@@ -209,8 +209,8 @@ func TestNetStorage_GetCardsList(t *testing.T) {
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
-		var lst []idLabelInfo
-		lst = append(lst, idLabelInfo{ID: 1, Label: "First", Updated: time.Now()})
+		var lst []DataInfo
+		lst = append(lst, DataInfo{ID: 1, Label: "First", Updated: time.Now()})
 		data, err := json.Marshal(&lst)
 		if err != nil {
 			w.WriteHeader(http.StatusBadRequest)
@@ -230,16 +230,16 @@ func TestNetStorage_GetCardsList(t *testing.T) {
 	defer server.Close()
 	serverAuthError := httptest.NewServer(http.HandlerFunc(handlerAuthError))
 	defer serverAuthError.Close()
-	t.Run("Успешный запрос списка карт", func(t *testing.T) {
-		_, err := storage.GetCardsList(server.URL)
+	t.Run("Успешный запрос списка", func(t *testing.T) {
+		_, err := storage.GetItemsListCommon(server.URL, "Card")
 		if err != nil {
-			t.Errorf("NetStorage.GetCardsList() error: %v", err)
+			t.Errorf("NetStorage.GetItemsListCommon() error: %v", err)
 		}
 	})
-	t.Run("Ошибка авторизации запроса списка карт", func(t *testing.T) {
-		_, err := storage.GetCardsList(serverAuthError.URL)
+	t.Run("Ошибка авторизации запроса списка", func(t *testing.T) {
+		_, err := storage.GetItemsListCommon(serverAuthError.URL, "Data")
 		if !errors.Is(err, ErrAuthorization) {
-			t.Errorf("NetStorage.GetCardsList() get unexpected error: %v", err)
+			t.Errorf("NetStorage.GetItemsListCommon() get unexpected error: %v", err)
 		}
 	})
 }
@@ -266,7 +266,7 @@ func TestNetStorage_GetCard(t *testing.T) {
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
-		l := idLabelInfo{ID: 1, Label: "label", Info: hex.EncodeToString(data)}
+		l := DataInfo{ID: 1, Label: "label", Info: hex.EncodeToString(data)}
 		data, err = json.Marshal(&l)
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
@@ -306,54 +306,6 @@ func TestNetStorage_GetCard(t *testing.T) {
 			t.Errorf("NetStorage.GetCard() get unexpected error: %v, want: %v", err, ErrNotFound)
 		}
 	})
-}
-
-func deleteCommon(
-	t *testing.T,
-	name, fName string,
-	f func(string) error,
-) {
-	t.Helper()
-	handler := func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	}
-	server := httptest.NewServer(http.HandlerFunc(handler))
-	defer server.Close()
-	serverAuthError := httptest.NewServer(http.HandlerFunc(handlerAuthError))
-	defer serverAuthError.Close()
-	serverNotFound := httptest.NewServer(http.HandlerFunc(handlerNotFound))
-	defer serverNotFound.Close()
-	t.Run(fmt.Sprintf("Успешный запрос на удаление %s", name), func(t *testing.T) {
-		if err := f(server.URL); err != nil {
-			t.Errorf("NetStorage.%s() error: %v", fName, err)
-		}
-	})
-	t.Run("Ошибка авторизации при удалении карты", func(t *testing.T) {
-		if err := f(serverAuthError.URL); !errors.Is(err, ErrAuthorization) {
-			t.Errorf("NetStorage.%s() get unexpected error: %v, want: %v", fName, err, ErrAuthorization)
-		}
-	})
-	t.Run("Карта не найдена", func(t *testing.T) {
-		if err := f(serverNotFound.URL); !errors.Is(err, ErrNotFound) {
-			t.Errorf("NetStorage.%s() get unexpected error: %v, want: %v", fName, err, ErrNotFound)
-		}
-	})
-}
-
-func TestNetStorage_DeleteCard(t *testing.T) {
-	storage := storageCreation(t)
-	if storage == nil {
-		return
-	}
-	deleteCommon(t, "card", "DeleteCard", storage.DeleteCard)
-}
-
-func TestNetStorage_DeleteFile(t *testing.T) {
-	storage := storageCreation(t)
-	if storage == nil {
-		return
-	}
-	deleteCommon(t, "file", "DeleteFile", storage.DeleteFile)
 }
 
 func TestNetStorage_AddCard(t *testing.T) {
@@ -757,6 +709,37 @@ func TestNetStorage_GetFile(t *testing.T) {
 		err := storage.GetFile(serverNotFound.URL, fileName, maxIdent)
 		if !errors.Is(err, ErrStatusCode) {
 			t.Errorf("NetStorage.GetFile() get unexpected error: %v, want: %v", err, ErrNotFound)
+		}
+	})
+}
+
+func TestNetStorage_DeleteItem(t *testing.T) {
+	storage := storageCreation(t)
+	if storage == nil {
+		return
+	}
+	handler := func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}
+	server := httptest.NewServer(http.HandlerFunc(handler))
+	defer server.Close()
+	serverAuthError := httptest.NewServer(http.HandlerFunc(handlerAuthError))
+	defer serverAuthError.Close()
+	serverNotFound := httptest.NewServer(http.HandlerFunc(handlerNotFound))
+	defer serverNotFound.Close()
+	t.Run("Успешный запрос на удаление ", func(t *testing.T) {
+		if err := storage.DeleteItem(server.URL); err != nil {
+			t.Errorf("NetStorage.DeleteItem() error: %v", err)
+		}
+	})
+	t.Run("Ошибка авторизации при удалении", func(t *testing.T) {
+		if err := storage.DeleteItem(serverAuthError.URL); !errors.Is(err, ErrAuthorization) {
+			t.Errorf("NetStorage.DeleteItem() get unexpected error: %v, want: %v", err, ErrAuthorization)
+		}
+	})
+	t.Run("Карта не найдена", func(t *testing.T) {
+		if err := storage.DeleteItem(serverNotFound.URL); !errors.Is(err, ErrNotFound) {
+			t.Errorf("NetStorage.DeleteItem() get unexpected error: %v, want: %v", err, ErrNotFound)
 		}
 	})
 }

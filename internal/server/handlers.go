@@ -168,6 +168,28 @@ func GetCardsList(
 	return getListCommon(ctx, key, strg.GetCardsList)
 }
 
+func addCommon(ctx context.Context, body []byte,
+	f func(context.Context, uint, string, string) error,
+) (int, error) {
+	uid, ok := ctx.Value(middlewares.AuthUID).(int)
+	if !ok {
+		return http.StatusUnauthorized, makeError(ErrUserAuthorization, nil)
+	}
+	var l labelInfo
+	err := json.Unmarshal(body, &l)
+	if err != nil {
+		return http.StatusUnprocessableEntity, makeError(ErrUnmarshalJSON, err)
+	}
+	err = f(ctx, uint(uid), l.Label, l.Info)
+	if err != nil {
+		// if strg.IsUniqueViolation(err) {
+		// 	return http.StatusConflict, makeError(ErrGormDublicate, err)
+		// }
+		return http.StatusInternalServerError, makeError(InternalError)
+	}
+	return http.StatusOK, nil
+}
+
 // AddCardInfo adds new card in database handle.
 // @Tags Карты
 // @Summary Добавление информации о карте. Шифрование открытым ключём сервера.
@@ -187,23 +209,28 @@ func AddCardInfo(
 	body []byte,
 	strg Storage,
 ) (int, error) {
+	return addCommon(ctx, body, strg.AddCard)
+}
+
+func getCommon(ctx context.Context, key string, id uint,
+	f func(context.Context, uint, uint) ([]byte, error),
+) ([]byte, int, error) {
 	uid, ok := ctx.Value(middlewares.AuthUID).(int)
 	if !ok {
-		return http.StatusUnauthorized, makeError(ErrUserAuthorization, nil)
+		return nil, http.StatusUnauthorized, makeError(ErrUserAuthorization, nil)
 	}
-	var l labelInfo
-	err := json.Unmarshal(body, &l)
+	data, err := f(ctx, id, uint(uid))
 	if err != nil {
-		return http.StatusUnprocessableEntity, makeError(ErrUnmarshalJSON, err)
-	}
-	err = strg.AddCard(ctx, uint(uid), l.Label, l.Info)
-	if err != nil {
-		if strg.IsUniqueViolation(err) {
-			return http.StatusConflict, makeError(ErrGormDublicate, err)
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, http.StatusNotFound, makeError(ErrNotFound, id)
 		}
-		return http.StatusInternalServerError, makeError(InternalError)
+		return nil, http.StatusInternalServerError, makeError(InternalError, err)
 	}
-	return http.StatusOK, nil
+	data, err = encryptMessage(data, key)
+	if err != nil {
+		return nil, http.StatusBadRequest, makeError(ErrEncryptMessage, err)
+	}
+	return data, http.StatusOK, nil
 }
 
 // GetCard returns information about one card.
@@ -224,22 +251,7 @@ func GetCard(
 	strg Storage,
 	id uint,
 ) ([]byte, int, error) {
-	uid, ok := ctx.Value(middlewares.AuthUID).(int)
-	if !ok {
-		return nil, http.StatusUnauthorized, makeError(ErrUserAuthorization, nil)
-	}
-	data, err := strg.GetCard(ctx, id, uint(uid))
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, http.StatusNotFound, makeError(ErrNotFound, id)
-		}
-		return nil, http.StatusInternalServerError, makeError(InternalError, err)
-	}
-	data, err = encryptMessage(data, key)
-	if err != nil {
-		return nil, http.StatusBadRequest, makeError(ErrEncryptMessage, err)
-	}
-	return data, http.StatusOK, nil
+	return getCommon(ctx, key, id, strg.GetCard)
 }
 
 // DeleteCard deletes information about one card from database.
@@ -512,6 +524,133 @@ func GetPreloadFileInfo(
 		return nil, http.StatusBadRequest, makeError(ErrEncryptMessage, err)
 	}
 	return data, http.StatusOK, nil
+}
+
+// GetDataInfoList returns list of datas lables.
+// @Tags Данные
+// @Summary Запрос списка приватных данных пользователя. Шифрование открытым ключём клиента.
+// @Accept json
+// @Param order body string true "Public key"
+// @Security ApiKeyAuth
+// @Param Authorization header string false "Токен авторизации"
+// @Router /api/data/list [post]
+// @Success 200 "Список метаданных"
+// @failure 400 "Ошибка шифрования"
+// @failure 401 "Пользователь не авторизован"
+// @failure 500 "Внутренняя ошибка сервиса.".
+func GetDataInfoList(
+	ctx context.Context,
+	key string,
+	strg Storage,
+) ([]byte, int, error) {
+	return getListCommon(ctx, key, strg.GetDataInfoList)
+}
+
+// AddDataInfo adds new data in database handle.
+// @Tags Данные
+// @Summary Добавление информации. Шифрование открытым ключём сервера.
+// @Accept json
+// @Security ApiKeyAuth
+// @Param Authorization header string false "Токен авторизации"
+// @Router /api/data/add [post]
+// @Success 200 "Информация о карточке успешно сохранена"
+// @failure 400 "Ошибка при расшифровке тела запроса"
+// @failure 401 "Пользователь не авторизован"
+// @failure 422 "Ошибка при конвертации json"
+// @failure 409 "Дублирование метаданных карточки"
+// @failure 500 "Внутренняя ошибка сервиса.".
+func AddDataInfo(
+	ctx context.Context,
+	body []byte,
+	strg Storage,
+) (int, error) {
+	return addCommon(ctx, body, strg.AddDataInfo)
+}
+
+// GetDataInfo returns information about one data info.
+// @Tags Карты
+// @Summary Запрос информации.
+// @Param order body string true "Public key"
+// @Security ApiKeyAuth
+// @Param Authorization header string false "Токен авторизации"
+// @Router /api/data/{id} [post]
+// @Success 200 "Инфорация об одной карте пользователя"
+// @failure 400 "Ошибка шифрования"
+// @failure 401 "Пользователь не авторизован"
+// @failure 404 "Карта не найдена"
+// @failure 500 "Внутренняя ошибка сервиса.".
+func GetDataInfo(
+	ctx context.Context,
+	key string,
+	strg Storage,
+	id uint,
+) ([]byte, int, error) {
+	return return getCommon(ctx, key, id, strg.GetDataInfo)
+}
+
+// DeleteCard deletes information about one card from database.
+// @Tags Карты
+// @Summary Удаление информации о карте пользователя.
+// @Security ApiKeyAuth
+// @Param Authorization header string false "Токен авторизации"
+// @Router /api/cards/{id} [delete]
+// @Success 200 "Инфорация удалена"
+// @failure 400 "Ошибка шифрования"
+// @failure 401 "Пользователь не авторизован"
+// @failure 404 "Карта не найдена"
+// @failure 500 "Внутренняя ошибка сервиса.".
+func DeleteCard(
+	ctx context.Context,
+	strg Storage,
+	id int,
+) (int, error) {
+	uid, ok := ctx.Value(middlewares.AuthUID).(int)
+	if !ok {
+		return http.StatusUnauthorized, makeError(ErrUserAuthorization, nil)
+	}
+	err := strg.DeleteCard(ctx, uint(id), uint(uid))
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return http.StatusNotFound, makeError(ErrNotFound, id)
+		}
+		return http.StatusInternalServerError, makeError(InternalError, err)
+	}
+	return http.StatusOK, nil
+}
+
+// UpdateCardInfo updates card's info in database.
+// @Tags Карты
+// @Summary Редактирование информации о карте. Шифрование открытым ключём сервера.
+// @Accept json
+// @Param order body storage.Cards true "Данные о карте. Value должно шифроваться на стороне клиента"
+// @Security ApiKeyAuth
+// @Param Authorization header string false "Токен авторизации"
+// @Router /api/cards/edit [put]
+// @Success 200 "Информация о карточке успешно обновлена"
+// @failure 400 "Ошибка при расшифровке тела запроса"
+// @failure 401 "Пользователь не авторизован"
+// @failure 422 "Ошибка при конвертации json"
+// @failure 500 "Внутренняя ошибка сервиса.".
+func UpdateCardInfo(
+	ctx context.Context,
+	body []byte,
+	strg Storage,
+	id uint,
+) (int, error) {
+	uid, ok := ctx.Value(middlewares.AuthUID).(int)
+	if !ok {
+		return http.StatusUnauthorized, makeError(ErrUserAuthorization, nil)
+	}
+	var l labelInfo
+	err := json.Unmarshal(body, &l)
+	if err != nil {
+		return http.StatusUnprocessableEntity, makeError(ErrUnmarshalJSON, err)
+	}
+	err = strg.UpdateCard(ctx, id, uint(uid), l.Label, l.Info)
+	if err != nil {
+		return http.StatusInternalServerError, makeError(InternalError)
+	}
+	return http.StatusOK, nil
 }
 
 // encryption message by RSA.

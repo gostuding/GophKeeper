@@ -153,6 +153,18 @@ func makeRouter(s *Server) http.Handler {
 			}
 			writeResponseData(w, data, status, s.Logger)
 		})
+		r.Post("/api/data/list", func(w http.ResponseWriter, r *http.Request) {
+			body, err := readRequestBody(w, r, s.Logger)
+			if err != nil {
+				return
+			}
+			publicKey := hex.EncodeToString(body)
+			data, status, err := GetDataInfoList(r.Context(), publicKey, s.Storage)
+			if err != nil {
+				s.Logger.Warnf("get data info list error: %v", err)
+			}
+			writeResponseData(w, data, status, s.Logger)
+		})
 		r.Post("/api/cards/add", func(w http.ResponseWriter, r *http.Request) {
 			body, err := readRequestBody(w, r, s.Logger)
 			if err != nil {
@@ -273,31 +285,9 @@ func makeRouter(s *Server) http.Handler {
 		})
 		r.Delete(cardsURL, func(w http.ResponseWriter, r *http.Request) {
 			deleteCommon(w, r, s, DeleteCard)
-			// id, err := strconv.Atoi(chi.URLParam(r, idString))
-			// if err != nil {
-			// 	s.Logger.Warnf(makeError(ErrConvertError, idString, err).Error())
-			// 	writeResponseData(w, nil, http.StatusBadRequest, s.Logger)
-			// 	return
-			// }
-			// status, err := DeleteCard(r.Context(), s.Storage, uint(id))
-			// if err != nil {
-			// 	s.Logger.Warnf("delete card's info error: %v", err)
-			// }
-			// writeResponseData(w, nil, status, s.Logger)
 		})
 		r.Delete(fileIDURL, func(w http.ResponseWriter, r *http.Request) {
 			deleteCommon(w, r, s, DeleteFile)
-			// id, err := strconv.Atoi(chi.URLParam(r, idString))
-			// if err != nil {
-			// 	s.Logger.Warnf(makeError(ErrConvertError, idString, err).Error())
-			// 	writeResponseData(w, nil, http.StatusBadRequest, s.Logger)
-			// 	return
-			// }
-			// status, err := DeleteFile(r.Context(), s.Storage, uint(id))
-			// if err != nil {
-			// 	s.Logger.Warnf("delete files's info error: %v", err)
-			// }
-			// writeResponseData(w, nil, status, s.Logger)
 		})
 		r.Get(fileIDURL, func(w http.ResponseWriter, r *http.Request) {
 			id, err := strconv.Atoi(chi.URLParam(r, idString))

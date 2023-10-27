@@ -38,8 +38,11 @@ type (
 		Registration(context.Context, string, string) (string, int, error)
 		Login(context.Context, string, string) (string, int, error)
 		GetCardsList(context.Context, uint) ([]byte, error)
+		GetDataInfoList(context.Context, uint) ([]byte, error)
 		GetCard(context.Context, uint, uint) ([]byte, error)
+		GetDataInfo(context.Context, uint, uint) ([]byte, error)
 		AddCard(context.Context, uint, string, string) error
+		AddDataInfo(context.Context, uint, string, string) error
 		DeleteCard(context.Context, uint, uint) error
 		UpdateCard(context.Context, uint, uint, string, string) error
 		GetFilesList(context.Context, uint) ([]byte, error)

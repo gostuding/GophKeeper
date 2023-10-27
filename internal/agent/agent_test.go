@@ -10,8 +10,7 @@ import (
 	"github.com/gostuding/GophKeeper/internal/agent/mocks"
 )
 
-func runStopAgent(t *testing.T) {
-	t.Helper()
+func TestAgent_Run(t *testing.T) {
 	config := config.Config{Login: "login", Pwd: "password", Key: "key", ServerAddres: ""}
 	ctrl := gomock.NewController(t)
 	storage := mocks.NewMockStorage(ctrl)
@@ -40,16 +39,24 @@ func runStopAgent(t *testing.T) {
 	}
 }
 
-func TestAgent_Run(t *testing.T) {
-	runStopAgent(t)
-}
-
 func TestAgent_Stop(t *testing.T) {
-	runStopAgent(t)
+	agent := Agent{}
+	if err := agent.Stop(); err == nil {
+		t.Error("agent.Stop() error is nil in closed agent")
+		return
+	}
+	agent.isRun = true
+	if err := agent.Stop(); err != nil {
+		t.Errorf("agent.Stop() error: %v", err)
+		return
+	}
 }
 
 func TestAgent_IsRun(t *testing.T) {
-	runStopAgent(t)
+	agent := Agent{isRun: true}
+	if !agent.IsRun() {
+		t.Error("agent.IsRun() error - want: true, got false")
+	}
 }
 
 func TestAgent_authentification(t *testing.T) {
