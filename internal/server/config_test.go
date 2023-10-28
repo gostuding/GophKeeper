@@ -11,8 +11,8 @@ func TestNewConfig(t *testing.T) {
 	tmp := t.TempDir()
 	p := path.Join(tmp, "server_config.json")
 	k := path.Join(tmp, "server_key.pem")
-	os.Args = append(os.Args, fmt.Sprintf("-i=%s", p),
-		fmt.Sprintf("-k=%s", k), fmt.Sprintf("-s=%s", tmp)) //nolint:reassign //<-need for test
+	os.Args = append(os.Args, fmt.Sprintf("-i=%s", p), //nolint:reassign //<-need for test
+		fmt.Sprintf("-k=%s", k), fmt.Sprintf("-s=%s", tmp))
 
 	config, err := NewConfig()
 	if err != nil {

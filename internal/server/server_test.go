@@ -68,3 +68,18 @@ func TestServer_StopServer(t *testing.T) {
 		}
 	})
 }
+
+func TestServer_IsRun(t *testing.T) {
+	t.Run("Runned", func(t *testing.T) {
+		server := Server{isRun: true}
+		if !server.IsRun() {
+			t.Error("Server.IsRun() = false")
+		}
+	})
+	t.Run("Not runned", func(t *testing.T) {
+		server := Server{isRun: false}
+		if server.IsRun() {
+			t.Error("Server.IsRun() = false")
+		}
+	})
+}
