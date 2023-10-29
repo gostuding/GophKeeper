@@ -236,6 +236,10 @@ func (s *Storage) DeleteDataInfo(ctx context.Context, id, uid uint) error {
 // UpdateCard updates user's card information.
 func (s *Storage) UpdateCard(ctx context.Context, id, uid uint, label, value string) error {
 	c := Cards{UID: uid, ID: id}
+	r := s.con.WithContext(ctx).Where(&c).First(&c)
+	if r.Error != nil {
+		return gorm.ErrRecordNotFound
+	}
 	result := s.con.WithContext(ctx).Model(&c).Updates(Cards{Label: label, Value: value})
 	if result.Error != nil {
 		return makeError(ErrDatabase, result.Error)
