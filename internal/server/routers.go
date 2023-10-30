@@ -326,7 +326,7 @@ func makeRouter(s *Server) http.Handler {
 				writeResponseData(w, nil, http.StatusUnauthorized, s.Logger)
 				return
 			}
-			data, err := s.Storage.GetFileData(r.Context(), id, uid, index)
+			data, err := s.Storage.GetFileData(id, uid, index)
 			if err != nil {
 				if errors.Is(err, gorm.ErrRecordNotFound) {
 					s.Logger.Warnf("file data not found error:", err)

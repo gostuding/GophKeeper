@@ -222,18 +222,18 @@ func (mr *MockStorageMockRecorder) GetDataInfoList(arg0, arg1 interface{}) *gomo
 }
 
 // GetFileData mocks base method.
-func (m *MockStorage) GetFileData(arg0 context.Context, arg1, arg2, arg3 int) ([]byte, error) {
+func (m *MockStorage) GetFileData(arg0, arg1, arg2 int) ([]byte, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetFileData", arg0, arg1, arg2, arg3)
+	ret := m.ctrl.Call(m, "GetFileData", arg0, arg1, arg2)
 	ret0, _ := ret[0].([]byte)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // GetFileData indicates an expected call of GetFileData.
-func (mr *MockStorageMockRecorder) GetFileData(arg0, arg1, arg2, arg3 interface{}) *gomock.Call {
+func (mr *MockStorageMockRecorder) GetFileData(arg0, arg1, arg2 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetFileData", reflect.TypeOf((*MockStorage)(nil).GetFileData), arg0, arg1, arg2, arg3)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetFileData", reflect.TypeOf((*MockStorage)(nil).GetFileData), arg0, arg1, arg2)
 }
 
 // GetFilesList mocks base method.

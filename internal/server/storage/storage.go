@@ -354,7 +354,7 @@ func (s *Storage) GetPreloadFileInfo(ctx context.Context, id uint, uid int) ([]b
 		return nil, makeError(ErrDatabase, result.Error)
 	}
 	var maxIndex int
-	row := s.con.WithContext(ctx).Model(&FileData{}).Where(&FileData{UID: uint(uid), FID: id}).Select("max(index)")
+	row := s.con.WithContext(ctx).Model(&FileData{}).Where(&FileData{UID: uint(uid), FID: file.ID}).Select("max(index)")
 	if row.Error != nil {
 		return nil, makeError(ErrDatabase, result.Error)
 	}
@@ -367,7 +367,7 @@ func (s *Storage) GetPreloadFileInfo(ctx context.Context, id uint, uid int) ([]b
 }
 
 // GetFileData returns one file data from file store.
-func (s *Storage) GetFileData(ctx context.Context, id int, uid int, index int) ([]byte, error) {
+func (s *Storage) GetFileData(id int, uid int, index int) ([]byte, error) {
 	data, err := os.ReadFile(path.Join(s.Path, strconv.Itoa(uid), strconv.Itoa(id), strconv.Itoa(index)))
 	if err != nil {
 		return nil, fmt.Errorf("read file index error: %w", err)

@@ -53,7 +53,7 @@ type (
 		AddFileFinish(context.Context, uint, int) error
 		DeleteFile(context.Context, uint, uint) error
 		GetPreloadFileInfo(context.Context, uint, int) ([]byte, error)
-		GetFileData(context.Context, int, int, int) ([]byte, error)
+		GetFileData(int, int, int) ([]byte, error)
 		Close() error
 		IsUniqueViolation(error) bool
 	}
