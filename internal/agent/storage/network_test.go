@@ -1,7 +1,6 @@
 package storage
 
 import (
-	"crypto/rsa"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -29,99 +28,10 @@ var (
 	wdr = "Write data error: %v"
 )
 
-func handlerCommon(r *http.Request, key *rsa.PrivateKey) ([]byte, error) {
-	data, err := io.ReadAll(r.Body)
-	if err != nil {
-		return nil, fmt.Errorf("read body error: %w", err)
-	}
-	data, err = decryptRSAMessage(key, data)
-	if err != nil {
-		return nil, fmt.Errorf("decrypt body error: %w", err)
-	}
-	return data, nil
-}
-
-func storageCreation(t *testing.T) *NetStorage {
-	t.Helper()
-	storage, err := NewNetStorage()
-	if err != nil {
-		t.Errorf("NewNetStorage() error: %v", err)
-		return nil
-	}
-	storage.ServerPublicKey = &storage.PrivateKey.PublicKey
-	storage.serverAESKey = []byte("server key")
-	storage.Key = aesKey([]byte("storage key"))
-	return storage
-}
-
-func TestNewNetStorage(t *testing.T) {
-	storage := storageCreation(t)
-	if storage == nil {
-		return
-	}
-}
-
-func TestNetStorage_Check(t *testing.T) {
-	storage := storageCreation(t)
-	if storage == nil {
-		return
-	}
-	handlerOK := func(w http.ResponseWriter, _ *http.Request) {
-		_, err := w.Write(storage.PublicKey)
-		if err != nil {
-			t.Errorf(wdr, err)
-		}
-	}
-	handlerBad := func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusBadRequest)
-		_, err := w.Write(storage.PublicKey)
-		if err != nil {
-			t.Errorf(wdr, err)
-		}
-	}
-	handlerEmpty := func(w http.ResponseWriter, _ *http.Request) {
-		_, err := w.Write(nil)
-		if err != nil {
-			t.Errorf(wdr, err)
-		}
-	}
-	t.Run("Success storage check", func(t *testing.T) {
-		server := httptest.NewServer(http.HandlerFunc(handlerOK))
-		defer server.Close()
-		if err := storage.Check(server.URL); err != nil {
-			t.Errorf("NetStorage.Check() error: %v", err)
-		}
-	})
-	t.Run("StatucCode error storage check", func(t *testing.T) {
-		server := httptest.NewServer(http.HandlerFunc(handlerBad))
-		defer server.Close()
-		err := storage.Check(server.URL)
-		if err == nil {
-			t.Errorf("Status code check error is null")
-			return
-		}
-		if !errors.Is(err, ErrStatusCode) {
-			t.Errorf("Status code check invalid error type: %v", err)
-		}
-	})
-	t.Run("StatucCode storage check empty response", func(t *testing.T) {
-		server := httptest.NewServer(http.HandlerFunc(handlerEmpty))
-		defer server.Close()
-		err := storage.Check(server.URL)
-		if err == nil {
-			t.Errorf("Error is null")
-			return
-		}
-	})
-}
-
 func TestNetStorage_Authentification(t *testing.T) {
-	storage := storageCreation(t)
-	if storage == nil {
-		return
-	}
+	storage := NetStorage{Client: &http.Client{}}
 	handler := func(w http.ResponseWriter, r *http.Request) {
-		data, err := handlerCommon(r, storage.PrivateKey)
+		data, err := io.ReadAll(r.Body)
 		if err != nil {
 			w.WriteHeader(http.StatusBadRequest)
 			return
@@ -148,12 +58,7 @@ func TestNetStorage_Authentification(t *testing.T) {
 			w.WriteHeader(http.StatusUnauthorized)
 			return
 		}
-		data, err = encryptRSAMessage([]byte(token), &storage.PrivateKey.PublicKey)
-		if err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
-			return
-		}
-		_, err = w.Write(data)
+		_, err = w.Write([]byte(token))
 		if err != nil {
 			t.Errorf(wdr, err)
 		}
@@ -161,64 +66,40 @@ func TestNetStorage_Authentification(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(handler))
 	defer server.Close()
 	t.Run("Успешная регистрация", func(t *testing.T) {
-		if err := storage.Authentification(server.URL, "admin", "pwd"); err != nil {
+		if _, err := storage.Authentification(server.URL, "admin", "pwd"); err != nil {
 			t.Errorf("NetStorage.Authentification() error: %v", err)
 		}
 	})
 	t.Run("Ошибка регистрации на сервере", func(t *testing.T) {
-		if err := storage.Authentification(server.URL, "user1", "passwd"); err == nil {
+		if _, err := storage.Authentification(server.URL, "user1", "passwd"); err == nil {
 			t.Errorf("NetStorage.Authentification() error is null")
 		}
 	})
 	t.Run("Ошибка получения токена", func(t *testing.T) {
-		if err := storage.Authentification(server.URL, "user", "p"); !errors.Is(err, ErrJSON) {
+		if _, err := storage.Authentification(server.URL, "user", "p"); !errors.Is(err, ErrJSON) {
 			t.Errorf("NetStorage.Authentification() error, want: %v, got: %v", ErrJSON, err)
 		}
 	})
 	t.Run("Повтор логина пользователя при регистрации", func(t *testing.T) {
-		if err := storage.Authentification(server.URL, "repeat", "p"); !errors.Is(err, ErrLoginRepeat) {
+		if _, err := storage.Authentification(server.URL, "repeat", "p"); !errors.Is(err, ErrLoginRepeat) {
 			t.Errorf("NetStorage.Authentification() error, want: %v, got: %v", ErrLoginRepeat, err)
 		}
 	})
 	t.Run("Пользователь не найден", func(t *testing.T) {
-		if err := storage.Authentification(server.URL, "not", "p"); !errors.Is(err, ErrUserNotFound) {
+		if _, err := storage.Authentification(server.URL, "not", "p"); !errors.Is(err, ErrUserNotFound) {
 			t.Errorf("NetStorage.Authentification() error, want: %v, got: %v", ErrUserNotFound, err)
 		}
 	})
 }
 
-func TestNetStorage_SetUserAESKey(t *testing.T) {
-	storage := storageCreation(t)
-	if storage == nil {
-		return
-	}
-	key := "key"
-	if err := storage.SetUserAESKey(key); err != nil {
-		t.Errorf("NetStorage.SetUserAESKey() error: %v", err)
-	}
-}
-
 func TestNetStorage_GetItemsListCommon(t *testing.T) {
-	storage := storageCreation(t)
-	if storage == nil {
-		return
-	}
+	storage := NetStorage{Client: &http.Client{}}
 	handler := func(w http.ResponseWriter, r *http.Request) {
-		_, err := handlerCommon(r, storage.PrivateKey)
-		if err != nil {
-			w.WriteHeader(http.StatusBadRequest)
-			return
-		}
 		var lst []DataInfo
 		lst = append(lst, DataInfo{ID: 1, Label: "First", Updated: time.Now()})
 		data, err := json.Marshal(&lst)
 		if err != nil {
 			w.WriteHeader(http.StatusBadRequest)
-			return
-		}
-		data, err = encryptRSAMessage(data, &storage.PrivateKey.PublicKey)
-		if err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
 		_, err = w.Write(data)
@@ -245,16 +126,8 @@ func TestNetStorage_GetItemsListCommon(t *testing.T) {
 }
 
 func TestNetStorage_GetCard(t *testing.T) {
-	storage := storageCreation(t)
-	if storage == nil {
-		return
-	}
+	storage := NetStorage{Client: &http.Client{}}
 	handler := func(w http.ResponseWriter, r *http.Request) {
-		_, err := handlerCommon(r, storage.PrivateKey)
-		if err != nil {
-			w.WriteHeader(http.StatusBadRequest)
-			return
-		}
 		card := CardInfo{Label: "card", Number: "2222 1111 3333 4444"}
 		data, err := json.Marshal(&card)
 		if err != nil {
@@ -268,11 +141,6 @@ func TestNetStorage_GetCard(t *testing.T) {
 		}
 		l := DataInfo{ID: 1, Label: "label", Info: hex.EncodeToString(data)}
 		data, err = json.Marshal(&l)
-		if err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
-			return
-		}
-		data, err = encryptRSAMessage(data, &storage.PrivateKey.PublicKey)
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			return
@@ -309,12 +177,7 @@ func TestNetStorage_GetCard(t *testing.T) {
 }
 
 func TestNetStorage_AddCard(t *testing.T) {
-	storage, err := NewNetStorage()
-	if err != nil {
-		t.Errorf("NewNetStorage() error: %v", err)
-		return
-	}
-	storage.ServerPublicKey = &storage.PrivateKey.PublicKey
+	storage := NetStorage{Client: &http.Client{}}
 	storage.Key = aesKey([]byte("add card key"))
 	card := CardInfo{Label: "add card label"}
 	handler := func(w http.ResponseWriter, r *http.Request) {
@@ -344,10 +207,7 @@ func TestNetStorage_AddCard(t *testing.T) {
 }
 
 func TestNetStorage_UpdateCard(t *testing.T) {
-	storage := storageCreation(t)
-	if storage == nil {
-		return
-	}
+	storage := NetStorage{Client: &http.Client{}}
 	card := CardInfo{Label: "update card label"}
 	handler := func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -376,23 +236,10 @@ func TestNetStorage_UpdateCard(t *testing.T) {
 }
 
 func TestNetStorage_GetFilesList(t *testing.T) {
-	storage := storageCreation(t)
-	if storage == nil {
-		return
-	}
+	storage := NetStorage{Client: &http.Client{}}
 	handler := func(w http.ResponseWriter, r *http.Request) {
-		_, err := handlerCommon(r, storage.PrivateKey)
-		if err != nil {
-			w.WriteHeader(http.StatusBadRequest)
-			return
-		}
 		files := []Files{{ID: 1, Name: "test file name"}, {ID: 2, Name: "file name"}}
 		data, err := json.Marshal(&files)
-		if err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
-			return
-		}
-		data, err = encryptRSAMessage(data, &storage.PrivateKey.PublicKey)
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			return
@@ -424,26 +271,13 @@ func TestNetStorage_GetFilesList(t *testing.T) {
 }
 
 func TestNetStorage_GetPreloadFileInfo(t *testing.T) {
-	storage := storageCreation(t)
-	if storage == nil {
-		return
-	}
+	storage := NetStorage{Client: &http.Client{}}
 	handler := func(w http.ResponseWriter, r *http.Request) {
-		_, err := handlerCommon(r, storage.PrivateKey)
-		if err != nil {
-			w.WriteHeader(http.StatusBadRequest)
-			return
-		}
 		preload := filesPreloadedData{
 			Name:     "file preload data",
 			MaxIndex: requestTimeout,
 		}
 		data, err := json.Marshal(&preload)
-		if err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
-			return
-		}
-		data, err = encryptRSAMessage(data, &storage.PrivateKey.PublicKey)
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			return
@@ -458,12 +292,7 @@ func TestNetStorage_GetPreloadFileInfo(t *testing.T) {
 		}
 	}
 	handlerJSONError := func(w http.ResponseWriter, r *http.Request) {
-		data, err := encryptRSAMessage([]byte("{error}"), &storage.PrivateKey.PublicKey)
-		if err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
-			return
-		}
-		if _, err = w.Write(data); err != nil {
+		if _, err := w.Write([]byte("{error}")); err != nil {
 			t.Errorf(wdr, err)
 		}
 	}
@@ -504,7 +333,7 @@ func TestNetStorage_GetPreloadFileInfo(t *testing.T) {
 	})
 	t.Run("Ошибка расшифровки при запросе списка файлов", func(t *testing.T) {
 		_, _, err := storage.GetPreloadFileInfo(serverDecryptError.URL)
-		if !errors.Is(err, ErrDecryptError) {
+		if !errors.Is(err, ErrJSON) {
 			t.Errorf("NetStorage.GetPreloadFileInfo() get unexpected error: %v, want: %v", err, ErrDecryptError)
 		}
 	})
@@ -520,12 +349,9 @@ func TestNetStorage_GetNewFileID(t *testing.T) {
 	fileIDstr := "1"
 	fileIDint := 1
 	file := mock.FileMock{NameFile: "test file", SizeFile: 100}
-	storage := storageCreation(t)
-	if storage == nil {
-		return
-	}
+	storage := NetStorage{Client: &http.Client{}}
 	handler := func(w http.ResponseWriter, r *http.Request) {
-		data, err := handlerCommon(r, storage.PrivateKey)
+		data, err := io.ReadAll(r.Body)
 		if err != nil {
 			w.WriteHeader(http.StatusBadRequest)
 			return
@@ -582,10 +408,7 @@ func TestNetStorage_AddFile(t *testing.T) {
 		t.Errorf("NetStorage.AddFile() error: %v", err)
 		return
 	}
-	storage := storageCreation(t)
-	if storage == nil {
-		return
-	}
+	storage := NetStorage{Client: &http.Client{}}
 	handler := func(w http.ResponseWriter, r *http.Request) {
 		data, err := io.ReadAll(r.Body)
 		if err != nil {
@@ -635,10 +458,7 @@ func TestNetStorage_AddFile(t *testing.T) {
 
 func TestNetStorage_FihishFileTransfer(t *testing.T) {
 	fid := 1
-	storage := storageCreation(t)
-	if storage == nil {
-		return
-	}
+	storage := NetStorage{Client: &http.Client{}}
 	handler := func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}
@@ -672,10 +492,7 @@ func TestNetStorage_FihishFileTransfer(t *testing.T) {
 func TestNetStorage_GetFile(t *testing.T) {
 	maxIdent := 1
 	fileName := path.Join(t.TempDir(), "file.tmp")
-	storage := storageCreation(t)
-	if storage == nil {
-		return
-	}
+	storage := NetStorage{Client: &http.Client{}}
 	handler := func(w http.ResponseWriter, r *http.Request) {
 		data, err := EncryptAES(storage.Key, []byte("file encrypted data"))
 		if err != nil {
@@ -714,10 +531,7 @@ func TestNetStorage_GetFile(t *testing.T) {
 }
 
 func TestNetStorage_DeleteItem(t *testing.T) {
-	storage := storageCreation(t)
-	if storage == nil {
-		return
-	}
+	storage := NetStorage{Client: &http.Client{}}
 	handler := func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}
@@ -746,13 +560,12 @@ func TestNetStorage_DeleteItem(t *testing.T) {
 
 func addUpdateHandle(
 	t *testing.T,
-	rsaKey *rsa.PrivateKey,
 	aesKey []byte,
 	info *DataInfo,
 ) func(w http.ResponseWriter, r *http.Request) {
 	t.Helper()
 	return func(w http.ResponseWriter, r *http.Request) {
-		data, err := handlerCommon(r, rsaKey)
+		data, err := io.ReadAll(r.Body)
 		if err != nil {
 			t.Errorf("info rsa decrypt error: %v", err)
 			w.WriteHeader(http.StatusBadRequest)
@@ -787,15 +600,10 @@ func addUpdateHandle(
 }
 
 func TestNetStorage_AddDataInfo(t *testing.T) {
-	storage, err := NewNetStorage()
-	if err != nil {
-		t.Errorf("NewNetStorage() error: %v", err)
-		return
-	}
-	storage.ServerPublicKey = &storage.PrivateKey.PublicKey
+	storage := NetStorage{Client: &http.Client{}}
 	storage.Key = aesKey([]byte("add data info key"))
 	info := DataInfo{Label: "add data info label", Info: "data info"}
-	handler := addUpdateHandle(t, storage.PrivateKey, storage.Key, &info)
+	handler := addUpdateHandle(t, storage.Key, &info)
 	server := httptest.NewServer(http.HandlerFunc(handler))
 	defer server.Close()
 	serverAuthError := httptest.NewServer(http.HandlerFunc(handlerAuthError))
@@ -820,12 +628,9 @@ func TestNetStorage_AddDataInfo(t *testing.T) {
 }
 
 func TestNetStorage_UpdateDataInfo(t *testing.T) {
-	storage := storageCreation(t)
-	if storage == nil {
-		return
-	}
+	storage := NetStorage{Client: &http.Client{}}
 	info := DataInfo{Label: "update data label", Info: "information"}
-	handler := addUpdateHandle(t, storage.PrivateKey, storage.Key, &info)
+	handler := addUpdateHandle(t, storage.Key, &info)
 	server := httptest.NewServer(http.HandlerFunc(handler))
 	defer server.Close()
 	serverAuthError := httptest.NewServer(http.HandlerFunc(handlerAuthError))
@@ -850,17 +655,9 @@ func TestNetStorage_UpdateDataInfo(t *testing.T) {
 }
 
 func TestNetStorage_GetDataInfo(t *testing.T) {
-	storage := storageCreation(t)
-	if storage == nil {
-		return
-	}
+	storage := NetStorage{Client: &http.Client{}}
 	info := DataInfo{Label: "data", Info: "123"}
 	handler := func(w http.ResponseWriter, r *http.Request) {
-		_, err := handlerCommon(r, storage.PrivateKey)
-		if err != nil {
-			w.WriteHeader(http.StatusBadRequest)
-			return
-		}
 		data, err := EncryptAES(storage.Key, []byte(info.Info))
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
@@ -868,11 +665,6 @@ func TestNetStorage_GetDataInfo(t *testing.T) {
 		}
 		i := DataInfo{Label: info.Label, Info: hex.EncodeToString(data)}
 		data, err = json.Marshal(&i)
-		if err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
-			return
-		}
-		data, err = encryptRSAMessage(data, &storage.PrivateKey.PublicKey)
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			return

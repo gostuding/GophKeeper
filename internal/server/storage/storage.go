@@ -33,8 +33,8 @@ const (
 type (
 	// Storage is struct for Gorm connection to database.
 	Storage struct {
-		con  *gorm.DB
-		Path string
+		con  *gorm.DB // connection to database
+		Path string   // file storage path
 	}
 )
 
@@ -79,6 +79,15 @@ func randomString(length int) string {
 		b[i] = letters[rand.Intn(len(letters))]
 	}
 	return string(b)
+}
+
+func (s *Storage) GetKey(ctx context.Context, uid uint) ([]byte, error) {
+	usr := Users{ID: uid}
+	res := s.con.WithContext(ctx).Where(&usr).First(&usr)
+	if res.Error != nil {
+		return nil, fmt.Errorf("database error: %w", res.Error)
+	}
+	return []byte(usr.Key), nil
 }
 
 // Registration new users and returns it's id in database.
@@ -168,8 +177,8 @@ func (s *Storage) GetDataInfoList(ctx context.Context, uid uint) ([]byte, error)
 
 // GetCard returns full info about one user's card.
 func (s *Storage) GetCard(ctx context.Context, id, uid uint) ([]byte, error) {
-	c := Cards{UID: uid, ID: id}
-	result := s.con.WithContext(ctx).First(&c)
+	c := Cards{}
+	result := s.con.WithContext(ctx).Where(&Cards{UID: uid, ID: id}).First(&c)
 	if result.Error != nil {
 		return nil, makeError(ErrDatabase, result.Error)
 	}
@@ -183,8 +192,8 @@ func (s *Storage) GetCard(ctx context.Context, id, uid uint) ([]byte, error) {
 
 // GetDataInfo returns full info about one user's data info.
 func (s *Storage) GetDataInfo(ctx context.Context, id, uid uint) ([]byte, error) {
-	c := SendDataInfo{UID: uid, ID: id}
-	result := s.con.WithContext(ctx).First(&c)
+	c := SendDataInfo{}
+	result := s.con.WithContext(ctx).Where(&SendDataInfo{UID: uid, ID: id}).First(&c)
 	if result.Error != nil {
 		return nil, makeError(ErrDatabase, result.Error)
 	}
@@ -338,6 +347,10 @@ func (s *Storage) DeleteFile(ctx context.Context, id, uid uint) error {
 		if result.Error != nil {
 			return makeError(ErrDatabase, result.Error)
 		}
+		err := os.RemoveAll(path.Join(s.Path, strconv.Itoa(int(uid)), strconv.Itoa(int(id))))
+		if err != nil {
+			return fmt.Errorf("file storage error: %w", err)
+		}
 		return nil
 	})
 	if err != nil {
@@ -348,8 +361,8 @@ func (s *Storage) DeleteFile(ctx context.Context, id, uid uint) error {
 
 // GetPreloadFileInfo returns info about file from database.
 func (s *Storage) GetPreloadFileInfo(ctx context.Context, id uint, uid int) ([]byte, error) {
-	file := Files{UID: uid, ID: id}
-	result := s.con.WithContext(ctx).First(&file)
+	file := Files{}
+	result := s.con.WithContext(ctx).Where(&Files{UID: uid, ID: id}).First(&file)
 	if result.Error != nil {
 		return nil, makeError(ErrDatabase, result.Error)
 	}

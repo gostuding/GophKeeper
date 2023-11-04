@@ -2,8 +2,7 @@ package storage
 
 import (
 	"bytes"
-	"crypto/rand"
-	"crypto/rsa"
+	"crypto/tls"
 	"crypto/x509"
 	"encoding/hex"
 	"encoding/json"
@@ -31,14 +30,11 @@ const (
 type (
 	// NetStorage storage in server.
 	NetStorage struct {
-		Client          *http.Client    // http client for work with server
-		ServerPublicKey *rsa.PublicKey  // public server key for encrypt messages
-		PrivateKey      *rsa.PrivateKey // private rsa key for decript mesages
-		Pwd             string          // user password
-		JWTToken        string          // authorization token
-		Key             []byte          // user pasphrace to encrypt and decrypt stored data
-		serverAESKey    []byte          // server's key to encrypt or decrypt user pashprace
-		PublicKey       []byte          // public key for exchange with server
+		Client       *http.Client // http client for work with server
+		Pwd          string       // user password
+		JWTToken     string       // authorization token
+		Key          []byte       // user pasphrace to encrypt and decrypt stored data
+		serverAESKey []byte       // server's key to encrypt or decrypt user pashprace
 	}
 	// LoginPwd internal struct.
 	loginPwd struct {
@@ -90,33 +86,46 @@ type (
 )
 
 // NewNetStorage creates new storage object for work with server by http.
-func NewNetStorage() (*NetStorage, error) {
-	client := http.Client{Timeout: time.Duration(requestTimeout) * time.Second}
-	key, err := rsa.GenerateKey(rand.Reader, keySize)
-	if err != nil {
-		return nil, fmt.Errorf("generate private key error: %w", err)
+func NewNetStorage(url string) (*NetStorage, error) {
+	transport := &http.Transport{
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
 	}
-	p, err := x509.MarshalPKIXPublicKey(key.Public())
+	client := &http.Client{Transport: transport}
+	resp, err := client.Get(url)
 	if err != nil {
-		return nil, fmt.Errorf("marshal public key error: %w", err)
+		return nil, fmt.Errorf("check server connection error: %w", err)
 	}
-	return &NetStorage{Client: &client, PrivateKey: key, PublicKey: p}, nil
+	defer resp.Body.Close() //nolint:errcheck //<-senselessly
+	if resp.StatusCode != http.StatusOK {
+		return nil, makeError(ErrResponseStatusCode, resp.StatusCode)
+	}
+	cert, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, makeError(ErrResponseRead, err)
+	}
+	certPool := x509.NewCertPool()
+	if ok := certPool.AppendCertsFromPEM(cert); !ok {
+		return nil, errors.New("unable to parse cert from server")
+	}
+	client = &http.Client{
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{
+				RootCAs: certPool,
+			},
+		},
+	}
+	return &NetStorage{Client: client}, nil
 }
 
-// doRequest is internal function for do requests with RSA encryption.
-func (ns *NetStorage) doEncryptRequest(msg []byte, url string, method string) (*http.Response, error) {
-	data, err := encryptRSAMessage(msg, ns.ServerPublicKey)
-	if err != nil {
-		return nil, makeError(ErrEncrypt, err)
-	}
-	req, err := http.NewRequest(method, url, bytes.NewReader(data))
+func (ns *NetStorage) doRequest(msg []byte, url string, method string) (*http.Response, error) {
+	req, err := http.NewRequest(method, url, bytes.NewReader(msg))
 	if err != nil {
 		return nil, fmt.Errorf("create request error: %w", err)
 	}
 	req.Header.Add(Authorization, ns.JWTToken)
 	res, err := ns.Client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("http do request error: %w", err)
+		return nil, fmt.Errorf("do request error: %w", err)
 	}
 	return res, nil
 }
@@ -125,84 +134,60 @@ func (ns *NetStorage) ServerAESKey() []byte {
 	return ns.serverAESKey
 }
 
-// Check sends request to server for public key get.
-func (ns *NetStorage) Check(url string) error {
-	resp, err := ns.Client.Get(url)
-	if err != nil {
-		return fmt.Errorf("check server connection error: %w", err)
-	}
-	defer resp.Body.Close() //nolint:errcheck //<-senselessly
-	if resp.StatusCode != http.StatusOK {
-		return makeError(ErrResponseStatusCode, resp.StatusCode)
-	}
-	keyData, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return makeError(ErrResponseRead, err)
-	}
-	pub, err := x509.ParsePKIXPublicKey(keyData)
-	if err != nil {
-		return fmt.Errorf("parce public key error: %w", err)
-	}
-	publicKey, ok := pub.(*rsa.PublicKey)
-	if !ok {
-		return fmt.Errorf("key type is not RSA")
-	}
-	ns.ServerPublicKey = publicKey
-	return nil
-}
-
 // Authentification is register or login in server.
-func (ns *NetStorage) Authentification(url string, l, p string) error {
+func (ns *NetStorage) Authentification(url string, l, p string) (string, error) {
 	user := loginPwd{Login: l, Pwd: p}
-	user.PublicKey = hex.EncodeToString(ns.PublicKey)
 	data, err := json.Marshal(user)
 	if err != nil {
-		return makeError(ErrJSONMarshal, err)
+		return "", makeError(ErrJSONMarshal, err)
 	}
-	res, err := ns.doEncryptRequest(data, url, http.MethodPost)
+	res, err := ns.doRequest(data, url, http.MethodPost)
 	if err != nil {
-		return err
+		return "", err
 	}
 	defer res.Body.Close() //nolint:errcheck //<-senselessly
 	switch res.StatusCode {
 	case http.StatusConflict:
-		return ErrLoginRepeat
+		return "", ErrLoginRepeat
 	case http.StatusUnauthorized:
-		return ErrUserNotFound
+		return "", ErrUserNotFound
 	case http.StatusOK:
 		ns.Pwd = user.Pwd
-		if err = ns.getToken(res.Body); err != nil {
-			return makeError(ErrGetToken, err)
+		data, err := io.ReadAll(res.Body)
+		if err != nil {
+			return "", makeError(ErrResponseRead, err)
 		}
-		return nil
+		var t tokenKey
+		if err = json.Unmarshal(data, &t); err != nil {
+			return "", makeError(ErrJSONUnmarshal, err)
+		}
+		ns.JWTToken = t.Token
+		ns.serverAESKey = []byte(t.Key)
+		return t.Token, nil
 	default:
+		return "", makeError(ErrResponseStatusCode, res.StatusCode)
+	}
+}
+
+// GetAESKey decripts user key.
+func (ns *NetStorage) GetAESKey(key, url string) error {
+	res, err := ns.doRequest(nil, url, http.MethodGet)
+	if err != nil {
+		return err
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusOK {
 		return makeError(ErrResponseStatusCode, res.StatusCode)
 	}
-}
-
-// getToken is private function. Looks token in answer.
-func (ns *NetStorage) getToken(body io.Reader) error {
-	data, err := io.ReadAll(body)
+	ns.serverAESKey, err = io.ReadAll(res.Body)
 	if err != nil {
-		return makeError(ErrResponseRead, err)
+		return fmt.Errorf("read request body error: %w", err)
 	}
-	data, err = decryptRSAMessage(ns.PrivateKey, data)
+	k, err := hex.DecodeString(key)
 	if err != nil {
-		return makeError(ErrDecryptMessage, err)
+		return fmt.Errorf("user key error: %w", err)
 	}
-	var t tokenKey
-	if err := json.Unmarshal(data, &t); err != nil {
-		return makeError(ErrJSONUnmarshal, err)
-	}
-	ns.JWTToken = t.Token
-	ns.serverAESKey = []byte(t.Key)
-	return nil
-}
-
-// SetUserAESKey decripts user key.
-func (ns *NetStorage) SetUserAESKey(key string) error {
-	key = string(aesKey([]byte(key)))
-	k, err := decryptAES(ns.serverAESKey, []byte(key))
+	k, err = decryptAES(ns.serverAESKey, k)
 	if err != nil {
 		return makeError(ErrDecryptMessage, err)
 	}
@@ -211,7 +196,7 @@ func (ns *NetStorage) SetUserAESKey(key string) error {
 }
 
 func (ns *NetStorage) GetItemsListCommon(url, name string) (string, error) {
-	res, err := ns.doEncryptRequest(ns.PublicKey, url, http.MethodPost)
+	res, err := ns.doRequest(nil, url, http.MethodGet)
 	if err != nil {
 		return "", err
 	}
@@ -226,10 +211,6 @@ func (ns *NetStorage) GetItemsListCommon(url, name string) (string, error) {
 		if err != nil {
 			return "", makeError(ErrResponseRead, err)
 		}
-		data, err = decryptRSAMessage(ns.PrivateKey, data)
-		if err != nil {
-			return "", makeError(ErrDecryptMessage, err)
-		}
 		var lst []DataInfo
 		err = json.Unmarshal(data, &lst)
 		if err != nil {
@@ -237,7 +218,7 @@ func (ns *NetStorage) GetItemsListCommon(url, name string) (string, error) {
 		}
 		datas := ""
 		for _, val := range lst {
-			datas += fmt.Sprintf("%s: %d. '%s'\t'%s'\n", name, val.ID, val.Label, val.Updated.Format(TimeFormat))
+			datas += fmt.Sprintf("%s id: %d. '%s'\t'%s'\n", name, val.ID, val.Label, val.Updated.Format(TimeFormat))
 		}
 		return datas, nil
 	default:
@@ -247,7 +228,7 @@ func (ns *NetStorage) GetItemsListCommon(url, name string) (string, error) {
 
 // GetCard requests card info.
 func (ns *NetStorage) GetCard(url string) (*CardInfo, error) {
-	res, err := ns.doEncryptRequest(ns.PublicKey, url, http.MethodPost)
+	res, err := ns.doRequest(nil, url, http.MethodGet)
 	if err != nil {
 		return nil, err
 	}
@@ -258,7 +239,7 @@ func (ns *NetStorage) GetCard(url string) (*CardInfo, error) {
 	case http.StatusNotFound:
 		return nil, ErrNotFound
 	case http.StatusOK:
-		data, err := readAndDecryptRSA(res.Body, ns.PrivateKey)
+		data, err := io.ReadAll(res.Body)
 		if err != nil {
 			return nil, makeError(ErrResponse, err)
 		}
@@ -271,6 +252,7 @@ func (ns *NetStorage) GetCard(url string) (*CardInfo, error) {
 		if err != nil {
 			return nil, makeError(ErrDecode, err)
 		}
+		fmt.Println(string(ns.Key))
 		info, err := decryptAES(ns.Key, msg)
 		if err != nil {
 			return nil, makeError(ErrDecryptMessage, err)
@@ -290,7 +272,7 @@ func (ns *NetStorage) GetCard(url string) (*CardInfo, error) {
 
 // addUpdateCard common in add and update card functions.
 func (ns *NetStorage) addUpdateCommon(url, method string, data []byte) error {
-	res, err := ns.doEncryptRequest(data, url, method)
+	res, err := ns.doRequest(data, url, method)
 	if err != nil {
 		return err
 	}
@@ -372,7 +354,7 @@ func (ns *NetStorage) UpdateDataInfo(url string, label string, info string) erro
 
 // GetDataInfo requests card info.
 func (ns *NetStorage) GetDataInfo(url string) (*DataInfo, error) {
-	res, err := ns.doEncryptRequest(ns.PublicKey, url, http.MethodPost)
+	res, err := ns.doRequest(nil, url, http.MethodGet)
 	if err != nil {
 		return nil, err
 	}
@@ -383,7 +365,7 @@ func (ns *NetStorage) GetDataInfo(url string) (*DataInfo, error) {
 	case http.StatusNotFound:
 		return nil, ErrNotFound
 	case http.StatusOK:
-		data, err := readAndDecryptRSA(res.Body, ns.PrivateKey)
+		data, err := io.ReadAll(res.Body)
 		if err != nil {
 			return nil, makeError(ErrResponse, err)
 		}
@@ -409,7 +391,7 @@ func (ns *NetStorage) GetDataInfo(url string) (*DataInfo, error) {
 
 // GetFilesList requests user's files list from server.
 func (ns *NetStorage) GetFilesList(url string) (string, error) {
-	res, err := ns.doEncryptRequest(ns.PublicKey, url, http.MethodPost)
+	res, err := ns.doRequest(nil, url, http.MethodGet)
 	if err != nil {
 		return "", err
 	}
@@ -423,10 +405,6 @@ func (ns *NetStorage) GetFilesList(url string) (string, error) {
 		data, err := io.ReadAll(res.Body)
 		if err != nil {
 			return "", makeError(ErrResponseRead, err)
-		}
-		data, err = decryptRSAMessage(ns.PrivateKey, data)
-		if err != nil {
-			return "", makeError(ErrDecryptMessage, err)
 		}
 		var lst []Files
 		err = json.Unmarshal(data, &lst)
@@ -454,7 +432,7 @@ func (ns *NetStorage) GetNewFileID(url string, info os.FileInfo) (int, error) {
 	if err != nil {
 		return 0, makeError(ErrJSONMarshal, err)
 	}
-	res, err := ns.doEncryptRequest(data, url, http.MethodPut)
+	res, err := ns.doRequest(data, url, http.MethodPut)
 	if err != nil {
 		return 0, err
 	}
@@ -525,7 +503,10 @@ func (ns *NetStorage) AddFile(url, fPath string, fid int) error {
 	for i := 0; i < sendThreadCount; i++ {
 		go func() {
 			defer wg.Done()
-			client := http.Client{Timeout: time.Duration(requestTimeout) * time.Second}
+			client := http.Client{
+				Timeout:   time.Duration(requestTimeout) * time.Second,
+				Transport: ns.Client.Transport,
+			}
 			for item := range sendChan {
 				select {
 				case <-stopChan:
@@ -607,7 +588,7 @@ func (ns *NetStorage) FihishFileTransfer(url string, fid int) error {
 
 // DeleteItem sends request for delete any from database.
 func (ns *NetStorage) DeleteItem(url string) error {
-	res, err := ns.doEncryptRequest(nil, url, http.MethodDelete)
+	res, err := ns.doRequest(nil, url, http.MethodDelete)
 	if err != nil {
 		return err
 	}
@@ -626,7 +607,7 @@ func (ns *NetStorage) DeleteItem(url string) error {
 
 // GetPreloadFileInfo requests file max index from database.
 func (ns *NetStorage) GetPreloadFileInfo(url string) (string, int, error) {
-	resp, err := ns.doEncryptRequest(ns.PublicKey, url, http.MethodPost)
+	resp, err := ns.doRequest(nil, url, http.MethodGet)
 	if err != nil {
 		return "", 0, err
 	}
@@ -637,7 +618,7 @@ func (ns *NetStorage) GetPreloadFileInfo(url string) (string, int, error) {
 	case http.StatusNotFound:
 		return "", 0, ErrNotFound
 	case http.StatusOK:
-		data, err := readAndDecryptRSA(resp.Body, ns.PrivateKey)
+		data, err := io.ReadAll(resp.Body)
 		if err != nil {
 			return "", 0, makeError(ErrDecryptMessage, err)
 		}

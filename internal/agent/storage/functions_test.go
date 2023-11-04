@@ -2,8 +2,6 @@ package storage
 
 import (
 	"bytes"
-	"crypto/rand"
-	"crypto/rsa"
 	"reflect"
 	"testing"
 )
@@ -62,28 +60,6 @@ func Test_decryptAES(t *testing.T) {
 				t.Errorf("decryptAES() = %v, want %v", got, tt.want)
 			}
 		})
-	}
-}
-
-func Test_encryptRSAMessage(t *testing.T) {
-	key, err := rsa.GenerateKey(rand.Reader, keySize)
-	if err != nil {
-		t.Errorf("generate private key error: %v", err)
-		return
-	}
-	msg := []byte("rsa encrypt message")
-	enc, err := encryptRSAMessage(msg, &key.PublicKey)
-	if err != nil {
-		t.Errorf("encrypt error: %v", err)
-		return
-	}
-	dec, err := decryptRSAMessage(key, enc)
-	if err != nil {
-		t.Errorf("decrypt error: %v", err)
-		return
-	}
-	if !bytes.Equal(msg, dec) {
-		t.Error("messages not equal")
 	}
 }
 

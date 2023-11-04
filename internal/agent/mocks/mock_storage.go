@@ -78,31 +78,18 @@ func (mr *MockStorageMockRecorder) AddFile(arg0, arg1, arg2 interface{}) *gomock
 }
 
 // Authentification mocks base method.
-func (m *MockStorage) Authentification(arg0, arg1, arg2 string) error {
+func (m *MockStorage) Authentification(arg0, arg1, arg2 string) (string, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Authentification", arg0, arg1, arg2)
-	ret0, _ := ret[0].(error)
-	return ret0
+	ret0, _ := ret[0].(string)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
 }
 
 // Authentification indicates an expected call of Authentification.
 func (mr *MockStorageMockRecorder) Authentification(arg0, arg1, arg2 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Authentification", reflect.TypeOf((*MockStorage)(nil).Authentification), arg0, arg1, arg2)
-}
-
-// Check mocks base method.
-func (m *MockStorage) Check(arg0 string) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Check", arg0)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// Check indicates an expected call of Check.
-func (mr *MockStorageMockRecorder) Check(arg0 interface{}) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Check", reflect.TypeOf((*MockStorage)(nil).Check), arg0)
 }
 
 // DeleteItem mocks base method.

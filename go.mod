@@ -7,13 +7,13 @@ require (
 	github.com/go-chi/cors v1.2.1
 	github.com/golang/mock v1.6.0
 	github.com/gostuding/middlewares v0.0.0-20231017221122-7302ed82eece
-	github.com/howeyc/gopass v0.0.0-20210920133722-c8aef6fb66ef
 	github.com/jackc/pgerrcode v0.0.0-20220416144525-469b46aa5efa
 	github.com/jackc/pgx/v5 v5.4.3
 	github.com/swaggo/http-swagger v1.3.4
 	github.com/swaggo/swag v1.16.2
 	go.uber.org/zap v1.26.0
 	golang.org/x/crypto v0.14.0
+	golang.org/x/sys v0.13.0
 	gorm.io/driver/postgres v1.5.2
 	gorm.io/gorm v1.25.4
 )
@@ -35,7 +35,6 @@ require (
 	github.com/swaggo/files v0.0.0-20220610200504-28940afbdbfe // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	golang.org/x/net v0.12.0 // indirect
-	golang.org/x/sys v0.13.0 // indirect
 	golang.org/x/term v0.13.0 // indirect
 	golang.org/x/text v0.13.0 // indirect
 	golang.org/x/tools v0.9.4-0.20230601214343-86c93e8732cc // indirect

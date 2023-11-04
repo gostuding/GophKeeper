@@ -2,10 +2,6 @@ package server
 
 import (
 	"context"
-	"crypto/rand"
-	"crypto/rsa"
-	"crypto/x509"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -25,54 +21,16 @@ var (
 	ctx = context.WithValue(context.Background(), middlewares.AuthUID, uid)
 )
 
-func createRSAKeys() ([]byte, error) {
-	privateKey, err := rsa.GenerateKey(rand.Reader, keySize)
-	if err != nil {
-		return nil, fmt.Errorf("private key generate error: %w", err)
-	}
-	publicKey, err := x509.MarshalPKIXPublicKey(privateKey.Public())
-	if err != nil {
-		return nil, fmt.Errorf("marshal public key error: %w", err)
-	}
-	return publicKey, nil
-}
-
-func createUsers(pk []byte) ([]byte, []byte, error) {
-	su, err := json.Marshal(&LoginPassword{Login: "login", Password: "password", PublicKey: hex.EncodeToString(pk)})
+func createUsers() ([]byte, []byte, error) {
+	su, err := json.Marshal(&LoginPassword{Login: "login", Password: "password"})
 	if err != nil {
 		return nil, nil, fmt.Errorf("marshal success data error: %w", err)
 	}
-	bu, err := json.Marshal(&LoginPassword{Login: "repeat", Password: "pwd", PublicKey: hex.EncodeToString(pk)})
+	bu, err := json.Marshal(&LoginPassword{Login: "repeat", Password: "pwd"})
 	if err != nil {
 		return nil, nil, fmt.Errorf("marshal bad data error: %w", err)
 	}
 	return su, bu, nil
-}
-
-func TestGetPublicKey(t *testing.T) {
-	key, err := rsa.GenerateKey(rand.Reader, keySize)
-	if err != nil {
-		t.Errorf("generate keys error: %v", err)
-		return
-	}
-	tests := []struct {
-		name    string
-		key     *rsa.PrivateKey
-		wantErr bool
-	}{
-		{"Успешная конвертация", key, false},
-		{"Пустой ключ", nil, true},
-	}
-	for _, tt := range tests {
-		tt := tt
-		t.Run(tt.name, func(t *testing.T) {
-			_, err := GetPublicKey(tt.key)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("GetPublicKey() error = %v, wantErr %v", err, tt.wantErr)
-				return
-			}
-		})
-	}
 }
 
 func TestRegister(t *testing.T) {
@@ -82,13 +40,8 @@ func TestRegister(t *testing.T) {
 	storage.EXPECT().IsUniqueViolation(makeError(ErrGormGet, errUniq)).Return(true)
 	storage.EXPECT().Registration(ctx, "login", "password").Return("key", 1, nil)
 	storage.EXPECT().Registration(ctx, "repeat", "pwd").Return("", 0, errUniq)
-
-	publicKey, err := createRSAKeys()
-	if err != nil {
-		t.Errorf("create keys error: %v", err)
-		return
-	}
-	su, bu, err := createUsers(publicKey)
+	key := []byte("keys")
+	su, bu, err := createUsers()
 	if err != nil {
 		t.Errorf("create users data error: %v", err)
 		return
@@ -106,7 +59,7 @@ func TestRegister(t *testing.T) {
 	for _, tt := range tests {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
-			_, got1, err := Register(ctx, tt.body, publicKey, storage, 10, "", "127.0.0.1:10")
+			_, got1, err := Register(ctx, tt.body, key, storage, 10, "", "127.0.0.1:10")
 			if (err != nil) != tt.wantErr {
 				t.Errorf("Register() error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -123,13 +76,8 @@ func TestLogin(t *testing.T) {
 	storage := mocks.NewMockStorage(ctrl)
 	storage.EXPECT().Login(ctx, "login", "password").Return("key", 1, nil)
 	storage.EXPECT().Login(ctx, "repeat", "pwd").Return("", 0, gorm.ErrRecordNotFound)
-
-	publicKey, err := createRSAKeys()
-	if err != nil {
-		t.Errorf("create keys error: %v", err)
-		return
-	}
-	su, bu, err := createUsers(publicKey)
+	key := []byte("token key")
+	su, bu, err := createUsers()
 	if err != nil {
 		t.Errorf("create users data error: %v", err)
 		return
@@ -147,7 +95,7 @@ func TestLogin(t *testing.T) {
 	for _, tt := range tests {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
-			_, got1, err := Login(ctx, tt.body, publicKey, storage, 10, "", "127.0.0.1:10")
+			_, got1, err := Login(ctx, tt.body, key, storage, 10, "", "127.0.0.1:10")
 			if (err != nil) != tt.wantErr {
 				t.Errorf("Login() error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -167,11 +115,6 @@ func TestGetCardsList(t *testing.T) {
 	ctxBad := context.WithValue(context.Background(), middlewares.AuthUID, uidBad)
 	storage.EXPECT().GetCardsList(ctx, uint(uid)).Return([]byte(""), nil)
 	storage.EXPECT().GetCardsList(ctxBad, uint(uidBad)).Return(nil, makeError(ErrGormGet))
-	pk, err := createRSAKeys()
-	if err != nil {
-		t.Errorf("create keys error: %v", err)
-		return
-	}
 	tests := []struct {
 		name    string
 		ctx     context.Context //nolint:containedctx //<-
@@ -184,7 +127,7 @@ func TestGetCardsList(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, got1, err := GetCardsList(tt.ctx, hex.EncodeToString(pk), storage)
+			_, got1, err := GetCardsList(tt.ctx, storage)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("GetCardsList() error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -433,21 +376,13 @@ func TestGetPreloadFileInfo(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	storage := mocks.NewMockStorage(ctrl)
 	f := uint(1)
-	ff := uint(4)
 	e := uint(2)
 	n := uint(3)
 	storage.EXPECT().GetPreloadFileInfo(ctx, f, uid).Return([]byte(""), nil)
-	storage.EXPECT().GetPreloadFileInfo(ctx, ff, uid).Return([]byte(""), nil)
 	storage.EXPECT().GetPreloadFileInfo(ctx, e, uid).Return(nil, makeError(ErrGormGet))
 	storage.EXPECT().GetPreloadFileInfo(ctx, n, uid).Return(nil, gorm.ErrRecordNotFound)
-	pk, err := createRSAKeys()
-	if err != nil {
-		t.Errorf("create keys error: %v", err)
-		return
-	}
 	type args struct {
-		id        uint
-		publicKey string
+		id uint
 	}
 	tests := []struct {
 		name    string
@@ -457,68 +392,32 @@ func TestGetPreloadFileInfo(t *testing.T) {
 	}{
 		{
 			name:    "Успешное получение данных",
-			args:    args{id: f, publicKey: hex.EncodeToString(pk)},
+			args:    args{id: f},
 			want1:   http.StatusOK,
 			wantErr: false,
 		},
 		{
-			name:    "Ошибка ключа",
-			args:    args{id: ff, publicKey: ""},
-			want1:   http.StatusBadRequest,
-			wantErr: true,
-		},
-		{
 			name:    "Ошибка запроса к БД",
-			args:    args{id: e, publicKey: hex.EncodeToString(pk)},
+			args:    args{id: e},
 			want1:   http.StatusInternalServerError,
 			wantErr: true,
 		},
 		{
 			name:    "Не найдено в БД",
-			args:    args{id: n, publicKey: hex.EncodeToString(pk)},
+			args:    args{id: n},
 			want1:   http.StatusNotFound,
 			wantErr: true,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, got1, err := GetPreloadFileInfo(ctx, storage, tt.args.id, tt.args.publicKey)
+			_, got1, err := GetPreloadFileInfo(ctx, storage, tt.args.id)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("GetPreloadFileInfo() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
 			if got1 != tt.want1 {
 				t.Errorf("GetPreloadFileInfo() got1 = %v, want %v", got1, tt.want1)
-			}
-		})
-	}
-}
-
-func Test_encryptMessage(t *testing.T) {
-	pk, err := createRSAKeys()
-	if err != nil {
-		t.Errorf("create publick key error: %v", err)
-		return
-	}
-	type args struct {
-		msg []byte
-		k   string
-	}
-	tests := []struct {
-		name    string
-		args    args
-		wantErr bool
-	}{
-		{"Success encrypt", args{[]byte(""), hex.EncodeToString(pk)}, false},
-		{"Bad key", args{[]byte(""), ""}, true},
-		{"Nil msg", args{nil, hex.EncodeToString(pk)}, false},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			_, err := encryptMessage(tt.args.msg, tt.args.k)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("encryptMessage() error = %v, wantErr %v", err, tt.wantErr)
-				return
 			}
 		})
 	}
@@ -583,17 +482,12 @@ func TestUpdateDataInfo(t *testing.T) {
 }
 
 func getCommonTest(t *testing.T, storage Storage,
-	fun func(context.Context, string, Storage, uint) ([]byte, int, error),
+	fun func(context.Context, Storage, uint) ([]byte, int, error),
 ) {
 	t.Helper()
 	s := uint(1)
 	b := uint(2)
 	f := uint(3)
-	pk, err := createRSAKeys()
-	if err != nil {
-		t.Errorf("create keys error: %v", err)
-		return
-	}
 	tests := []struct {
 		name    string
 		id      uint
@@ -607,7 +501,7 @@ func getCommonTest(t *testing.T, storage Storage,
 	for _, tt := range tests {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
-			_, got1, err := fun(ctx, hex.EncodeToString(pk), storage, tt.id)
+			_, got1, err := fun(ctx, storage, tt.id)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("get error = %v, wantErr %v", err, tt.wantErr)
 				return

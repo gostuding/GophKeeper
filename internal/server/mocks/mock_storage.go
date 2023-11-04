@@ -251,6 +251,21 @@ func (mr *MockStorageMockRecorder) GetFilesList(arg0, arg1 interface{}) *gomock.
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetFilesList", reflect.TypeOf((*MockStorage)(nil).GetFilesList), arg0, arg1)
 }
 
+// GetKey mocks base method.
+func (m *MockStorage) GetKey(arg0 context.Context, arg1 uint) ([]byte, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetKey", arg0, arg1)
+	ret0, _ := ret[0].([]byte)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetKey indicates an expected call of GetKey.
+func (mr *MockStorageMockRecorder) GetKey(arg0, arg1 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetKey", reflect.TypeOf((*MockStorage)(nil).GetKey), arg0, arg1)
+}
+
 // GetPreloadFileInfo mocks base method.
 func (m *MockStorage) GetPreloadFileInfo(arg0 context.Context, arg1 uint, arg2 int) ([]byte, error) {
 	m.ctrl.T.Helper()

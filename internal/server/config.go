@@ -1,20 +1,25 @@
 package server
 
 import (
+	"bytes"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/json"
 	"encoding/pem"
 	"errors"
 	"flag"
 	"fmt"
+	"math/big"
+	"net"
 	"os"
+	"time"
 )
 
 const (
 	keySize                          = 4096
-	fBits                os.FileMode = 0600
+	fBits                os.FileMode = 0740
 	defaultPort                      = 8080
 	defaultConCount                  = 10
 	defaultTokenLiveTime             = 60 * 60 * 24
@@ -29,6 +34,7 @@ type Config struct {
 	DSN              string          `json:"dsn"`                  // database connection string
 	KeyPath          string          `json:"private_key"`          // path to private key file
 	StoragePath      string          `json:"file_storage_path"`    // path to file storage dir
+	CertPath         string          `json:"cert_path"`            //
 	PrivateKey       *rsa.PrivateKey `json:"-"`                    // private key
 	TokenKey         []byte          `json:"token_key"`            // key for JWT token create
 	Port             int             `json:"port"`                 // server's PORT
@@ -37,8 +43,8 @@ type Config struct {
 }
 
 // checkFileExist checks config file exists. Createss default config if the file wasn't found.
-func checkFileExist(path, keyPath, storagePath string) error {
-	_, err := os.Stat(path)
+func checkFileExist(cfg_path, keyPath, storagePath, certPath string) error {
+	_, err := os.Stat(cfg_path)
 	if err == nil {
 		return nil
 	}
@@ -59,6 +65,37 @@ func checkFileExist(path, keyPath, storagePath string) error {
 	if err = os.WriteFile(keyPath, prvPem, fBits); err != nil {
 		return fmt.Errorf("write private key error: %w", err)
 	}
+	serialNumberLimit := new(big.Int).Lsh(big.NewInt(1), 128)
+	serialNumber, err := rand.Int(rand.Reader, serialNumberLimit)
+	if err != nil {
+		return fmt.Errorf("failed to generate serial number: %w", err)
+	}
+	cert := &x509.Certificate{
+		SerialNumber: serialNumber,
+		Subject: pkix.Name{
+			Organization: []string{"Yandex.Praktikum"},
+			Country:      []string{"RU"},
+		},
+		IPAddresses:           []net.IP{net.IPv4(127, 0, 0, 1), net.IPv6loopback},
+		DNSNames:              []string{"localhost"},
+		NotBefore:             time.Now(),
+		NotAfter:              time.Now().AddDate(10, 0, 0),
+		KeyUsage:              x509.KeyUsageDigitalSignature,
+		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+		BasicConstraintsValid: true,
+	}
+	certBytes, err := x509.CreateCertificate(rand.Reader, cert, cert, &key.PublicKey, key)
+	if err != nil {
+		return fmt.Errorf("create certificate error: %w", err)
+	}
+	var certPEM bytes.Buffer
+	pem.Encode(&certPEM, &pem.Block{
+		Type:  "CERTIFICATE",
+		Bytes: certBytes,
+	})
+	if err = os.WriteFile(certPath, certPEM.Bytes(), fBits); err != nil {
+		return fmt.Errorf("write certificate file error: %w", err)
+	}
 	cfg := Config{
 		IP:               defaultIP,
 		Port:             defaultPort,
@@ -68,12 +105,13 @@ func checkFileExist(path, keyPath, storagePath string) error {
 		TokenKey:         []byte(defaultTokenKey),
 		MaxTokenLiveTime: defaultTokenLiveTime,
 		StoragePath:      storagePath,
+		CertPath:         certPath,
 	}
 	data, err := json.MarshalIndent(cfg, "", "    ")
 	if err != nil {
 		return makeError(ErrUnmarshalJSON, err)
 	}
-	if err = os.WriteFile(path, data, fBits); err != nil {
+	if err = os.WriteFile(cfg_path, data, fBits); err != nil {
 		return fmt.Errorf("write config file error: %w", err)
 	}
 	return nil
@@ -121,8 +159,9 @@ func NewConfig() (*Config, error) {
 	flag.StringVar(&fPath, "i", "server_config.json", "Path to configuration json file")
 	flag.StringVar(&cfg.KeyPath, "k", "server_key.pem", "Private RSA key path")
 	flag.StringVar(&cfg.StoragePath, "s", "./storage", "File storage path")
+	flag.StringVar(&cfg.CertPath, "c", "./certificate.pem", "Certificates f path")
 	flag.Parse()
-	if err := checkFileExist(fPath, cfg.KeyPath, cfg.StoragePath); err != nil {
+	if err := checkFileExist(fPath, cfg.KeyPath, cfg.StoragePath, cfg.CertPath); err != nil {
 		return nil, err
 	}
 	return &cfg, readConfigFile(fPath, &cfg)

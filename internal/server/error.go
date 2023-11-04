@@ -10,7 +10,6 @@ type ErrType int
 const (
 	ErrWriteResponse ErrType = iota
 	ErrReadRequestBody
-	ErrGetPublicKey
 	ErrGormGet
 	ErrGormDublicate
 	ErrIPIncorrect
@@ -35,8 +34,6 @@ func makeError(t ErrType, values ...any) error {
 		return fmt.Errorf("dublicate database value error: %w", values...)
 	case ErrReadRequestBody:
 		return fmt.Errorf("request body read error: %w", values...)
-	case ErrGetPublicKey:
-		return fmt.Errorf("get public key error: %w", values...)
 	case ErrGormGet:
 		return fmt.Errorf("gorm error: %w", values...)
 	case ErrIPIncorrect:

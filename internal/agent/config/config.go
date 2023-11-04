@@ -8,18 +8,20 @@ import (
 )
 
 const (
-	fBits         os.FileMode = 0600                    // default save config file mode.
-	defaultAddres             = "http://127.0.0.1:8080" // default server address.
+	fBits         os.FileMode = 0600                     // default save config file mode.
+	defaultAddres             = "https://127.0.0.1:8080" // default server address.
 )
 
 // Config is agent's config structure.
 type Config struct {
 	ServerAddres string `json:"server_addres"` // server's address
 	Login        string `json:"login"`         // login for authorization on server
+	Token        string `json:"token"`         // authorization token
 	Pwd          string `json:"-"`             // contains password from args
 	path         string `json:"-"`             // path to json configuration file
 	Key          string `json:"key"`           // key for encrypt messages
 	Command      string `json:"-"`             // contains command from args
+	Arg          string `json:"-"`             // contains command's arg
 }
 
 // Save writes configuration data in file.
@@ -72,6 +74,7 @@ func NewConfig() (*Config, error) {
 	var path string
 	flag.StringVar(&path, "i", "config.json", "Path to configuration json file")
 	flag.StringVar(&cfg.Command, "c", "", "User command")
+	flag.StringVar(&cfg.Arg, "arg", "", "Command's argument: id for get or edit item, path to file load and soon...")
 	flag.StringVar(&cfg.Pwd, "p", "", "User password")
 	flag.Parse()
 	if err := checkFileExist(path); err != nil {

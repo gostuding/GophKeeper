@@ -1,10 +1,11 @@
 {
     "ip": "127.0.0.1",
-    "dsn": "host=localhost user=gopher password=password database=gokeeper",
-    "private_key": "./srv_private_key.pem",
+    "dsn": "host=localhost user=postgres database=gokeeper",
+    "private_key": "server_key.pem",
     "file_storage_path": "/opt/storage",
+    "cert_path": "./certificates/cert.pem",
     "token_key": "dG9rZW4ga2V5",
     "port": 8080,
     "max_connection_count": 10,
-    "max_token_live_time": 1440
+    "max_token_live_time": 86400
 }

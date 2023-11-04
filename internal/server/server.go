@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"net"
@@ -37,6 +38,7 @@ type (
 	Storage interface {
 		Registration(context.Context, string, string) (string, int, error)
 		Login(context.Context, string, string) (string, int, error)
+		GetKey(context.Context, uint) ([]byte, error)
 		GetCardsList(context.Context, uint) ([]byte, error)
 		GetDataInfoList(context.Context, uint) ([]byte, error)
 		GetCard(context.Context, uint, uint) ([]byte, error)
@@ -88,6 +90,10 @@ func (s *Server) RunServer() error {
 	s.srv = http.Server{
 		Addr:    net.JoinHostPort(s.Config.IP, strconv.Itoa(s.Config.Port)),
 		Handler: makeRouter(s),
+		TLSConfig: &tls.Config{
+			MinVersion:               tls.VersionTLS13,
+			PreferServerCipherSuites: true,
+		},
 	}
 	go s.startServe(srvChan)
 	go func() {
@@ -101,7 +107,7 @@ func (s *Server) RunServer() error {
 
 // startServe is private function for listen server's address and write error in chan when server finished.
 func (s *Server) startServe(srvChan chan error) {
-	err := s.srv.ListenAndServe()
+	err := s.srv.ListenAndServeTLS(s.Config.CertPath, s.Config.KeyPath)
 	if serr := s.Storage.Close(); serr != nil {
 		s.Logger.Warnf(stopStorageErrorString, serr)
 	} else {

@@ -25,8 +25,7 @@ import (
 )
 
 var (
-	// dbDSN  = ""
-	dbDSN  = "host=localhost user=gopher password=password database=gokeeper"
+	dbDSN  = ""
 	maxCon = 1
 	ctx    = context.Background()
 	n      = 50

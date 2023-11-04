@@ -2,20 +2,17 @@ package agent
 
 import (
 	"bufio"
-	"context"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"net/url"
 	"os"
-	"os/signal"
 	"strconv"
 	"strings"
-	"sync"
-	"syscall"
 
 	"github.com/gostuding/GophKeeper/internal/agent/config"
+	"github.com/gostuding/GophKeeper/internal/agent/gopass"
 	"github.com/gostuding/GophKeeper/internal/agent/storage"
-	"github.com/howeyc/gopass"
 )
 
 type errType int
@@ -42,20 +39,19 @@ const (
 	ErrURLJoin
 
 	urlCheck urlType = iota
+	urlAESKey
 	urlRegistration
 	urlLogin
-	urlCardsList
 	urlCardsAdd
 	urlCard
-	urlFilesList
+	urlFiles
 	urlFileAdd
-	urlDataList
 	urlDataAdd
 	urlData
 )
 
 var (
-	ErrUndefinedTarget = errors.New("undefined target")
+	ErrUndefinedTarget = errors.New("undefined command")
 )
 
 func makeError(t errType, values ...any) error {
@@ -80,23 +76,21 @@ func makeError(t errType, values ...any) error {
 func (a *Agent) url(t urlType) string {
 	switch t {
 	case urlCheck:
+		return fmt.Sprintf("%s/api/get/certificate", a.Config.ServerAddres)
+	case urlAESKey:
 		return fmt.Sprintf("%s/api/get/key", a.Config.ServerAddres)
 	case urlRegistration:
 		return fmt.Sprintf("%s/api/user/register", a.Config.ServerAddres)
 	case urlLogin:
 		return fmt.Sprintf("%s/api/user/login", a.Config.ServerAddres)
-	case urlCardsList:
-		return fmt.Sprintf("%s/api/cards/list", a.Config.ServerAddres)
 	case urlCardsAdd:
 		return fmt.Sprintf("%s/api/cards/add", a.Config.ServerAddres)
 	case urlCard:
 		return fmt.Sprintf("%s/api/cards", a.Config.ServerAddres)
-	case urlFilesList:
+	case urlFiles:
 		return fmt.Sprintf("%s/api/files", a.Config.ServerAddres)
 	case urlFileAdd:
 		return fmt.Sprintf("%s/api/files/add", a.Config.ServerAddres)
-	case urlDataList:
-		return fmt.Sprintf("%s/api/data/list", a.Config.ServerAddres)
 	case urlDataAdd:
 		return fmt.Sprintf("%s/api/data/add", a.Config.ServerAddres)
 	case urlData:
@@ -109,10 +103,9 @@ func (a *Agent) url(t urlType) string {
 type (
 	// Storage is interfaice for send requests to server.
 	Storage interface {
-		Check(string) error
 		ServerAESKey() []byte
-		Authentification(string, string, string) error
-		SetUserAESKey(string) error
+		GetAESKey(key, url string) error
+		Authentification(url string, login string, pwd string) (string, error)
 		GetItemsListCommon(string, string) (string, error)
 		GetFilesList(string) (string, error)
 		AddCard(string, *storage.CardInfo) error
@@ -130,13 +123,9 @@ type (
 	}
 	// Agent struct.
 	Agent struct {
-		Storage        Storage         // interfaice for work with srver
-		Config         *config.Config  // configuration object.
-		ctx            context.Context //nolint:containedctx //<-
-		cancelFunc     context.CancelFunc
-		currentCommand string // current user command
-		mutex          sync.Mutex
-		isRun          bool // flag that agent is run
+		Storage        Storage        // interfaice for work with srver
+		Config         *config.Config // configuration object.
+		currentCommand string         // current user command
 	}
 )
 
@@ -153,120 +142,53 @@ func scanStdin(text string, to *string) error {
 }
 
 // NewAgent creates new agent object.
-func NewAgent(c *config.Config, s Storage) *Agent {
-	agent := Agent{Config: c, Storage: s}
-	return &agent
-}
-
-// Run starts agent work.
-func (a *Agent) Run() error {
-	a.mutex.Lock()
-	if a.isRun {
-		a.mutex.Unlock()
-		return errors.New("agent already run")
-	}
-	a.isRun = true
-	a.mutex.Unlock()
-	a.ctx, a.cancelFunc = signal.NotifyContext(
-		context.Background(), os.Interrupt,
-		syscall.SIGTERM, syscall.SIGINT, syscall.SIGQUIT,
-	)
-	defer a.cancelFunc()
-	if err := a.Storage.Check(a.url(urlCheck)); err != nil {
-		return fmt.Errorf("storage check error: %w", err)
-	}
-	err := a.authentification()
-	for err != nil {
-		if errors.Is(err, gopass.ErrInterrupted) {
-			a.cancelFunc()
-		}
-		select {
-		case <-a.ctx.Done():
-			fmt.Println("Stop work")
-			a.mutex.Lock()
-			a.isRun = false
-			a.mutex.Unlock()
-			return nil
-		default:
-			fmt.Printf("ОШИБКА авторизации: %v\n", err)
-		}
-		err = a.authentification()
-	}
-	for {
-		select {
-		case <-a.ctx.Done():
-			fmt.Println("Agent work finish.")
-			a.mutex.Lock()
-			a.isRun = false
-			a.mutex.Unlock()
-			return nil
-		default:
-			if a.Config.Command != "" {
-				fmt.Println(a.userCommand(a.Config.Command))
-				a.mutex.Lock()
-				a.isRun = false
-				a.mutex.Unlock()
-				return nil
-			}
-			var cmd string
-			if err := scanStdin(fmt.Sprintf("#%s: ", a.currentCommand), &cmd); err != nil {
-				fmt.Printf("ОШИБКА: %v\n", err)
-				continue
-			}
-			if cmd == exit {
-				a.cancelFunc()
-			} else {
-				fmt.Println(a.parceCommand(cmd))
-			}
-		}
-	}
-}
-
-func (a *Agent) Stop() error {
-	a.mutex.Lock()
-	defer a.mutex.Unlock()
-	if !a.isRun {
-		return fmt.Errorf("agent is not run")
-	}
-	if a.cancelFunc != nil {
-		a.cancelFunc()
-	}
-	return nil
-}
-
-func (a *Agent) IsRun() bool {
-	a.mutex.Lock()
-	defer a.mutex.Unlock()
-	return a.isRun
-}
-
-func (a *Agent) authentification() error {
-	if a.Config.Login == "" {
-		if err := a.registration(); err != nil {
-			return fmt.Errorf("ошибка регистрации нового пользователя: %w", err)
-		}
-	} else {
-		if err := a.login(); err != nil {
-			return fmt.Errorf("ошибка авторизации пользователя: %w", err)
-		}
-	}
-	if a.Config.Key == "" {
-		var k string
-		if err := scanStdin("Введите ключ шифрования Ваших приватных данных: ", &k); err != nil {
-			return makeError(ErrScanValue, err)
-		}
-		key, err := storage.EncryptAES([]byte(k), a.Storage.ServerAESKey())
-		if err != nil {
-			return makeError(ErrEncrypt, "user AES key:", err)
-		}
-		a.Config.Key = string(key)
-		if err = a.Config.Save(); err != nil {
-			return makeError(ErrSaveConfig, err)
-		}
-	}
-	err := a.Storage.SetUserAESKey(a.Config.Key)
+func NewAgent(c *config.Config) (*Agent, error) {
+	agent := Agent{Config: c}
+	strg, err := storage.NewNetStorage(agent.url(urlCheck))
 	if err != nil {
-		return fmt.Errorf("user key error: %w", err)
+		return nil, fmt.Errorf("create storage error: %w", err)
+	}
+	strg.JWTToken = c.Token
+	agent.Storage = strg
+	return &agent, nil
+}
+
+func (a *Agent) DoCommand() error {
+	splt := "_"
+	// insID := "Введите идентификатор: "
+	a.currentCommand = strings.Split(a.Config.Command, splt)[0]
+	switch a.Config.Command {
+	case "login":
+		return a.login()
+	case "reg":
+		return a.registration()
+	case "files", "cards", "data":
+		str, err := a.listSwitcher()
+		if err != nil {
+			return err
+		}
+		fmt.Println(str)
+	case "files_get", "cards_get", "data_get":
+		str, err := a.getSwitcher()
+		if err != nil {
+			return err
+		}
+		fmt.Println(str)
+	case "files_del", "cards_del", "data_del":
+		return a.deleteSwitcher()
+	case "files_add":
+		if a.Config.Arg == "" {
+			if err := scanStdin("Введите путь до файла: ", &a.Config.Arg); err != nil {
+				return err
+			}
+		}
+		return a.addSwitcher(a.Config.Arg)
+	case "cards_add", "data_add":
+		return a.addSwitcher("")
+	case "cards_edit", "data_edit":
+		return a.editSwitcher()
+	default:
+		return ErrUndefinedTarget
 	}
 	return nil
 }
@@ -294,15 +216,24 @@ func (a *Agent) registration() error {
 	if p != r {
 		return errors.New("passwords are not equal")
 	}
-	err = a.Storage.Authentification(a.url(urlRegistration), l, p)
+	token, err := a.Storage.Authentification(a.url(urlRegistration), l, p)
 	if errors.Is(err, storage.ErrLoginRepeat) {
-		err = a.Storage.Authentification(a.url(urlLogin), l, p)
+		token, err = a.Storage.Authentification(a.url(urlLogin), l, p)
 	}
 	if err != nil {
 		return fmt.Errorf("registration error: %w", err)
 	}
+	if err := scanStdin("Введите ключ шифрования Ваших приватных данных: ", &a.Config.Key); err != nil {
+		return makeError(ErrScanValue, err)
+	}
+	key, err := storage.EncryptAES(a.Storage.ServerAESKey(), []byte(a.Config.Key))
+	if err != nil {
+		return fmt.Errorf("user aes key encrypt error: %w", err)
+	}
+	a.Config.Key = hex.EncodeToString(key)
 	a.Config.Login = l
-	if err := a.Config.Save(); err != nil {
+	a.Config.Token = token
+	if err = a.Config.Save(); err != nil {
 		return makeError(ErrSaveConfig, err)
 	}
 	return nil
@@ -311,6 +242,11 @@ func (a *Agent) registration() error {
 // Login gets data from user and send login request.
 func (a *Agent) login() error {
 	pwd := a.Config.Pwd
+	if a.Config.Login == "" {
+		if err := scanStdin("Введите логин: ", &a.Config.Login); err != nil {
+			return makeError(ErrScanValue, err)
+		}
+	}
 	if a.Config.Pwd == "" {
 		fmt.Println("Авторизация пользователя на сервере.")
 		fmt.Printf("Введите пароль (%s): ", a.Config.Login)
@@ -320,137 +256,37 @@ func (a *Agent) login() error {
 		}
 		pwd = string(p)
 	}
-	err := a.Storage.Authentification(a.url(urlLogin), a.Config.Login, pwd)
+	token, err := a.Storage.Authentification(a.url(urlLogin), a.Config.Login, pwd)
 	if err != nil {
 		a.Config.Login = ""
 		return fmt.Errorf("authorization error: %w", err)
 	}
+	a.Config.Token = token
+	if a.Config.Key == "" {
+		var k string
+		if err := scanStdin("Введите ключ шифрования Ваших приватных данных: ", &k); err != nil {
+			return makeError(ErrScanValue, err)
+		}
+		key, err := storage.EncryptAES(a.Storage.ServerAESKey(), []byte(a.Config.Key))
+		if err != nil {
+			return makeError(ErrEncrypt, "user AES key:", err)
+		}
+		a.Config.Key = hex.EncodeToString(key)
+		if err = a.Config.Save(); err != nil {
+			return makeError(ErrSaveConfig, err)
+		}
+	}
+	if err = a.Config.Save(); err != nil {
+		return fmt.Errorf("save token in config error: %w", err)
+	}
 	return nil
 }
 
-// parceCommand.
-func (a *Agent) parceCommand(cmd string) string {
-	c := strings.Split(cmd, " ")
-	switch c[0] {
-	case hlp:
-		if a.currentCommand == "" {
-			return "cards - переключиться на вкладку карт \n" +
-				"files - переключиться на вкладку файлов\n" +
-				"data - другая приватная информация\n" +
-				"exit - завершение работы"
-		}
-		switch a.currentCommand {
-		case cards:
-			return "list - список карт \n" +
-				"add - добавление новой карты\n" +
-				"get <id> - отобразить данные карты\n" +
-				"edit <id> - изменить данные карты\n" +
-				"del <id> - удалить данные о карте"
-		case files:
-			return "list - список файлов\n" +
-				"add </path/to/file> - добавление файла\n" +
-				"get <id> - скачать файл\n" +
-				"del <id> - удалить файл"
-		case datas:
-			return "list - список значений \n" +
-				"add - добавление новой информации\n" +
-				"get <id> - отобразить выбранную информацию\n" +
-				"edit <id> - изменить выбранную информацию\n" +
-				"del <id> - удалить выбранную информацию"
-		default:
-			return fmt.Sprintf("undefined current command: '%s'", a.currentCommand)
-		}
-	case cards, files, datas, "":
-		a.currentCommand = c[0]
-		return fmt.Sprintf("вкладка: %s", c[0])
-	case list:
-		lst, err := a.listSwitcher()
-		if err != nil {
-			return fmt.Sprintf("%s list error: %v", a.currentCommand, err)
-		}
-		return lst
-	case add:
-		arg := ""
-		if len(c) > 1 {
-			arg = c[1]
-		}
-		if err := a.addSwitcher(arg); err != nil {
-			return fmt.Sprintf("%s add error: %v", a.currentCommand, err)
-		}
-		return "Успешно добавлено"
-	case get:
-		if len(c) <= 1 {
-			return fmt.Sprintf("%s get command error: %v", a.currentCommand, ErrUndefinedTarget)
-		}
-		lst, err := a.getSwitcher(c[1])
-		if err != nil {
-			return fmt.Sprintf("%s get error: %v", a.currentCommand, err)
-		}
-		return lst
-	case del:
-		if len(c) <= 1 {
-			return fmt.Sprintf("%s delete command error: %v", a.currentCommand, ErrUndefinedTarget)
-		}
-		if err := a.deleteSwitcher(c[1]); err != nil {
-			return fmt.Sprintf("%s delete error: %v", a.currentCommand, err)
-		}
-		return "Удалено"
-	case edit:
-		if len(c) <= 1 {
-			return fmt.Sprintf("%s edit command error: %v", a.currentCommand, ErrUndefinedTarget)
-		}
-		err := a.editSwitcher(c[1])
-		if err != nil {
-			return fmt.Sprintf("%s edit error: %v", a.currentCommand, err)
-		}
-		return "Информация успешно обновлена"
-	default:
-		return fmt.Sprintf("undefined command: '%s'", cmd)
-	}
-}
-
-func (a *Agent) userCommand(cmd string) string {
-	insID := "Введите идентификатор: "
-	splt := "_"
-	switch cmd {
-	case "files_list", "cards_list", "data_list":
-		a.currentCommand = strings.Split(cmd, splt)[0]
-		return a.parceCommand(list)
-	case "files_add":
-		a.currentCommand = files
-		var p string
-		if err := scanStdin("Введите путь до файла: ", &p); err == nil && p != "" {
-			return a.parceCommand(fmt.Sprintf("add %s", p))
-		}
-	case "files_get", "cards_get", "data_get":
-		a.currentCommand = strings.Split(cmd, splt)[0]
-		var p string
-		if err := scanStdin(insID, &p); err == nil && p != "" {
-			return a.parceCommand(fmt.Sprintf("get %s", p))
-		}
-	case "files_del", "cards_del", "data_del":
-		a.currentCommand = strings.Split(cmd, splt)[0]
-		var p string
-		if err := scanStdin(insID, &p); err == nil && p != "" {
-			return a.parceCommand(fmt.Sprintf("del %s", p))
-		}
-	case "cards_add", "data_add":
-		a.currentCommand = strings.Split(cmd, splt)[0]
-		return a.parceCommand(add)
-	case "cards_edit", "data_edit":
-		a.currentCommand = strings.Split(cmd, splt)[0]
-		var p string
-		if err := scanStdin(insID, &p); err == nil && p != "" {
-			return a.parceCommand(fmt.Sprintf("edit %s", p))
-		}
-	default:
-		return ErrUndefinedTarget.Error()
-	}
-	return ""
-}
-
 // addSwitcher makes add Storage's function according to currentCommand.
-func (a *Agent) addSwitcher(path string) error {
+func (a *Agent) addSwitcher(p string) error {
+	if err := a.Storage.GetAESKey(a.Config.Key, a.url(urlAESKey)); err != nil {
+		return fmt.Errorf("get key error: %w", err)
+	}
 	switch a.currentCommand {
 	case cards:
 		var l, n, u, d, c string
@@ -476,7 +312,7 @@ func (a *Agent) addSwitcher(path string) error {
 		}
 		return nil
 	case files:
-		f, err := os.Stat(path)
+		f, err := os.Stat(p)
 		if err != nil {
 			return fmt.Errorf("get file stat error: %w", err)
 		}
@@ -487,7 +323,7 @@ func (a *Agent) addSwitcher(path string) error {
 		if err != nil {
 			return fmt.Errorf("file add init request error: %w", err)
 		}
-		if err = a.Storage.AddFile(a.url(urlFileAdd), path, fid); err != nil {
+		if err = a.Storage.AddFile(a.url(urlFileAdd), p, fid); err != nil {
 			return fmt.Errorf("file add error: %w", err)
 		}
 		if err = a.Storage.FihishFileTransfer(a.url(urlFileAdd), fid); err != nil {
@@ -516,25 +352,33 @@ func (a *Agent) addSwitcher(path string) error {
 func (a *Agent) listSwitcher() (string, error) {
 	switch a.currentCommand {
 	case cards:
-		return a.Storage.GetItemsListCommon(a.url(urlCardsList), "Card") //nolint:wrapcheck //<-
+		return a.Storage.GetItemsListCommon(a.url(urlCard), "Card") //nolint:wrapcheck //<-
 	case files:
-		return a.Storage.GetFilesList(a.url(urlFilesList)) //nolint:wrapcheck //<-
+		return a.Storage.GetFilesList(a.url(urlFiles)) //nolint:wrapcheck //<-
 	case datas:
-		return a.Storage.GetItemsListCommon(a.url(urlDataList), "Data") //nolint:wrapcheck //<-
+		return a.Storage.GetItemsListCommon(a.url(urlData), "Data") //nolint:wrapcheck //<-
 	default:
 		return "", ErrUndefinedTarget
 	}
 }
 
 // getSwitcher makes get Storage's function according to currentCommand.
-func (a *Agent) getSwitcher(id string) (string, error) {
-	_, err := strconv.Atoi(id)
+func (a *Agent) getSwitcher() (string, error) {
+	if err := a.Storage.GetAESKey(a.Config.Key, a.url(urlAESKey)); err != nil {
+		return "", fmt.Errorf("get key error: %w", err)
+	}
+	if a.Config.Arg == "" {
+		if err := scanStdin("Идентификатор: ", &a.Config.Arg); err != nil {
+			return "", fmt.Errorf("get id error: %w", err)
+		}
+	}
+	_, err := strconv.Atoi(a.Config.Arg)
 	if err != nil {
 		return "", makeError(ErrIDConver, err)
 	}
 	switch a.currentCommand {
 	case cards:
-		u, err := url.JoinPath(a.url(urlCard), id)
+		u, err := url.JoinPath(a.url(urlCard), a.Config.Arg)
 		if err != nil {
 			return "", makeError(ErrURLJoin, err)
 		}
@@ -546,7 +390,7 @@ func (a *Agent) getSwitcher(id string) (string, error) {
 			card.Label, card.Number, card.User, card.Duration, card.Csv, card.Updated.Format(timeFormat))
 		return info, nil
 	case files:
-		u, err := url.JoinPath(a.url(urlFilesList), id)
+		u, err := url.JoinPath(a.url(urlFiles), "preload", a.Config.Arg)
 		if err != nil {
 			return "", makeError(ErrURLJoin, err)
 		}
@@ -561,12 +405,16 @@ func (a *Agent) getSwitcher(id string) (string, error) {
 		if p == "" {
 			p = path
 		}
+		u, err = url.JoinPath(a.url(urlFiles), "load", a.Config.Arg)
+		if err != nil {
+			return "", makeError(ErrURLJoin, err)
+		}
 		if err = a.Storage.GetFile(u, p, maxIndex); err != nil {
 			return "", fmt.Errorf("file transfer error: %w", err)
 		}
 		return "", nil
 	case datas:
-		u, err := url.JoinPath(a.url(urlData), id)
+		u, err := url.JoinPath(a.url(urlData), a.Config.Arg)
 		if err != nil {
 			return "", makeError(ErrURLJoin, err)
 		}
@@ -583,8 +431,13 @@ func (a *Agent) getSwitcher(id string) (string, error) {
 }
 
 // deleteSwitcher makes delete Storage's function according to currentCommand.
-func (a *Agent) deleteSwitcher(id string) error {
-	_, err := strconv.Atoi(id)
+func (a *Agent) deleteSwitcher() error {
+	if a.Config.Arg == "" {
+		if err := scanStdin("Введите идентификатор: ", &a.Config.Arg); err != nil {
+			return fmt.Errorf("id error: %w", err)
+		}
+	}
+	_, err := strconv.Atoi(a.Config.Arg)
 	if err != nil {
 		return makeError(ErrIDConver, err)
 	}
@@ -593,28 +446,39 @@ func (a *Agent) deleteSwitcher(id string) error {
 	case cards:
 		delURL = a.url(urlCard)
 	case files:
-		delURL = a.url(urlFilesList)
+		delURL = a.url(urlFiles)
 	case datas:
 		delURL = a.url(urlData)
 	default:
 		return ErrUndefinedTarget
 	}
-	delURL, err = url.JoinPath(delURL, id)
+	delURL, err = url.JoinPath(delURL, a.Config.Arg)
 	if err != nil {
 		return makeError(ErrURLJoin, err)
 	}
-	return a.Storage.DeleteItem(delURL) //nolint:wrapcheck //<-
+	if err := a.Storage.DeleteItem(delURL); err != nil {
+		return fmt.Errorf("delete error: %w", err)
+	}
+	return nil
 }
 
 // editSwitcher makes edit Storage's function according to currentCommand.
-func (a *Agent) editSwitcher(id string) error {
-	_, err := strconv.Atoi(id)
+func (a *Agent) editSwitcher() error {
+	if a.Config.Arg == "" {
+		if err := scanStdin("Введите идентификатор: ", &a.Config.Arg); err != nil {
+			return fmt.Errorf("id error: %w", err)
+		}
+	}
+	if err := a.Storage.GetAESKey(a.Config.Key, a.url(urlAESKey)); err != nil {
+		return fmt.Errorf("edit key error: %w", err)
+	}
+	_, err := strconv.Atoi(a.Config.Arg)
 	if err != nil {
 		return makeError(ErrIDConver, err)
 	}
 	switch a.currentCommand {
 	case cards:
-		url, err := url.JoinPath(a.url(urlCard), id)
+		url, err := url.JoinPath(a.url(urlCard), a.Config.Arg)
 		if err != nil {
 			return makeError(ErrURLJoin, err)
 		}
@@ -658,7 +522,7 @@ func (a *Agent) editSwitcher(id string) error {
 		}
 		return nil
 	case datas:
-		url, err := url.JoinPath(a.url(urlData), id)
+		url, err := url.JoinPath(a.url(urlData), a.Config.Arg)
 		if err != nil {
 			return makeError(ErrURLJoin, err)
 		}

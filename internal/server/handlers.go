@@ -2,16 +2,12 @@ package server
 
 import (
 	"context"
-	"crypto/rand"
-	"crypto/rsa"
-	"crypto/sha256"
-	"crypto/x509"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
 	"net/http"
+	"os"
 	"strconv"
 
 	"github.com/gostuding/middlewares"
@@ -21,9 +17,9 @@ import (
 type (
 	// LoginPassword is struct for marshal regustration and authorization data.
 	LoginPassword struct {
-		Login     string `json:"login"`      //
-		Password  string `json:"password"`   //
-		PublicKey string `json:"public_key"` //
+		Login    string `json:"login"`    //
+		Password string `json:"password"` //
+		// PublicKey string `json:"public_key"` //
 	}
 	// LabelInfo is struct for marshal requests body.
 	labelInfo struct {
@@ -39,14 +35,14 @@ func isValidateLoginPassword(body []byte) (*LoginPassword, error) {
 	if err != nil {
 		return nil, makeError(ErrMarshalJSON, err)
 	}
-	if user.Login == "" || user.Password == "" || user.PublicKey == "" {
-		return nil, errors.New("empty registration values error")
+	if user.Login == "" || user.Password == "" {
+		return nil, errors.New("empty authorization values error")
 	}
 	return &user, nil
 }
 
 // createToken is private function.
-func createToken(key []byte, uid, time int, aesKey, pk, ua, adr string) ([]byte, int, error) {
+func createToken(key []byte, uid, time int, aesKey, ua, adr string) ([]byte, int, error) {
 	ip, _, err := net.SplitHostPort(adr)
 	if err != nil {
 		return nil, http.StatusBadRequest, makeError(ErrIPIncorrect, err)
@@ -56,28 +52,39 @@ func createToken(key []byte, uid, time int, aesKey, pk, ua, adr string) ([]byte,
 		return nil, http.StatusInternalServerError, makeError(ErrCreateToken, err)
 	}
 	token = fmt.Sprintf(`{"token": "%s", "key": "%s"}`, token, aesKey)
-	data, err := encryptMessage([]byte(token), pk)
-	if err != nil {
-		return nil, http.StatusBadRequest, fmt.Errorf("registration error: %w", err)
-	}
-	return data, http.StatusOK, nil
+	return []byte(token), http.StatusOK, nil
 }
 
-// GetPublicKey handler returns server public key.
+// GetCertificate handler returns server certificate.
 // @Tags Авторизация
-// @Summary Запрос открытого ключа сервера
+// @Summary Запрос сертификата сервера
+// @Router /api/get/certificate [get]
+// @Success 200 "Отправка сертификата"
+// @failure 500 "Внутренняя ошибка сервиса".
+func GetCertificate(p string) ([]byte, error) {
+	data, err := os.ReadFile(p)
+	if err != nil {
+		return nil, fmt.Errorf("read certificate file error: %w", err)
+	}
+	return data, nil
+}
+
+// GetUserKey handler returns server's part of key.
+// @Tags Авторизация
+// @Summary Запрос части ключа пользователя для шифрования данных на сервере
 // @Router /api/get/key [get]
 // @Success 200 "Отправка ключа"
 // @failure 500 "Внутренняя ошибка сервиса".
-func GetPublicKey(key *rsa.PrivateKey) ([]byte, error) {
-	if key == nil {
-		return nil, errors.New("private key is null")
+func GetUserKey(ctx context.Context, strg Storage) ([]byte, int, error) {
+	uid, ok := ctx.Value(middlewares.AuthUID).(int)
+	if !ok {
+		return nil, http.StatusUnauthorized, makeError(ErrUserAuthorization, nil)
 	}
-	keyData, err := x509.MarshalPKIXPublicKey(key.Public())
+	data, err := strg.GetKey(ctx, uint(uid))
 	if err != nil {
-		return nil, fmt.Errorf("marshal public key error: %w", err)
+		return nil, http.StatusInternalServerError, fmt.Errorf("get key error: %w", err)
 	}
-	return keyData, nil
+	return data, http.StatusOK, nil
 }
 
 // Register new user handler.
@@ -113,7 +120,7 @@ func Register(
 		}
 		return nil, status, err
 	}
-	return createToken(key, uid, t, aesKey, user.PublicKey, ua, addr)
+	return createToken(key, uid, t, aesKey, ua, addr)
 }
 
 // Login user.
@@ -147,7 +154,7 @@ func Login(
 			return nil, http.StatusInternalServerError, makeError(ErrGormGet, err)
 		}
 	}
-	return createToken(key, uid, t, aesKey, user.PublicKey, ua, addr)
+	return createToken(key, uid, t, aesKey, ua, addr)
 }
 
 // GetCardsList returns list of cards lables.
@@ -157,17 +164,16 @@ func Login(
 // @Param order body string true "Public key"
 // @Security ApiKeyAuth
 // @Param Authorization header string false "Токен авторизации"
-// @Router /api/cards/list [post]
+// @Router /api/cards/list [get]
 // @Success 200 "Список метаданных для карт пользователя"
 // @failure 400 "Ошибка шифрования"
 // @failure 401 "Пользователь не авторизован"
 // @failure 500 "Внутренняя ошибка сервиса.".
 func GetCardsList(
 	ctx context.Context,
-	key string,
 	strg Storage,
 ) ([]byte, int, error) {
-	return getListCommon(ctx, key, strg.GetCardsList)
+	return getListCommon(ctx, strg.GetCardsList)
 }
 
 func addCommon(ctx context.Context, body []byte,
@@ -218,7 +224,7 @@ func AddCardInfo(
 	return status, nil
 }
 
-func getCommon(ctx context.Context, key string, id uint,
+func getCommon(ctx context.Context, id uint,
 	f func(context.Context, uint, uint) ([]byte, error),
 ) ([]byte, int, error) {
 	uid, ok := ctx.Value(middlewares.AuthUID).(int)
@@ -232,10 +238,6 @@ func getCommon(ctx context.Context, key string, id uint,
 		}
 		return nil, http.StatusInternalServerError, makeError(InternalError, err)
 	}
-	data, err = encryptMessage(data, key)
-	if err != nil {
-		return nil, http.StatusBadRequest, makeError(ErrEncryptMessage, err)
-	}
 	return data, http.StatusOK, nil
 }
 
@@ -245,7 +247,7 @@ func getCommon(ctx context.Context, key string, id uint,
 // @Param order body string true "Public key"
 // @Security ApiKeyAuth
 // @Param Authorization header string false "Токен авторизации"
-// @Router /api/cards/{id} [post]
+// @Router /api/cards/{id} [get]
 // @Success 200 "Инфорация об одной карте пользователя"
 // @failure 400 "Ошибка шифрования"
 // @failure 401 "Пользователь не авторизован"
@@ -253,11 +255,10 @@ func getCommon(ctx context.Context, key string, id uint,
 // @failure 500 "Внутренняя ошибка сервиса.".
 func GetCard(
 	ctx context.Context,
-	key string,
 	strg Storage,
 	id uint,
 ) ([]byte, int, error) {
-	return getCommon(ctx, key, id, strg.GetCard)
+	return getCommon(ctx, id, strg.GetCard)
 }
 
 func delCommon(ctx context.Context, id uint,
@@ -339,7 +340,6 @@ func UpdateCardInfo(
 // GetListCommon is internal function.
 func getListCommon(
 	ctx context.Context,
-	pk string,
 	f func(c context.Context, id uint) ([]byte, error),
 ) ([]byte, int, error) {
 	uid, ok := ctx.Value(middlewares.AuthUID).(int)
@@ -349,10 +349,6 @@ func getListCommon(
 	data, err := f(ctx, uint(uid))
 	if err != nil {
 		return nil, http.StatusInternalServerError, makeError(InternalError)
-	}
-	data, err = encryptMessage(data, pk)
-	if err != nil {
-		return nil, http.StatusBadRequest, makeError(ErrEncryptMessage, err)
 	}
 	return data, http.StatusOK, nil
 }
@@ -371,10 +367,9 @@ func getListCommon(
 // @failure 500 "Внутренняя ошибка сервиса.".
 func GetFilesList(
 	ctx context.Context,
-	publicKey string,
 	strg Storage,
 ) ([]byte, int, error) {
-	return getListCommon(ctx, publicKey, strg.GetFilesList)
+	return getListCommon(ctx, strg.GetFilesList)
 }
 
 // AddFile returns new id for file.
@@ -523,7 +518,6 @@ func GetPreloadFileInfo(
 	ctx context.Context,
 	strg Storage,
 	id uint,
-	publicKey string,
 ) ([]byte, int, error) {
 	uid, ok := ctx.Value(middlewares.AuthUID).(int)
 	if !ok {
@@ -535,10 +529,6 @@ func GetPreloadFileInfo(
 			return nil, http.StatusNotFound, makeError(ErrNotFound, id)
 		}
 		return nil, http.StatusInternalServerError, makeError(InternalError, err)
-	}
-	data, err = encryptMessage(data, publicKey)
-	if err != nil {
-		return nil, http.StatusBadRequest, makeError(ErrEncryptMessage, err)
 	}
 	return data, http.StatusOK, nil
 }
@@ -557,10 +547,9 @@ func GetPreloadFileInfo(
 // @failure 500 "Внутренняя ошибка сервиса.".
 func GetDataInfoList(
 	ctx context.Context,
-	key string,
 	strg Storage,
 ) ([]byte, int, error) {
-	return getListCommon(ctx, key, strg.GetDataInfoList)
+	return getListCommon(ctx, strg.GetDataInfoList)
 }
 
 // AddDataInfo adds new data in database handle.
@@ -598,11 +587,10 @@ func AddDataInfo(
 // @failure 500 "Внутренняя ошибка сервиса.".
 func GetDataInfo(
 	ctx context.Context,
-	key string,
 	strg Storage,
 	id uint,
 ) ([]byte, int, error) {
-	return getCommon(ctx, key, id, strg.GetDataInfo)
+	return getCommon(ctx, id, strg.GetDataInfo)
 }
 
 // DeleteDataInfo deletes information about one data info from database.
@@ -643,43 +631,4 @@ func UpdateDataInfo(
 	id uint,
 ) (int, error) {
 	return updateCommon(ctx, body, id, strg.UpdateDataInfo)
-}
-
-// encryption message by RSA.
-func encryptMessage(msg []byte, k string) ([]byte, error) {
-	// splitMessage byte slice to parts for RSA encription.
-	mRange := func(msg []byte, size int) [][]byte {
-		data := make([][]byte, 0)
-		end := len(msg) - size
-		var i int
-		for i = 0; i < end; i += size {
-			data = append(data, msg[i:i+size])
-		}
-		data = append(data, msg[i:])
-		return data
-	}
-	key, err := hex.DecodeString(k)
-	if err != nil {
-		return nil, makeError(ErrConvertToByte, err)
-	}
-	pub, err := x509.ParsePKIXPublicKey(key)
-	if err != nil {
-		return nil, fmt.Errorf("parse public key error: %w", err)
-	}
-	publicKey, ok := pub.(*rsa.PublicKey)
-	if !ok {
-		return nil, errors.New("key type is not RSA")
-	}
-	rng := rand.Reader
-	hash := sha256.New()
-	size := publicKey.Size() - 2*hash.Size() - 2 //nolint:gomnd //<-default values
-	encrypted := make([]byte, 0)
-	for _, slice := range mRange(msg, size) {
-		data, err := rsa.EncryptOAEP(hash, rng, publicKey, slice, []byte(""))
-		if err != nil {
-			return nil, makeError(ErrEncryptMessage, err)
-		}
-		encrypted = append(encrypted, data...)
-	}
-	return encrypted, nil
 }
