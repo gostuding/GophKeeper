@@ -12,7 +12,7 @@ const (
 )
 
 func TestConfig_Save(t *testing.T) {
-	cfg := Config{path: path.Join(t.TempDir(), cfgName)}
+	cfg := Config{Path: path.Join(t.TempDir(), cfgName)}
 	if err := cfg.Save(); err != nil {
 		t.Errorf("Config.Save() error = %v", err)
 	}
@@ -21,14 +21,14 @@ func TestConfig_Save(t *testing.T) {
 func TestConfig_Read(t *testing.T) {
 	cfg := Config{
 		Login: "test", Key: "test key",
-		path: path.Join(t.TempDir(), cfgName),
+		Path: path.Join(t.TempDir(), cfgName),
 	}
 	if err := cfg.Save(); err != nil {
 		t.Errorf("Config.Save() before read error = %v", err)
 		return
 	}
 	c := Config{}
-	if err := c.Read(cfg.path); err != nil {
+	if err := c.Read(cfg.Path); err != nil {
 		t.Errorf("Config.Read() error = %v", err)
 		return
 	}
@@ -42,7 +42,7 @@ func TestNewConfig(t *testing.T) {
 	p := path.Join(t.TempDir(), cfgName)
 	c := Config{
 		Login: "test", Key: "test key",
-		path: p,
+		Path: p,
 	}
 	if err := c.Save(); err != nil {
 		t.Errorf("NewConfig Save() error = %v", err)

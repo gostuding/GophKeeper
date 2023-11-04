@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gostuding/GophKeeper/internal/agent/storage/mock"
+	"github.com/gostuding/GophKeeper/internal/agent/storage/mocks"
 )
 
 var (
@@ -348,7 +348,7 @@ func TestNetStorage_GetPreloadFileInfo(t *testing.T) {
 func TestNetStorage_GetNewFileID(t *testing.T) {
 	fileIDstr := "1"
 	fileIDint := 1
-	file := mock.FileMock{NameFile: "test file", SizeFile: 100}
+	file := mocks.FileMock{NameFile: "test file", SizeFile: 100}
 	storage := NetStorage{Client: &http.Client{}}
 	handler := func(w http.ResponseWriter, r *http.Request) {
 		data, err := io.ReadAll(r.Body)
@@ -403,7 +403,7 @@ func TestNetStorage_GetNewFileID(t *testing.T) {
 
 func TestNetStorage_AddFile(t *testing.T) {
 	fid := 1
-	filePath, err := mock.CreateTMPFile(t, "temp data")
+	filePath, err := mocks.CreateTMPFile(t, "temp data")
 	if err != nil {
 		t.Errorf("NetStorage.AddFile() error: %v", err)
 		return

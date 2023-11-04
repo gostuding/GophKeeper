@@ -18,7 +18,7 @@ type Config struct {
 	Login        string `json:"login"`         // login for authorization on server
 	Token        string `json:"token"`         // authorization token
 	Pwd          string `json:"-"`             // contains password from args
-	path         string `json:"-"`             // path to json configuration file
+	Path         string `json:"-"`             // path to json configuration file
 	Key          string `json:"key"`           // key for encrypt messages
 	Command      string `json:"-"`             // contains command from args
 	Arg          string `json:"-"`             // contains command's arg
@@ -30,7 +30,7 @@ func (c *Config) Save() error {
 	if err != nil {
 		return fmt.Errorf("unmarshal configuration error: %w", err)
 	}
-	if err = os.WriteFile(c.path, data, fBits); err != nil {
+	if err = os.WriteFile(c.Path, data, fBits); err != nil {
 		return fmt.Errorf("write config file error: %w", err)
 	}
 	return nil
@@ -46,7 +46,7 @@ func (c *Config) Read(path string) error {
 	if err != nil {
 		return fmt.Errorf("marshal config error: %w", err)
 	}
-	c.path = path
+	c.Path = path
 	return nil
 }
 
@@ -59,7 +59,7 @@ func checkFileExist(path string) error {
 	if !os.IsNotExist(err) {
 		return fmt.Errorf("config file access error: %w", err)
 	}
-	cfg := Config{path: path}
+	cfg := Config{Path: path}
 	fmt.Fprintf(os.Stdout, "Введите адрес сервера (default: %s): ", defaultAddres)
 	if _, err := fmt.Scanln(&cfg.ServerAddres); err != nil {
 		cfg.ServerAddres = defaultAddres

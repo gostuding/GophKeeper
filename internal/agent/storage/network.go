@@ -27,6 +27,10 @@ const (
 	urlSD             = "%s/%d"
 )
 
+var (
+	ErrConnection = errors.New("connection error")
+)
+
 type (
 	// NetStorage storage in server.
 	NetStorage struct {
@@ -57,7 +61,7 @@ type (
 	// CardInfo is struct for card information.
 	CardInfo struct {
 		Updated  time.Time `json:"-"`                  // update time
-		Label    string    `json:"-"`                  // meta data for card
+		Label    string    `json:"label,omitempty"`    // meta data for card
 		Number   string    `json:"number,omitempty"`   // card's number
 		User     string    `json:"user,omitempty"`     // card's holder
 		Duration string    `json:"duration,omitempty"` // card's duration
@@ -87,13 +91,14 @@ type (
 
 // NewNetStorage creates new storage object for work with server by http.
 func NewNetStorage(url string) (*NetStorage, error) {
+	strg := NetStorage{}
 	transport := &http.Transport{
 		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
 	}
-	client := &http.Client{Transport: transport}
-	resp, err := client.Get(url)
+	strg.Client = &http.Client{Transport: transport}
+	resp, err := strg.Client.Get(url)
 	if err != nil {
-		return nil, fmt.Errorf("check server connection error: %w", err)
+		return &strg, fmt.Errorf("%w: %w", ErrConnection, err)
 	}
 	defer resp.Body.Close() //nolint:errcheck //<-senselessly
 	if resp.StatusCode != http.StatusOK {
@@ -107,14 +112,14 @@ func NewNetStorage(url string) (*NetStorage, error) {
 	if ok := certPool.AppendCertsFromPEM(cert); !ok {
 		return nil, errors.New("unable to parse cert from server")
 	}
-	client = &http.Client{
+	strg.Client = &http.Client{
 		Transport: &http.Transport{
 			TLSClientConfig: &tls.Config{
 				RootCAs: certPool,
 			},
 		},
 	}
-	return &NetStorage{Client: client}, nil
+	return &strg, nil
 }
 
 func (ns *NetStorage) doRequest(msg []byte, url string, method string) (*http.Response, error) {
@@ -125,7 +130,7 @@ func (ns *NetStorage) doRequest(msg []byte, url string, method string) (*http.Re
 	req.Header.Add(Authorization, ns.JWTToken)
 	res, err := ns.Client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("do request error: %w", err)
+		return nil, fmt.Errorf("%w: %w", ErrConnection, err)
 	}
 	return res, nil
 }
@@ -252,7 +257,6 @@ func (ns *NetStorage) GetCard(url string) (*CardInfo, error) {
 		if err != nil {
 			return nil, makeError(ErrDecode, err)
 		}
-		fmt.Println(string(ns.Key))
 		info, err := decryptAES(ns.Key, msg)
 		if err != nil {
 			return nil, makeError(ErrDecryptMessage, err)
@@ -566,14 +570,9 @@ func (ns *NetStorage) AddFile(url, fPath string, fid int) error {
 // FihishFileTransfer sends get request to server for confirm send finishing.
 func (ns *NetStorage) FihishFileTransfer(url string, fid int) error {
 	url = fmt.Sprintf("%s?fid=%d", url, fid)
-	req, err := http.NewRequest(http.MethodGet, url, nil)
+	res, err := ns.doRequest(nil, url, http.MethodGet)
 	if err != nil {
-		return makeError(ErrRequest, err)
-	}
-	req.Header.Add(Authorization, ns.JWTToken)
-	res, err := ns.Client.Do(req)
-	if err != nil {
-		return makeError(ErrRequest, err)
+		return err
 	}
 	defer res.Body.Close() //nolint:errcheck //<-senselessly
 	switch res.StatusCode {

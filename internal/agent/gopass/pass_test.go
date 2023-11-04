@@ -42,21 +42,21 @@ func TestGetPasswd(t *testing.T) {
 	}
 
 	ds := []testData{
-		testData{[]byte("abc\n"), "***", "abc", 0, "Password parsing should stop at \\n"},
-		testData{[]byte("abc\r"), "***", "abc", 0, "Password parsing should stop at \\r"},
-		testData{[]byte("a\nbc\n"), "*", "a", 3, "Password parsing should stop at \\n"},
-		testData{[]byte("*!]|\n"), "****", "*!]|", 0, "Special characters shouldn't affect the password."},
+		{[]byte("abc\n"), "***", "abc", 0, "Password parsing should stop at \\n"},
+		{[]byte("abc\r"), "***", "abc", 0, "Password parsing should stop at \\r"},
+		{[]byte("a\nbc\n"), "*", "a", 3, "Password parsing should stop at \\n"},
+		{[]byte("*!]|\n"), "****", "*!]|", 0, "Special characters shouldn't affect the password."},
 
-		testData{[]byte("abc\r\n"), "***", "abc", 1,
+		{[]byte("abc\r\n"), "***", "abc", 1,
 			"Password parsing should stop at \\r; Windows LINE_MODE should be unset so \\r is not converted to \\r\\n."},
 
-		testData{[]byte{'a', 'b', 'c', 8, '\n'}, "***\b \b", "ab", 0, "Backspace byte should remove the last read byte."},
-		testData{[]byte{'a', 'b', 127, 'c', '\n'}, "**\b \b*", "ac", 0, "Delete byte should remove the last read byte."},
-		testData{[]byte{'a', 'b', 127, 'c', 8, 127, '\n'}, "**\b \b*\b \b\b \b", "", 0, "Successive deletes continue to delete."},
-		testData{[]byte{8, 8, 8, '\n'}, "", "", 0, "Deletes before characters are noops."},
-		testData{[]byte{8, 8, 8, 'a', 'b', 'c', '\n'}, "***", "abc", 0, "Deletes before characters are noops."},
+		{[]byte{'a', 'b', 'c', 8, '\n'}, "***\b \b", "ab", 0, "Backspace byte should remove the last read byte."},
+		{[]byte{'a', 'b', 127, 'c', '\n'}, "**\b \b*", "ac", 0, "Delete byte should remove the last read byte."},
+		{[]byte{'a', 'b', 127, 'c', 8, 127, '\n'}, "**\b \b*\b \b\b \b", "", 0, "Successive deletes continue to delete."},
+		{[]byte{8, 8, 8, '\n'}, "", "", 0, "Deletes before characters are noops."},
+		{[]byte{8, 8, 8, 'a', 'b', 'c', '\n'}, "***", "abc", 0, "Deletes before characters are noops."},
 
-		testData{[]byte{'a', 'b', 0, 'c', '\n'}, "***", "abc", 0,
+		{[]byte{'a', 'b', 0, 'c', '\n'}, "***", "abc", 0,
 			"Nil byte should be ignored due; may get unintended nil bytes from syscalls on Windows."},
 	}
 
@@ -92,7 +92,7 @@ func TestGetPasswd(t *testing.T) {
 			} else {
 				expectedOutput = []byte("")
 			}
-			if bytes.Compare(expectedOutput, output) != 0 {
+			if !bytes.Equal(expectedOutput, output) {
 				t.Errorf("Expected output to equal %v (%q) but got %v (%q) instead when masked=%v. %s", expectedOutput, string(expectedOutput), output, string(output), masked, d.reason)
 			}
 
@@ -115,10 +115,10 @@ func TestPipe(t *testing.T) {
 		expError error
 	}
 	ds := []testData{
-		testData{"abc", "abc", io.EOF},
-		testData{"abc\n", "abc", nil},
-		testData{"abc\r", "abc", nil},
-		testData{"abc\r\n", "abc", nil},
+		{"abc", "abc", io.EOF},
+		{"abc\n", "abc", nil},
+		{"abc\r", "abc", nil},
+		{"abc\r\n", "abc", nil},
 	}
 
 	for _, d := range ds {
@@ -143,15 +143,15 @@ func flushStdin() int {
 	ch := make(chan byte)
 	go func(ch chan byte) {
 		reader := bufio.NewReader(os.Stdin)
+		defer close(ch)
 		for {
 			b, err := reader.ReadByte()
 			if err != nil { // Maybe log non io.EOF errors, if you want
-				close(ch)
 				return
 			}
 			ch <- b
 		}
-		close(ch)
+
 	}(ch)
 
 	numBytes := 0
@@ -166,7 +166,6 @@ func flushStdin() int {
 			return numBytes
 		}
 	}
-	return numBytes
 }
 
 // pipeToStdin pipes the given string onto os.Stdin by replacing it with an
@@ -226,9 +225,9 @@ func TestMaxPasswordLength(t *testing.T) {
 	}
 
 	ds := []testData{
-		testData{append(bytes.Repeat([]byte{'a'}, maxLength), '\n'), nil, fmt.Sprintf("%v 'a' bytes followed by a newline", maxLength)},
-		testData{append(bytes.Repeat([]byte{'a'}, maxLength+1), '\n'), ErrMaxLengthExceeded, fmt.Sprintf("%v 'a' bytes followed by a newline", maxLength+1)},
-		testData{append(bytes.Repeat([]byte{0x00}, maxLength+1), '\n'), ErrMaxLengthExceeded, fmt.Sprintf("%v 0x00 bytes followed by a newline", maxLength+1)},
+		{append(bytes.Repeat([]byte{'a'}, maxLength), '\n'), nil, fmt.Sprintf("%v 'a' bytes followed by a newline", maxLength)},
+		{append(bytes.Repeat([]byte{'a'}, maxLength+1), '\n'), ErrMaxLengthExceeded, fmt.Sprintf("%v 'a' bytes followed by a newline", maxLength+1)},
+		{append(bytes.Repeat([]byte{0x00}, maxLength+1), '\n'), ErrMaxLengthExceeded, fmt.Sprintf("%v 0x00 bytes followed by a newline", maxLength+1)},
 	}
 
 	for _, d := range ds {

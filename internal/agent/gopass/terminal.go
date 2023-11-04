@@ -1,3 +1,6 @@
+//go:build !solaris
+// +build !solaris
+
 /*
  * Copyright (c) 2012 Chris Howey
  *
@@ -14,22 +17,20 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
-// +build !solaris
-
 package gopass
 
-import "golang.org/x/crypto/ssh/terminal"
+import "golang.org/x/term"
 
 type terminalState struct {
-	state *terminal.State
+	state *term.State
 }
 
 func isTerminal(fd uintptr) bool {
-	return terminal.IsTerminal(int(fd))
+	return term.IsTerminal(int(fd))
 }
 
 func makeRaw(fd uintptr) (*terminalState, error) {
-	state, err := terminal.MakeRaw(int(fd))
+	state, err := term.MakeRaw(int(fd))
 
 	return &terminalState{
 		state: state,
@@ -37,5 +38,5 @@ func makeRaw(fd uintptr) (*terminalState, error) {
 }
 
 func restore(fd uintptr, oldState *terminalState) error {
-	return terminal.Restore(int(fd), oldState.state)
+	return term.Restore(int(fd), oldState.state)
 }
