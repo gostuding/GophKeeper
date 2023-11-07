@@ -1,6 +1,9 @@
 package storage
 
-import "fmt"
+import (
+	"errors"
+	"fmt"
+)
 
 type ErrType int
 
@@ -10,15 +13,19 @@ const (
 	ErrJSONUnmarshal
 )
 
-func makeError(t ErrType, values ...any) error {
+var (
+	ErrDB = errors.New("database error")
+)
+
+func makeError(t ErrType, err error) error {
 	switch t {
 	case ErrDatabase:
-		return fmt.Errorf("database error: %w", values...)
+		return fmt.Errorf("%w: %w", ErrDB, err)
 	case ErrJSONMarshal:
-		return fmt.Errorf("json marshal error: %w", values...)
+		return fmt.Errorf("json marshal error: %w", err)
 	case ErrJSONUnmarshal:
-		return fmt.Errorf("json unmarshal error: %w", values...)
+		return fmt.Errorf("json unmarshal error: %w", err)
 	default:
-		return fmt.Errorf("undefuned error: %w", values...)
+		return fmt.Errorf("undefuned error: %w", err)
 	}
 }

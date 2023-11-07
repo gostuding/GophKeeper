@@ -23,6 +23,7 @@ const (
 	cards      = "cards"
 	files      = "files"
 	datas      = "data"
+	creds      = "creds"
 	timeFormat = "02.01.2006 15:04:05"
 
 	ErrIDConver errType = iota
@@ -38,6 +39,8 @@ const (
 	urlFileAdd
 	urlDataAdd
 	urlData
+	urlCreds
+	urlCredsAdd
 )
 
 var (
@@ -77,6 +80,10 @@ func (a *Agent) url(t urlType) string {
 		return fmt.Sprintf("%s/api/data/add", a.Config.ServerAddres)
 	case urlData:
 		return fmt.Sprintf("%s/api/data", a.Config.ServerAddres)
+	case urlCreds:
+		return fmt.Sprintf("%s/api/creds", a.Config.ServerAddres)
+	case urlCredsAdd:
+		return fmt.Sprintf("%s/api/creds/add", a.Config.ServerAddres)
 	default:
 		return "undefined"
 	}
@@ -136,14 +143,14 @@ func (a *Agent) DoCommand() error {
 		return a.login()
 	case "reg":
 		return a.registration()
-	case "files", "cards", "data":
+	case cards, files, datas, creds:
 		str, err := a.listSwitcher()
 		if err != nil {
 			return a.getCacheValue(a.Config.Command, err)
 		}
 		a.CacheStorage.SetValue(a.Config.Command, str)
 		fmt.Println(str)
-	case "files_get", "cards_get", "data_get":
+	case "files_get", "cards_get", "data_get", "creds_get":
 		str, err := a.getSwitcher()
 		cmd := path.Join(a.Config.Command, a.Config.Arg)
 		if err != nil {
@@ -151,7 +158,7 @@ func (a *Agent) DoCommand() error {
 		}
 		a.CacheStorage.SetValue(cmd, str)
 		fmt.Println(str)
-	case "files_del", "cards_del", "data_del":
+	case "files_del", "cards_del", "data_del", "creds_del":
 		return a.deleteSwitcher()
 	case "files_add":
 		if a.Config.Arg == "" {
@@ -160,9 +167,9 @@ func (a *Agent) DoCommand() error {
 			}
 		}
 		return a.addSwitcher(a.Config.Arg)
-	case "cards_add", "data_add":
+	case "cards_add", "data_add", "creds_add":
 		return a.addSwitcher("")
-	case "cards_edit", "data_edit":
+	case "cards_edit", "data_edit", "creds_edit":
 		return a.editSwitcher()
 	default:
 		return ErrUndefinedTarget
@@ -236,7 +243,7 @@ func (a *Agent) login() error {
 	token, err := a.RStorage.Authentification(a.url(urlLogin), a.Config.Login, pwd)
 	if err != nil {
 		a.Config.Login = ""
-		return fmt.Errorf("authorization error: %w", err)
+		return fmt.Errorf("login error: %w", err)
 	}
 	a.Config.Token = token
 	if a.Config.Key == "" {
@@ -317,6 +324,22 @@ func (a *Agent) addSwitcher(p string) error {
 			return fmt.Errorf("add error: %w", err)
 		}
 		return nil
+	case creds:
+		var n, l, p string
+		if err := scanStdin("Название: ", &n); err != nil {
+			return err
+		}
+		if err := scanStdin("Логин: ", &l); err != nil {
+			return err
+		}
+		if err := scanStdin("Пароль: ", &p); err != nil {
+			return err
+		}
+		err := a.RStorage.AddCredent(a.url(urlCredsAdd), &storage.Credent{Label: n, Login: l, Pwd: p})
+		if err != nil {
+			return fmt.Errorf("add error: %w", err)
+		}
+		return nil
 	default:
 		return ErrUndefinedTarget
 	}
@@ -331,6 +354,8 @@ func (a *Agent) listSwitcher() (string, error) {
 		return a.RStorage.GetFilesList(a.url(urlFiles)) //nolint:wrapcheck //<-
 	case datas:
 		return a.RStorage.GetItemsListCommon(a.url(urlData), "Data") //nolint:wrapcheck //<-
+	case creds:
+		return a.RStorage.GetItemsListCommon(a.url(urlCreds), "Credents") //nolint:wrapcheck //<-
 	default:
 		return "", ErrUndefinedTarget
 	}
@@ -399,6 +424,18 @@ func (a *Agent) getSwitcher() (string, error) {
 		txt := fmt.Sprintf("Название: %s\nДанные: %s\nДата изменения: %s",
 			info.Label, info.Info, info.Updated.Format(timeFormat))
 		return txt, nil
+	case creds:
+		u, err := url.JoinPath(a.url(urlCreds), a.Config.Arg)
+		if err != nil {
+			return "", makeError(ErrURLJoin, err)
+		}
+		info, err := a.RStorage.GetCredent(u)
+		if err != nil {
+			return "", fmt.Errorf("get info error: %w", err)
+		}
+		txt := fmt.Sprintf("Название: %s\nЛогин: %s\nПароль: %s\nДата изменения: %s",
+			info.Label, info.Login, info.Pwd, info.Updated.Format(timeFormat))
+		return txt, nil
 	default:
 		return "", ErrUndefinedTarget
 	}
@@ -423,6 +460,8 @@ func (a *Agent) deleteSwitcher() error {
 		delURL = a.url(urlFiles)
 	case datas:
 		delURL = a.url(urlData)
+	case creds:
+		delURL = a.url(urlCreds)
 	default:
 		return ErrUndefinedTarget
 	}
@@ -518,6 +557,38 @@ func (a *Agent) editSwitcher() error {
 			info.Info = n
 		}
 		if err := a.RStorage.UpdateDataInfo(url, info.Label, info.Info); err != nil {
+			return fmt.Errorf("data edit error: %w", err)
+		}
+		return nil
+	case creds:
+		url, err := url.JoinPath(a.url(urlCreds), a.Config.Arg)
+		if err != nil {
+			return makeError(ErrURLJoin, err)
+		}
+		info, err := a.RStorage.GetCredent(url)
+		if err != nil {
+			return fmt.Errorf("get credent info error: %w", err)
+		}
+		var l, n, p string
+		if err := scanStdin(fmt.Sprintf("Название (%s): ", info.Label), &l); err != nil {
+			return fmt.Errorf("read credent label error: %w", err)
+		}
+		if l != "" {
+			info.Label = l
+		}
+		if err := scanStdin(fmt.Sprintf("Логин (%s): ", info.Login), &n); err != nil {
+			return fmt.Errorf("read credent login error: %w", err)
+		}
+		if n != "" {
+			info.Login = n
+		}
+		if err := scanStdin(fmt.Sprintf("Пароль (%s): ", info.Pwd), &p); err != nil {
+			return fmt.Errorf("read credent password error: %w", err)
+		}
+		if n != "" {
+			info.Pwd = p
+		}
+		if err := a.RStorage.UpdateCredent(url, info); err != nil {
 			return fmt.Errorf("data edit error: %w", err)
 		}
 		return nil

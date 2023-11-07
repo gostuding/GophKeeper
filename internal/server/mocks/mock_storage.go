@@ -34,34 +34,6 @@ func (m *MockStorage) EXPECT() *MockStorageMockRecorder {
 	return m.recorder
 }
 
-// AddCard mocks base method.
-func (m *MockStorage) AddCard(arg0 context.Context, arg1 uint, arg2, arg3 string) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "AddCard", arg0, arg1, arg2, arg3)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// AddCard indicates an expected call of AddCard.
-func (mr *MockStorageMockRecorder) AddCard(arg0, arg1, arg2, arg3 interface{}) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddCard", reflect.TypeOf((*MockStorage)(nil).AddCard), arg0, arg1, arg2, arg3)
-}
-
-// AddDataInfo mocks base method.
-func (m *MockStorage) AddDataInfo(arg0 context.Context, arg1 uint, arg2, arg3 string) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "AddDataInfo", arg0, arg1, arg2, arg3)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// AddDataInfo indicates an expected call of AddDataInfo.
-func (mr *MockStorageMockRecorder) AddDataInfo(arg0, arg1, arg2, arg3 interface{}) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddDataInfo", reflect.TypeOf((*MockStorage)(nil).AddDataInfo), arg0, arg1, arg2, arg3)
-}
-
 // AddFile mocks base method.
 func (m *MockStorage) AddFile(arg0 context.Context, arg1 uint, arg2 []byte) ([]byte, error) {
 	m.ctrl.T.Helper()
@@ -105,6 +77,20 @@ func (mr *MockStorageMockRecorder) AddFileFinish(arg0, arg1, arg2 interface{}) *
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddFileFinish", reflect.TypeOf((*MockStorage)(nil).AddFileFinish), arg0, arg1, arg2)
 }
 
+// AddTextValue mocks base method.
+func (m *MockStorage) AddTextValue(arg0 context.Context, arg1 interface{}, arg2 uint, arg3, arg4 string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "AddTextValue", arg0, arg1, arg2, arg3, arg4)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// AddTextValue indicates an expected call of AddTextValue.
+func (mr *MockStorageMockRecorder) AddTextValue(arg0, arg1, arg2, arg3, arg4 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddTextValue", reflect.TypeOf((*MockStorage)(nil).AddTextValue), arg0, arg1, arg2, arg3, arg4)
+}
+
 // Close mocks base method.
 func (m *MockStorage) Close() error {
 	m.ctrl.T.Helper()
@@ -119,106 +105,18 @@ func (mr *MockStorageMockRecorder) Close() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Close", reflect.TypeOf((*MockStorage)(nil).Close))
 }
 
-// DeleteCard mocks base method.
-func (m *MockStorage) DeleteCard(arg0 context.Context, arg1, arg2 uint) error {
+// DeleteValue mocks base method.
+func (m *MockStorage) DeleteValue(arg0 context.Context, arg1 interface{}) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "DeleteCard", arg0, arg1, arg2)
+	ret := m.ctrl.Call(m, "DeleteValue", arg0, arg1)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
-// DeleteCard indicates an expected call of DeleteCard.
-func (mr *MockStorageMockRecorder) DeleteCard(arg0, arg1, arg2 interface{}) *gomock.Call {
+// DeleteValue indicates an expected call of DeleteValue.
+func (mr *MockStorageMockRecorder) DeleteValue(arg0, arg1 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteCard", reflect.TypeOf((*MockStorage)(nil).DeleteCard), arg0, arg1, arg2)
-}
-
-// DeleteDataInfo mocks base method.
-func (m *MockStorage) DeleteDataInfo(arg0 context.Context, arg1, arg2 uint) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "DeleteDataInfo", arg0, arg1, arg2)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// DeleteDataInfo indicates an expected call of DeleteDataInfo.
-func (mr *MockStorageMockRecorder) DeleteDataInfo(arg0, arg1, arg2 interface{}) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteDataInfo", reflect.TypeOf((*MockStorage)(nil).DeleteDataInfo), arg0, arg1, arg2)
-}
-
-// DeleteFile mocks base method.
-func (m *MockStorage) DeleteFile(arg0 context.Context, arg1, arg2 uint) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "DeleteFile", arg0, arg1, arg2)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// DeleteFile indicates an expected call of DeleteFile.
-func (mr *MockStorageMockRecorder) DeleteFile(arg0, arg1, arg2 interface{}) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteFile", reflect.TypeOf((*MockStorage)(nil).DeleteFile), arg0, arg1, arg2)
-}
-
-// GetCard mocks base method.
-func (m *MockStorage) GetCard(arg0 context.Context, arg1, arg2 uint) ([]byte, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetCard", arg0, arg1, arg2)
-	ret0, _ := ret[0].([]byte)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// GetCard indicates an expected call of GetCard.
-func (mr *MockStorageMockRecorder) GetCard(arg0, arg1, arg2 interface{}) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetCard", reflect.TypeOf((*MockStorage)(nil).GetCard), arg0, arg1, arg2)
-}
-
-// GetCardsList mocks base method.
-func (m *MockStorage) GetCardsList(arg0 context.Context, arg1 uint) ([]byte, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetCardsList", arg0, arg1)
-	ret0, _ := ret[0].([]byte)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// GetCardsList indicates an expected call of GetCardsList.
-func (mr *MockStorageMockRecorder) GetCardsList(arg0, arg1 interface{}) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetCardsList", reflect.TypeOf((*MockStorage)(nil).GetCardsList), arg0, arg1)
-}
-
-// GetDataInfo mocks base method.
-func (m *MockStorage) GetDataInfo(arg0 context.Context, arg1, arg2 uint) ([]byte, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetDataInfo", arg0, arg1, arg2)
-	ret0, _ := ret[0].([]byte)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// GetDataInfo indicates an expected call of GetDataInfo.
-func (mr *MockStorageMockRecorder) GetDataInfo(arg0, arg1, arg2 interface{}) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetDataInfo", reflect.TypeOf((*MockStorage)(nil).GetDataInfo), arg0, arg1, arg2)
-}
-
-// GetDataInfoList mocks base method.
-func (m *MockStorage) GetDataInfoList(arg0 context.Context, arg1 uint) ([]byte, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetDataInfoList", arg0, arg1)
-	ret0, _ := ret[0].([]byte)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// GetDataInfoList indicates an expected call of GetDataInfoList.
-func (mr *MockStorageMockRecorder) GetDataInfoList(arg0, arg1 interface{}) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetDataInfoList", reflect.TypeOf((*MockStorage)(nil).GetDataInfoList), arg0, arg1)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteValue", reflect.TypeOf((*MockStorage)(nil).DeleteValue), arg0, arg1)
 }
 
 // GetFileData mocks base method.
@@ -234,21 +132,6 @@ func (m *MockStorage) GetFileData(arg0, arg1, arg2 int) ([]byte, error) {
 func (mr *MockStorageMockRecorder) GetFileData(arg0, arg1, arg2 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetFileData", reflect.TypeOf((*MockStorage)(nil).GetFileData), arg0, arg1, arg2)
-}
-
-// GetFilesList mocks base method.
-func (m *MockStorage) GetFilesList(arg0 context.Context, arg1 uint) ([]byte, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetFilesList", arg0, arg1)
-	ret0, _ := ret[0].([]byte)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// GetFilesList indicates an expected call of GetFilesList.
-func (mr *MockStorageMockRecorder) GetFilesList(arg0, arg1 interface{}) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetFilesList", reflect.TypeOf((*MockStorage)(nil).GetFilesList), arg0, arg1)
 }
 
 // GetKey mocks base method.
@@ -279,6 +162,36 @@ func (m *MockStorage) GetPreloadFileInfo(arg0 context.Context, arg1 uint, arg2 i
 func (mr *MockStorageMockRecorder) GetPreloadFileInfo(arg0, arg1, arg2 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetPreloadFileInfo", reflect.TypeOf((*MockStorage)(nil).GetPreloadFileInfo), arg0, arg1, arg2)
+}
+
+// GetTextValues mocks base method.
+func (m *MockStorage) GetTextValues(arg0 context.Context, arg1 interface{}, arg2 uint) ([]byte, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetTextValues", arg0, arg1, arg2)
+	ret0, _ := ret[0].([]byte)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetTextValues indicates an expected call of GetTextValues.
+func (mr *MockStorageMockRecorder) GetTextValues(arg0, arg1, arg2 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetTextValues", reflect.TypeOf((*MockStorage)(nil).GetTextValues), arg0, arg1, arg2)
+}
+
+// GetValue mocks base method.
+func (m *MockStorage) GetValue(arg0 context.Context, arg1 interface{}, arg2, arg3 uint) ([]byte, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetValue", arg0, arg1, arg2, arg3)
+	ret0, _ := ret[0].([]byte)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetValue indicates an expected call of GetValue.
+func (mr *MockStorageMockRecorder) GetValue(arg0, arg1, arg2, arg3 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetValue", reflect.TypeOf((*MockStorage)(nil).GetValue), arg0, arg1, arg2, arg3)
 }
 
 // IsUniqueViolation mocks base method.
@@ -327,30 +240,16 @@ func (mr *MockStorageMockRecorder) Registration(arg0, arg1, arg2 interface{}) *g
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Registration", reflect.TypeOf((*MockStorage)(nil).Registration), arg0, arg1, arg2)
 }
 
-// UpdateCard mocks base method.
-func (m *MockStorage) UpdateCard(arg0 context.Context, arg1, arg2 uint, arg3, arg4 string) error {
+// UpdateTextValue mocks base method.
+func (m *MockStorage) UpdateTextValue(arg0 context.Context, arg1 interface{}, arg2, arg3 uint, arg4, arg5 string) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "UpdateCard", arg0, arg1, arg2, arg3, arg4)
+	ret := m.ctrl.Call(m, "UpdateTextValue", arg0, arg1, arg2, arg3, arg4, arg5)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
-// UpdateCard indicates an expected call of UpdateCard.
-func (mr *MockStorageMockRecorder) UpdateCard(arg0, arg1, arg2, arg3, arg4 interface{}) *gomock.Call {
+// UpdateTextValue indicates an expected call of UpdateTextValue.
+func (mr *MockStorageMockRecorder) UpdateTextValue(arg0, arg1, arg2, arg3, arg4, arg5 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateCard", reflect.TypeOf((*MockStorage)(nil).UpdateCard), arg0, arg1, arg2, arg3, arg4)
-}
-
-// UpdateDataInfo mocks base method.
-func (m *MockStorage) UpdateDataInfo(arg0 context.Context, arg1, arg2 uint, arg3, arg4 string) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "UpdateDataInfo", arg0, arg1, arg2, arg3, arg4)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// UpdateDataInfo indicates an expected call of UpdateDataInfo.
-func (mr *MockStorageMockRecorder) UpdateDataInfo(arg0, arg1, arg2, arg3, arg4 interface{}) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateDataInfo", reflect.TypeOf((*MockStorage)(nil).UpdateDataInfo), arg0, arg1, arg2, arg3, arg4)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateTextValue", reflect.TypeOf((*MockStorage)(nil).UpdateTextValue), arg0, arg1, arg2, arg3, arg4, arg5)
 }

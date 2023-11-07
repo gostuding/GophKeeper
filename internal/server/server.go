@@ -39,21 +39,14 @@ type (
 		Registration(context.Context, string, string) (string, int, error)
 		Login(context.Context, string, string) (string, int, error)
 		GetKey(context.Context, uint) ([]byte, error)
-		GetCardsList(context.Context, uint) ([]byte, error)
-		GetDataInfoList(context.Context, uint) ([]byte, error)
-		GetCard(context.Context, uint, uint) ([]byte, error)
-		GetDataInfo(context.Context, uint, uint) ([]byte, error)
-		AddCard(context.Context, uint, string, string) error
-		AddDataInfo(context.Context, uint, string, string) error
-		DeleteCard(context.Context, uint, uint) error
-		DeleteDataInfo(context.Context, uint, uint) error
-		UpdateCard(context.Context, uint, uint, string, string) error
-		UpdateDataInfo(context.Context, uint, uint, string, string) error
-		GetFilesList(context.Context, uint) ([]byte, error)
+		GetTextValues(ctx context.Context, obj any, uid uint) ([]byte, error)
+		GetValue(ctx context.Context, obj any, id, uid uint) ([]byte, error)
+		AddTextValue(ctx context.Context, obj any, uid uint, label, value string) error
+		DeleteValue(ctx context.Context, obj any) error
+		UpdateTextValue(ctx context.Context, obj any, id, uid uint, label, value string) error
 		AddFile(context.Context, uint, []byte) ([]byte, error)
 		AddFileData(context.Context, uint, uint, int, int, int, []byte) error
 		AddFileFinish(context.Context, uint, int) error
-		DeleteFile(context.Context, uint, uint) error
 		GetPreloadFileInfo(context.Context, uint, int) ([]byte, error)
 		GetFileData(int, int, int) ([]byte, error)
 		Close() error
@@ -65,7 +58,7 @@ type (
 func NewServer(config *Config, s Storage) (*Server, error) {
 	logger, err := zap.NewDevelopment()
 	if err != nil {
-		return nil, makeError(ErrCreateLogger)
+		return nil, fmt.Errorf("logger init error: %w", err)
 	}
 	return &Server{Config: config, Storage: s, Logger: logger.Sugar()}, nil
 }

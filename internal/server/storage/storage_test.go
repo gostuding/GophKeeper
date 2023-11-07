@@ -1,5 +1,5 @@
-//go:build sql_storage
-// +build sql_storage
+// ------------------//go:build sql_storage
+// =-------------------//build sql_storage
 
 package storage
 
@@ -7,7 +7,6 @@ import (
 	"bytes"
 	"context"
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -25,7 +24,7 @@ import (
 )
 
 var (
-	dbDSN  = ""
+	dbDSN  = "database=gokeeper user=postgres host=127.0.0.1 port=5432"
 	maxCon = 1
 	ctx    = context.Background()
 	n      = 50
@@ -188,115 +187,128 @@ func TestStorage_Login(t *testing.T) {
 	})
 }
 
-func TestStorage_AddCard(t *testing.T) {
-	storage, err := NewStorage(dbDSN, maxCon, t.TempDir())
+func TestStorage_AddTextValue(t *testing.T) {
+	strg, err := NewStorage(dbDSN, maxCon, t.TempDir())
 	if err != nil {
 		t.Errorf("create storage error: %v", err)
 		return
 	}
-	label := randomString(n)
-	if err := storage.AddCard(ctx, uid, label, label); err != nil {
+	label := randomString(20)
+	value := randomString(20)
+	if err := strg.AddTextValue(ctx, Cards{}, uid, label, value); err != nil {
 		t.Errorf("add card error: %v", err)
 		return
 	}
-	storage.con.Where(&Cards{Label: label, Value: label}).Delete(&Cards{})
-}
-
-func getListCommonTest(
-	t *testing.T,
-	label string,
-	fAdd func(context.Context, uint, string, string) error,
-	fGet func(context.Context, uint) ([]byte, error),
-) {
-	t.Helper()
-	if err := fAdd(ctx, uid, label, label); err != nil {
-		t.Errorf("add test error: %v", err)
+	if err := strg.AddTextValue(ctx, Cards{}, uid, label, value); !strg.IsUniqueViolation(err) {
+		t.Errorf("add card unexpected error: %v", err)
 		return
 	}
-	data, err := fGet(ctx, uid)
-	if err != nil {
-		t.Errorf("get list error: %v", err)
+	res := strg.con.Where(&Cards{Label: label, Value: value}).Delete(&Cards{})
+	if res.Error != nil {
+		t.Errorf("delete test card error: %v", err)
 		return
 	}
-	if bytes.Equal(data, []byte(emptyJSON)) {
-		t.Error("get list is empty")
+	if err := strg.AddTextValue(ctx, SendDataInfo{}, uid, label, value); err != nil {
+		t.Errorf("add data error: %v", err)
+		return
+	}
+	res = strg.con.Where(&SendDataInfo{Label: label, Info: value}).Delete(&SendDataInfo{})
+	if res.Error != nil {
+		t.Errorf("delete test data error: %v", err)
+		return
+	}
+	if err := strg.AddTextValue(ctx, CredsInfo{}, uid, label, value); err != nil {
+		t.Errorf("add creds error: %v", err)
+		return
+	}
+	res = strg.con.Where(&CredsInfo{Label: label, Info: value}).Delete(&CredsInfo{})
+	if res.Error != nil {
+		t.Errorf("delete test creds error: %v", err)
+		return
+	}
+	if err := strg.AddTextValue(ctx, uid, uid, label, value); err == nil {
+		t.Error("add type error is nil")
+		return
 	}
 }
 
-func TestStorage_GetCardsList(t *testing.T) {
-	storage, err := NewStorage(dbDSN, maxCon, t.TempDir())
-	if err != nil {
-		t.Errorf("create storage error: %v", err)
-		return
-	}
-	label := randomString(n)
-	getListCommonTest(t, label, storage.AddCard, storage.GetCardsList)
-	storage.con.Where(&Cards{Label: label, Value: label}).Delete(&Cards{})
-}
-
-func TestStorage_GetDataInfoList(t *testing.T) {
-	storage, err := NewStorage(dbDSN, maxCon, t.TempDir())
+func TestStorage_GetTextValues(t *testing.T) {
+	strg, err := NewStorage(dbDSN, maxCon, t.TempDir())
 	if err != nil {
 		t.Errorf("create storage error: %v", err)
 		return
 	}
-	label := randomString(n)
-	getListCommonTest(t, label, storage.AddCard, storage.GetCardsList)
-	storage.con.Where(&SendDataInfo{Label: label, Info: label}).Delete(&SendDataInfo{})
+	t.Run("Успешное выполнение", func(t *testing.T) {
+		_, err := strg.GetTextValues(ctx, Cards{}, uid)
+		if err != nil {
+			t.Errorf("get cards error: %v", err)
+			return
+		}
+		_, err = strg.GetTextValues(ctx, SendDataInfo{}, uid)
+		if err != nil {
+			t.Errorf("get data error: %v", err)
+			return
+		}
+		_, err = strg.GetTextValues(ctx, Files{}, uid)
+		if err != nil {
+			t.Errorf("get files error: %v", err)
+			return
+		}
+		_, err = strg.GetTextValues(ctx, CredsInfo{}, uid)
+		if err != nil {
+			t.Errorf("get creds error: %v", err)
+			return
+		}
+	})
+
+	t.Run("Ошибка типа", func(t *testing.T) {
+		_, err := strg.GetTextValues(ctx, uid, uid)
+		if err == nil {
+			t.Error("get type error is nil")
+			return
+		}
+	})
 }
 
-func getCommonTest(t *testing.T, id uint, label, val string,
-	f func(context.Context, uint, uint) ([]byte, error),
-) {
-	t.Helper()
-	data, err := f(ctx, id, uid)
-	if err != nil {
-		t.Errorf("get data info error: %v", err)
-		return
-	}
-	var nc SendDataInfo
-	if err = json.Unmarshal(data, &nc); err != nil {
-		t.Errorf("unmarshal data info error: %v", err)
-		return
-	}
-	if nc.Label != label || nc.Info != val {
-		t.Errorf("get data info values errors: %v", nc)
-	}
-}
-
-func TestStorage_GetCard(t *testing.T) {
-	storage, err := NewStorage(dbDSN, maxCon, t.TempDir())
-	if err != nil {
-		t.Errorf("create storage error: %v", err)
-		return
-	}
-	c := Cards{Label: randomString(n), Value: randomString(n), UID: uid}
-	r := storage.con.Create(&c)
-	if r.Error != nil {
-		t.Errorf("create new test card error: %v", err)
-		return
-	}
-	getCommonTest(t, c.ID, c.Label, c.Value, storage.GetCard)
-	storage.con.Where(&Cards{Label: c.Label, Value: c.Value, UID: uid}).Delete(&Cards{})
-}
-
-func TestStorage_GetDataInfo(t *testing.T) {
-	storage, err := NewStorage(dbDSN, maxCon, t.TempDir())
+func TestStorage_GetValue(t *testing.T) {
+	strg, err := NewStorage(dbDSN, maxCon, t.TempDir())
 	if err != nil {
 		t.Errorf("create storage error: %v", err)
 		return
 	}
-	label := randomString(n)
-	c := SendDataInfo{Label: label, Info: label, UID: uid}
-	r := storage.con.Create(&c)
-	if r.Error != nil {
-		t.Errorf("create new test data info error: %v", err)
+	_, err = strg.GetValue(ctx, uid, uid, uid)
+	if err == nil {
+		t.Error("type error is nil")
 		return
 	}
-	getCommonTest(t, c.ID, c.Label, c.Info, storage.GetDataInfo)
-	storage.con.Where(&SendDataInfo{Label: label, Info: label, UID: uid}).Delete(&SendDataInfo{})
+	c := Cards{Label: randomString(20), Value: randomString(20)}
+	if err = strg.AddTextValue(ctx, Cards{}, uid, c.Label, c.Value); err != nil {
+		t.Errorf("create test cards error: %v", err)
+		return
+	}
+	res := strg.con.Where(&c).First(&c)
+	if res.Error != nil {
+		t.Errorf("get test cards error: %v", res.Error)
+		return
+	}
+	_, err = strg.GetValue(ctx, Cards{}, c.ID, c.UID)
+	if err != nil {
+		t.Errorf("GetValue error: %v", err)
+		return
+	}
+	res = strg.con.Where(&c).Delete(&Cards{})
+	if res.Error != nil {
+		t.Errorf("delete test cards error: %v", res.Error)
+		return
+	}
+	_, err = strg.GetValue(ctx, Cards{}, c.ID, c.UID)
+	if err == nil {
+		t.Errorf("GetValue error is nil")
+		return
+	}
 }
-func TestStorage_UpdateCard(t *testing.T) {
+
+func TestStorage_UpdateTextValue(t *testing.T) {
 	storage, err := NewStorage(dbDSN, maxCon, t.TempDir())
 	if err != nil {
 		t.Errorf("create storage error: %v", err)
@@ -312,11 +324,11 @@ func TestStorage_UpdateCard(t *testing.T) {
 	defer func() {
 		storage.con.Where(&Cards{Label: label, Value: label, UID: uid}).Delete(&Cards{})
 	}()
-	if err = storage.UpdateCard(ctx, c.ID, uid, label, label); err != nil {
+	if err = storage.UpdateTextValue(ctx, Cards{}, c.ID, uid, label, label); err != nil {
 		t.Errorf("update card error: %v", err)
 		return
 	}
-	err = storage.UpdateCard(ctx, c.ID, uid*2, label, label)
+	err = storage.UpdateTextValue(ctx, Cards{}, c.ID, uid*2, label, label)
 	if err == nil {
 		t.Error("unexpected nill error")
 		return
@@ -326,7 +338,7 @@ func TestStorage_UpdateCard(t *testing.T) {
 	}
 }
 
-func TestStorage_DeleteCard(t *testing.T) {
+func TestStorage_DeleteValue(t *testing.T) {
 	storage, err := NewStorage(dbDSN, maxCon, t.TempDir())
 	if err != nil {
 		t.Errorf("create storage error: %v", err)
@@ -342,28 +354,15 @@ func TestStorage_DeleteCard(t *testing.T) {
 	defer func() {
 		storage.con.Where(&Cards{Label: label, Value: label, UID: uid}).Delete(&Cards{})
 	}()
-	if err = storage.DeleteCard(ctx, c.ID, uid); err != nil {
+	if err = storage.DeleteValue(ctx, c); err != nil {
 		t.Errorf("delete error: %v", err)
 		return
 	}
-	_, err = storage.GetCard(ctx, c.ID, uid)
-	if err == nil {
-		t.Error("get card after delete error is nil")
-	}
-}
-
-func TestStorage_AddDataInfo(t *testing.T) {
-	storage, err := NewStorage(dbDSN, maxCon, t.TempDir())
-	if err != nil {
-		t.Errorf("create storage error: %v", err)
+	_, err = storage.GetValue(ctx, Cards{}, c.ID, c.UID)
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
+		t.Errorf("get card after delete error not nil: %v", err)
 		return
 	}
-	label := randomString(n)
-	if err := storage.AddDataInfo(ctx, uid, label, label); err != nil {
-		t.Errorf("add data info error: %v", err)
-		return
-	}
-	storage.con.Where(&SendDataInfo{Label: label, Info: label}).Delete(&SendDataInfo{})
 }
 
 func TestStorage_AddFile(t *testing.T) {
@@ -552,7 +551,7 @@ func TestStorage_GetPreloadFileInfo(t *testing.T) {
 		},
 		{
 			name:    "Нет данных",
-			args:    args{id: 0, uid: int(uid)},
+			args:    args{id: 0, uid: 0},
 			want:    nil,
 			wantErr: true,
 		},
@@ -623,4 +622,49 @@ func TestStorage_GetFileData(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestStorage_GetKey(t *testing.T) {
+	strg, err := NewStorage(dbDSN, maxCon, t.TempDir())
+	if err != nil {
+		t.Errorf("create storage error: %v", err)
+		return
+	}
+	t.Run("Успешное выполнение", func(t *testing.T) {
+		login := randomString(20)
+		pwd := randomString(20)
+		_, _, err := strg.Registration(ctx, login, pwd)
+		if err != nil {
+			t.Errorf("create test user error: %v", err)
+			return
+		}
+		defer func() {
+			strg.con.Where(&Users{Login: login}).Delete(&Users{})
+		}()
+		var u Users
+		r := strg.con.Where(&Users{Login: login}).First(&u)
+		if r.Error != nil {
+			t.Errorf("get test user data error: %v", r.Error)
+			return
+		}
+		val, err := strg.GetKey(ctx, u.ID)
+		if err != nil {
+			t.Errorf("get key data error: %v", err)
+			return
+		}
+		if !bytes.Equal(val, []byte(u.Key)) {
+			t.Error("get key not equal with users")
+		}
+	})
+
+	t.Run("Ошибка выполнения", func(t *testing.T) {
+		val, err := strg.GetKey(ctx, 1)
+		if err == nil || !errors.Is(err, ErrDB) {
+			t.Errorf("get key data error: %v, %s", err, string(val))
+			return
+		}
+		if val != nil {
+			t.Error("get key value not nil")
+		}
+	})
 }

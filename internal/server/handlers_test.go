@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/golang/mock/gomock"
 	"github.com/gostuding/GophKeeper/internal/server/mocks"
+	"github.com/gostuding/GophKeeper/internal/server/storage"
 	"github.com/gostuding/middlewares"
 	"gorm.io/gorm"
 )
@@ -37,7 +39,7 @@ func TestRegister(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	storage := mocks.NewMockStorage(ctrl)
 	errUniq := errors.New("unique error")
-	storage.EXPECT().IsUniqueViolation(makeError(ErrGormGet, errUniq)).Return(true)
+	storage.EXPECT().IsUniqueViolation(makeError(GormGetError, errUniq)).Return(true)
 	storage.EXPECT().Registration(ctx, "login", "password").Return("key", 1, nil)
 	storage.EXPECT().Registration(ctx, "repeat", "pwd").Return("", 0, errUniq)
 	key := []byte("keys")
@@ -107,85 +109,164 @@ func TestLogin(t *testing.T) {
 	}
 }
 
-func TestGetCardsList(t *testing.T) {
+func getListCommonTest(t *testing.T, obj, e any) {
+	t.Helper()
+	r := []byte("[]")
 	ctrl := gomock.NewController(t)
-	storage := mocks.NewMockStorage(ctrl)
-	uidBad := 2
-	ctxUnautorized := context.Background()
-	ctxBad := context.WithValue(context.Background(), middlewares.AuthUID, uidBad)
-	storage.EXPECT().GetCardsList(ctx, uint(uid)).Return([]byte(""), nil)
-	storage.EXPECT().GetCardsList(ctxBad, uint(uidBad)).Return(nil, makeError(ErrGormGet))
-	tests := []struct {
-		name    string
-		ctx     context.Context //nolint:containedctx //<-
-		want1   int
-		wantErr bool
-	}{
-		{"Успешный запрос", ctx, http.StatusOK, false},
-		{"Ошибка БД", ctxBad, http.StatusInternalServerError, true},
-		{"Пользователь не авторизован", ctxUnautorized, http.StatusUnauthorized, true},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			_, got1, err := GetCardsList(tt.ctx, storage)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("GetCardsList() error = %v, wantErr %v", err, tt.wantErr)
-				return
-			}
-			if got1 != tt.want1 {
-				t.Errorf("GetCardsList() got1 = %v, want %v", got1, tt.want1)
-			}
-		})
-	}
+	strg := mocks.NewMockStorage(ctrl)
+	strg.EXPECT().GetTextValues(ctx, obj, uint(uid)).Return(r, nil)
+	strg.EXPECT().GetTextValues(ctx, e, uint(uid)).Return(nil, storage.ErrDB)
+	t.Run("Ошибка авторизации", func(t *testing.T) {
+		item, status, err := getListCommon(context.Background(), obj, strg)
+		if err == nil || !errors.Is(err, ErrUserAuthorization) {
+			t.Errorf("unexpected error: %v, want: %v", err, ErrUserAuthorization)
+			return
+		}
+		if status != http.StatusUnauthorized {
+			t.Errorf("status error: %d, want: %d", status, http.StatusOK)
+			return
+		}
+		if item != nil {
+			t.Errorf("unexpected return value: %s, want: nil", string(item))
+			return
+		}
+	})
+	t.Run("Ошибка БД", func(t *testing.T) {
+		item, status, err := getListCommon(ctx, e, strg)
+		if err == nil || !errors.Is(err, storage.ErrDB) {
+			t.Errorf("unexpected error: %v, want: %v", err, storage.ErrDB)
+			return
+		}
+		if status != http.StatusInternalServerError {
+			t.Errorf("status error: %d, want: %d", status, http.StatusInternalServerError)
+			return
+		}
+		if item != nil {
+			t.Errorf("unexpected return value: %s, want: nil", string(item))
+			return
+		}
+	})
+	t.Run("Успешное выполнение", func(t *testing.T) {
+		item, status, err := getListCommon(ctx, obj, strg)
+		if err != nil {
+			t.Errorf("unexpected error: %v, want: nil", err)
+			return
+		}
+		if status != http.StatusOK {
+			t.Errorf("status error: %d, want: %d", status, http.StatusOK)
+			return
+		}
+		if !bytes.Equal(item, r) {
+			t.Errorf("unexpected return value: %s, want: %s", string(item), string(r))
+			return
+		}
+	})
 }
 
-func delCommonTest(t *testing.T, storage Storage,
-	fun func(context.Context, Storage, int) (int, error),
-) {
+func TestGetCardsList(t *testing.T) {
+	getListCommonTest(t, storage.Cards{ID: 1}, storage.Cards{ID: 2})
+}
+
+func TestGetFilesList(t *testing.T) {
+	getListCommonTest(t, storage.Files{ID: 1}, storage.Files{ID: 2})
+}
+func TestGetDataInfoList(t *testing.T) {
+	getListCommonTest(t, storage.SendDataInfo{ID: 1}, storage.SendDataInfo{ID: 2})
+}
+func TestGetCredsList(t *testing.T) {
+	getListCommonTest(t, storage.CredsInfo{ID: 1}, storage.CredsInfo{ID: 2})
+}
+
+func delCommonTest(t *testing.T, strg Storage, obj, e, n any) {
 	t.Helper()
-	s := uint(1)
-	b := uint(2)
-	f := uint(3)
-	tests := []struct {
-		name    string
-		id      int
-		want    int
-		wantErr bool
-	}{
-		{"Успешное удаление", int(s), http.StatusOK, false},
-		{"Ошибка БД при удалении", int(b), http.StatusInternalServerError, true},
-		{"Успешное удаление", int(f), http.StatusNotFound, true},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got, err := fun(ctx, storage, tt.id)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("DeleteDataInfo() error = %v, wantErr %v", err, tt.wantErr)
-				return
-			}
-			if got != tt.want {
-				t.Errorf("DeleteDataInfo() = %v, want %v", got, tt.want)
-			}
-		})
-	}
+	t.Run("Ошибка авторизации", func(t *testing.T) {
+		val, err := DeleteDataInfo(context.Background(), strg, 1)
+		if err == nil || !errors.Is(err, ErrUserAuthorization) {
+			t.Errorf("unexpected error: %v, want: %v", err, ErrUserAuthorization)
+		}
+		if val != http.StatusUnauthorized {
+			t.Errorf("status error: %d, want: %d", val, http.StatusOK)
+		}
+	})
+	t.Run("Ошибка БД", func(t *testing.T) {
+		val, err := delCommon(ctx, e, strg)
+		if err == nil || !errors.Is(err, storage.ErrDB) {
+			t.Errorf("unexpected error: %v, want: %v", err, storage.ErrDB)
+		}
+		if val != http.StatusInternalServerError {
+			t.Errorf("status error: %d, want: %d", val, http.StatusOK)
+		}
+	})
+
+	t.Run("Запись не найдена", func(t *testing.T) {
+		val, err := delCommon(ctx, n, strg)
+		if err == nil || !errors.Is(err, ErrNotFound) {
+			t.Errorf("unexpected error: %v, want: %v", err, ErrNotFound)
+			return
+		}
+		if val != http.StatusNotFound {
+			t.Errorf("status error: %d, want: %d", val, http.StatusOK)
+		}
+	})
+
+	t.Run("Успешное удаление", func(t *testing.T) {
+		val, err := delCommon(ctx, obj, strg)
+		if err != nil {
+			t.Errorf("unexpected error: %v", err)
+			return
+		}
+		if val != http.StatusOK {
+			t.Errorf("status error: %d, want: %d", val, http.StatusOK)
+		}
+	})
 }
 
 func TestDeleteDataInfo(t *testing.T) {
 	ctrl := gomock.NewController(t)
-	storage := mocks.NewMockStorage(ctrl)
-	storage.EXPECT().DeleteDataInfo(ctx, uint(1), uint(uid)).Return(nil)
-	storage.EXPECT().DeleteDataInfo(ctx, uint(2), uint(uid)).Return(makeError(ErrGormGet))
-	storage.EXPECT().DeleteDataInfo(ctx, uint(3), uint(uid)).Return(gorm.ErrRecordNotFound)
-	delCommonTest(t, storage, DeleteDataInfo)
+	strg := mocks.NewMockStorage(ctrl)
+	obj := storage.SendDataInfo{ID: 1}
+	e := storage.SendDataInfo{ID: 2}
+	n := storage.SendDataInfo{ID: 3}
+	strg.EXPECT().DeleteValue(ctx, obj).Return(nil)
+	strg.EXPECT().DeleteValue(ctx, e).Return(storage.ErrDB)
+	strg.EXPECT().DeleteValue(ctx, n).Return(gorm.ErrRecordNotFound)
+	delCommonTest(t, strg, obj, e, n)
 }
 
 func TestDeleteCard(t *testing.T) {
 	ctrl := gomock.NewController(t)
-	storage := mocks.NewMockStorage(ctrl)
-	storage.EXPECT().DeleteCard(ctx, uint(1), uint(uid)).Return(nil)
-	storage.EXPECT().DeleteCard(ctx, uint(2), uint(uid)).Return(makeError(ErrGormGet))
-	storage.EXPECT().DeleteCard(ctx, uint(3), uint(uid)).Return(gorm.ErrRecordNotFound)
-	delCommonTest(t, storage, DeleteCard)
+	strg := mocks.NewMockStorage(ctrl)
+	obj := storage.Cards{ID: 1}
+	e := storage.Cards{ID: 2}
+	n := storage.Cards{ID: 3}
+	strg.EXPECT().DeleteValue(ctx, obj).Return(nil)
+	strg.EXPECT().DeleteValue(ctx, e).Return(storage.ErrDB)
+	strg.EXPECT().DeleteValue(ctx, n).Return(gorm.ErrRecordNotFound)
+	delCommonTest(t, strg, obj, e, n)
+}
+
+func TestDeleteCredent(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	strg := mocks.NewMockStorage(ctrl)
+	obj := storage.CredsInfo{ID: 1}
+	e := storage.CredsInfo{ID: 2}
+	n := storage.CredsInfo{ID: 3}
+	strg.EXPECT().DeleteValue(ctx, obj).Return(nil)
+	strg.EXPECT().DeleteValue(ctx, e).Return(storage.ErrDB)
+	strg.EXPECT().DeleteValue(ctx, n).Return(gorm.ErrRecordNotFound)
+	delCommonTest(t, strg, obj, e, n)
+}
+
+func TestDeleteFile(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	strg := mocks.NewMockStorage(ctrl)
+	obj := storage.Files{ID: 1}
+	e := storage.Files{ID: 2}
+	n := storage.Files{ID: 3}
+	strg.EXPECT().DeleteValue(ctx, obj).Return(nil)
+	strg.EXPECT().DeleteValue(ctx, e).Return(storage.ErrDB)
+	strg.EXPECT().DeleteValue(ctx, n).Return(gorm.ErrRecordNotFound)
+	delCommonTest(t, strg, obj, e, n)
 }
 
 func TestAddFile(t *testing.T) {
@@ -194,7 +275,7 @@ func TestAddFile(t *testing.T) {
 	d := []byte("success")
 	b := []byte("bad")
 	storage.EXPECT().AddFile(ctx, uint(uid), d).Return(d, nil)
-	storage.EXPECT().AddFile(ctx, uint(uid), b).Return(nil, makeError(ErrGormGet))
+	storage.EXPECT().AddFile(ctx, uint(uid), b).Return(nil, makeError(GormGetError))
 
 	tests := []struct {
 		name    string
@@ -233,7 +314,7 @@ func TestAddFileData(t *testing.T) {
 	i := "1"
 	s := ""
 	storage.EXPECT().AddFileData(ctx, uint(uid), uint(fid), fid, fid, fid, b).Return(nil)
-	storage.EXPECT().AddFileData(ctx, uint(uid), uint(fid), fid, fid, fid, e).Return(makeError(ErrGormGet))
+	storage.EXPECT().AddFileData(ctx, uint(uid), uint(fid), fid, fid, fid, e).Return(makeError(GormGetError))
 	type headers struct {
 		index string
 		pos   string
@@ -311,7 +392,7 @@ func TestAddFileFinish(t *testing.T) {
 	e := uint(2)
 	n := uint(3)
 	storage.EXPECT().AddFileFinish(ctx, f, uid).Return(nil)
-	storage.EXPECT().AddFileFinish(ctx, e, uid).Return(makeError(ErrGormGet))
+	storage.EXPECT().AddFileFinish(ctx, e, uid).Return(makeError(GormGetError))
 	storage.EXPECT().AddFileFinish(ctx, n, uid).Return(gorm.ErrRecordNotFound)
 	tests := []struct {
 		name    string
@@ -338,40 +419,6 @@ func TestAddFileFinish(t *testing.T) {
 	}
 }
 
-func TestDeleteFile(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	storage := mocks.NewMockStorage(ctrl)
-	f := 1
-	e := 2
-	n := 3
-	storage.EXPECT().DeleteFile(ctx, uint(f), uint(uid)).Return(nil)
-	storage.EXPECT().DeleteFile(ctx, uint(e), uint(uid)).Return(makeError(ErrGormGet))
-	storage.EXPECT().DeleteFile(ctx, uint(n), uint(uid)).Return(gorm.ErrRecordNotFound)
-	tests := []struct {
-		name    string
-		id      int
-		want    int
-		wantErr bool
-	}{
-		{"Успешное завершение", f, http.StatusOK, false},
-		{"Ошибка БД при завершении", e, http.StatusInternalServerError, true},
-		{"Не найден", n, http.StatusNotFound, true},
-	}
-	for _, tt := range tests {
-		tt := tt
-		t.Run(tt.name, func(t *testing.T) {
-			got, err := DeleteFile(ctx, storage, tt.id)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("DeleteFile() error = %v, wantErr %v", err, tt.wantErr)
-				return
-			}
-			if got != tt.want {
-				t.Errorf("DeleteFile() = %v, want %v", got, tt.want)
-			}
-		})
-	}
-}
-
 func TestGetPreloadFileInfo(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	storage := mocks.NewMockStorage(ctrl)
@@ -379,7 +426,7 @@ func TestGetPreloadFileInfo(t *testing.T) {
 	e := uint(2)
 	n := uint(3)
 	storage.EXPECT().GetPreloadFileInfo(ctx, f, uid).Return([]byte(""), nil)
-	storage.EXPECT().GetPreloadFileInfo(ctx, e, uid).Return(nil, makeError(ErrGormGet))
+	storage.EXPECT().GetPreloadFileInfo(ctx, e, uid).Return(nil, makeError(GormGetError))
 	storage.EXPECT().GetPreloadFileInfo(ctx, n, uid).Return(nil, gorm.ErrRecordNotFound)
 	type args struct {
 		id uint
@@ -423,206 +470,202 @@ func TestGetPreloadFileInfo(t *testing.T) {
 	}
 }
 
-func updateCommonTest(t *testing.T, storage Storage,
-	fun func(context.Context, []byte, Storage, uint) (int, error),
-) {
+func updateCommonTest(t *testing.T, obj any) {
 	t.Helper()
-	fid := uint(1)
-	s := labelInfo{Label: "success", Info: "info"}
-	b := labelInfo{Label: "bad", Info: "error"}
-	su, err := json.Marshal(&s)
-	if err != nil {
-		t.Errorf("marshal error: %v", err)
-		return
-	}
-	bu, err := json.Marshal(&b)
-	if err != nil {
-		t.Errorf("marshal error: %v", err)
-		return
-	}
-	tests := []struct {
-		name    string
-		body    []byte
-		want    int
-		wantErr bool
-	}{
-		{"Успешно обновлено", su, http.StatusOK, false},
-		{"Ошибка БД", bu, http.StatusInternalServerError, true},
-		{"Ошибка JSON", []byte(""), http.StatusUnprocessableEntity, true},
-	}
-	for _, tt := range tests {
-		tt := tt
-		t.Run(tt.name, func(t *testing.T) {
-			got, err := fun(ctx, tt.body, storage, fid)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("update error = %v, wantErr %v", err, tt.wantErr)
-				return
-			}
-			if got != tt.want {
-				t.Errorf("update = %v, want %v", got, tt.want)
-			}
-		})
-	}
+	ctrl := gomock.NewController(t)
+	strg := mocks.NewMockStorage(ctrl)
+	strg.EXPECT().UpdateTextValue(ctx, obj, uint(1), uint(uid), "success", "info").Return(nil)
+	strg.EXPECT().UpdateTextValue(ctx, obj, uint(1), uint(uid), "", "").Return(storage.ErrDB)
+	t.Run("Ошибка авторизации", func(t *testing.T) {
+		val, err := updateCommon(context.Background(), []byte(""), 1, obj, strg)
+		if err == nil || !errors.Is(err, ErrUserAuthorization) {
+			t.Errorf("unexpected error: %v, want: %v", err, ErrUserAuthorization)
+		}
+		if val != http.StatusUnauthorized {
+			t.Errorf("status error: %d, want: %d", val, http.StatusOK)
+		}
+	})
+	t.Run("Ошибка JSON", func(t *testing.T) {
+		_, err := updateCommon(ctx, []byte("{ "), 1, obj, strg)
+		if err == nil || !errors.Is(err, ErrJSON) {
+			t.Errorf("unexpected error: %v, want: %v", err, ErrJSON)
+		}
+	})
+
+	t.Run("Ошибка БД", func(t *testing.T) {
+		_, err := updateCommon(ctx, []byte("{}"), 1, obj, strg)
+		if err == nil || !errors.Is(err, storage.ErrDB) {
+			t.Errorf("unexpected error: %v, want: %v", err, storage.ErrDB)
+		}
+	})
+
+	t.Run("Успешное выполнение", func(t *testing.T) {
+		_, err := updateCommon(ctx, []byte(`{"label": "success", "info": "info"}`), 1, obj, strg)
+		if err != nil {
+			t.Errorf("unexpected error: %v", err)
+		}
+	})
 }
 
 func TestUpdateCardInfo(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	storage := mocks.NewMockStorage(ctrl)
-	storage.EXPECT().UpdateCard(ctx, uint(1), uint(uid), "success", "info").Return(nil)
-	storage.EXPECT().UpdateCard(ctx, uint(1), uint(uid), "bad", "error").Return(makeError(ErrGormGet))
-	updateCommonTest(t, storage, UpdateCardInfo)
+	updateCommonTest(t, storage.Cards{ID: 1})
 }
 
 func TestUpdateDataInfo(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	storage := mocks.NewMockStorage(ctrl)
-	storage.EXPECT().UpdateDataInfo(ctx, uint(1), uint(uid), "success", "info").Return(nil)
-	storage.EXPECT().UpdateDataInfo(ctx, uint(1), uint(uid), "bad", "error").Return(makeError(ErrGormGet))
-	updateCommonTest(t, storage, UpdateDataInfo)
+	updateCommonTest(t, storage.SendDataInfo{ID: 1})
 }
 
-func getCommonTest(t *testing.T, storage Storage,
-	fun func(context.Context, Storage, uint) ([]byte, int, error),
-) {
+func TestUpdateCreds(t *testing.T) {
+	updateCommonTest(t, storage.CredsInfo{ID: 1})
+}
+
+func getCommonTest(t *testing.T, obj, e, n any) {
 	t.Helper()
-	s := uint(1)
-	b := uint(2)
-	f := uint(3)
-	tests := []struct {
-		name    string
-		id      uint
-		want1   int
-		wantErr bool
-	}{
-		{"Успешный запрос данных", s, http.StatusOK, false},
-		{"Ошибка в БД", b, http.StatusInternalServerError, true},
-		{"Не найдено", f, http.StatusNotFound, true},
-	}
-	for _, tt := range tests {
-		tt := tt
-		t.Run(tt.name, func(t *testing.T) {
-			_, got1, err := fun(ctx, storage, tt.id)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("get error = %v, wantErr %v", err, tt.wantErr)
-				return
-			}
-			if got1 != tt.want1 {
-				t.Errorf("get got1 = %v, want %v", got1, tt.want1)
-			}
-		})
-	}
+	r := []byte("[]")
+	ctrl := gomock.NewController(t)
+	strg := mocks.NewMockStorage(ctrl)
+	strg.EXPECT().GetValue(ctx, obj, uint(uid), uint(uid)).Return(r, nil)
+	strg.EXPECT().GetValue(ctx, e, uint(uid), uint(uid)).Return(nil, storage.ErrDB)
+	strg.EXPECT().GetValue(ctx, n, uint(uid), uint(uid)).Return(nil, gorm.ErrRecordNotFound)
+	t.Run("Ошибка авторизации", func(t *testing.T) {
+		item, status, err := getCommon(context.Background(), uint(uid), obj, strg)
+		if err == nil || !errors.Is(err, ErrUserAuthorization) {
+			t.Errorf("unexpected error: %v, want: %v", err, ErrUserAuthorization)
+			return
+		}
+		if status != http.StatusUnauthorized {
+			t.Errorf("status error: %d, want: %d", status, http.StatusUnauthorized)
+			return
+		}
+		if item != nil {
+			t.Errorf("unexpected byte value: %s, want: nil", string(item))
+			return
+		}
+	})
+	t.Run("Не найден", func(t *testing.T) {
+		item, status, err := getCommon(ctx, uint(uid), n, strg)
+		if err == nil || !errors.Is(err, ErrNotFound) {
+			t.Errorf("unexpected error: %v, want: %v", err, ErrNotFound)
+		}
+		if status != http.StatusNotFound {
+			t.Errorf("status error: %d, want: %d", status, http.StatusNotFound)
+			return
+		}
+		if item != nil {
+			t.Errorf("unexpected byte value: %s, want: nil", string(item))
+			return
+		}
+	})
+
+	t.Run("Ошибка БД", func(t *testing.T) {
+		item, status, err := getCommon(ctx, uint(uid), e, strg)
+		if err == nil {
+			t.Errorf("unexpected error: %v, want: nil", err)
+		}
+		if status != http.StatusInternalServerError {
+			t.Errorf("status error: %d, want: %d", status, http.StatusInternalServerError)
+			return
+		}
+		if item != nil {
+			t.Errorf("unexpected byte value: %s, want: nil", string(item))
+			return
+		}
+	})
+
+	t.Run("Успешное выполнение", func(t *testing.T) {
+		item, status, err := getCommon(ctx, uint(uid), obj, strg)
+		if err != nil {
+			t.Errorf("unexpected error: %v, want: nil", err)
+		}
+		if status != http.StatusOK {
+			t.Errorf("status error: %d, want: %d", status, http.StatusInternalServerError)
+			return
+		}
+		if !bytes.Equal(item, r) {
+			t.Errorf("unexpected byte value: %s, want: %s", string(item), string(r))
+			return
+		}
+	})
 }
 func TestGetCard(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	storage := mocks.NewMockStorage(ctrl)
-	storage.EXPECT().GetCard(ctx, uint(1), uint(uid)).Return([]byte("[]"), nil)
-	storage.EXPECT().GetCard(ctx, uint(2), uint(uid)).Return(nil, makeError(ErrGormGet))
-	storage.EXPECT().GetCard(ctx, uint(3), uint(uid)).Return(nil, gorm.ErrRecordNotFound)
-	getCommonTest(t, storage, GetCard)
+	obj := storage.Cards{ID: 1}
+	e := storage.Cards{ID: 2}
+	n := storage.Cards{ID: 3}
+	getCommonTest(t, obj, e, n)
 }
-
 func TestGetDataInfo(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	storage := mocks.NewMockStorage(ctrl)
-	storage.EXPECT().GetDataInfo(ctx, uint(1), uint(uid)).Return([]byte("[]"), nil)
-	storage.EXPECT().GetDataInfo(ctx, uint(2), uint(uid)).Return(nil, makeError(ErrGormGet))
-	storage.EXPECT().GetDataInfo(ctx, uint(3), uint(uid)).Return(nil, gorm.ErrRecordNotFound)
-	getCommonTest(t, storage, GetDataInfo)
+	obj := storage.SendDataInfo{ID: 1}
+	e := storage.SendDataInfo{ID: 2}
+	n := storage.SendDataInfo{ID: 3}
+	getCommonTest(t, obj, e, n)
+}
+func TestGetCredInfo(t *testing.T) {
+	obj := storage.CredsInfo{ID: 1}
+	e := storage.CredsInfo{ID: 2}
+	n := storage.CredsInfo{ID: 3}
+	getCommonTest(t, obj, e, n)
 }
 
-func TestAddCardInfo(t *testing.T) {
+func addCommonTest(t *testing.T, obj any) {
+	t.Helper()
 	ctrl := gomock.NewController(t)
-	storage := mocks.NewMockStorage(ctrl)
-	s := labelInfo{Label: "success", Info: "info"}
-	b := labelInfo{Label: "bad", Info: "info"}
-	di := labelInfo{Label: "dublicate", Info: "info"}
-	e := errors.New("error")
-	d := errors.New("dublicate")
-	storage.EXPECT().IsUniqueViolation(makeError(ErrGormGet, e)).Return(false)
-	storage.EXPECT().IsUniqueViolation(makeError(ErrGormGet, d)).Return(true)
-	storage.EXPECT().AddCard(ctx, uint(uid), s.Label, s.Info).Return(nil)
-	storage.EXPECT().AddCard(ctx, uint(uid), b.Label, b.Info).Return(e)
-	storage.EXPECT().AddCard(ctx, uint(uid), di.Label, di.Info).Return(d)
-	su, err := json.Marshal(&s)
-	if err != nil {
-		t.Errorf("marshal error: %v", err)
-		return
-	}
-	bu, err := json.Marshal(&b)
-	if err != nil {
-		t.Errorf("marshal error: %v", err)
-		return
-	}
-	du, err := json.Marshal(&di)
-	if err != nil {
-		t.Errorf("marshal error: %v", err)
-		return
-	}
+	strg := mocks.NewMockStorage(ctrl)
+	strg.EXPECT().AddTextValue(ctx, obj, uint(uid), "success", "info").Return(nil)
+	strg.EXPECT().AddTextValue(ctx, obj, uint(uid), "error", "error").Return(storage.ErrDB)
+	t.Run("Ошибка авторизации", func(t *testing.T) {
+		status, err := addCommon(context.Background(), []byte(""), obj, strg)
+		if err == nil || !errors.Is(err, ErrUserAuthorization) {
+			t.Errorf("unexpected error: %v, want: %v", err, ErrUserAuthorization)
+			return
+		}
+		if status != http.StatusUnauthorized {
+			t.Errorf("status error: %d, want: %d", status, http.StatusUnauthorized)
+			return
+		}
+	})
+	t.Run("Ошибка JSON", func(t *testing.T) {
+		status, err := addCommon(ctx, []byte("{ "), obj, strg)
+		if err == nil || !errors.Is(err, ErrJSON) {
+			t.Errorf("unexpected error: %v, want: %v", err, ErrJSON)
+			return
+		}
+		if status != http.StatusUnprocessableEntity {
+			t.Errorf("status error: %d, want: %d", status, http.StatusUnprocessableEntity)
+			return
+		}
+	})
+	t.Run("Ошибка БД", func(t *testing.T) {
+		status, err := addCommon(ctx, []byte(`{"label": "error", "info": "error"}`), obj, strg)
+		if err == nil {
+			t.Errorf("unexpected error: %v", err)
+			return
+		}
+		if status != http.StatusInternalServerError {
+			t.Errorf("status error: %d, want: %d", status, http.StatusInternalServerError)
+			return
+		}
+	})
 
-	tests := []struct {
-		name    string
-		body    []byte
-		want    int
-		wantErr bool
-	}{
-		{"Успешный запрос", su, http.StatusOK, false},
-		{"Ошибка БД при запросе", bu, http.StatusInternalServerError, true},
-		{"Ошибка уникальности", du, http.StatusConflict, true},
-	}
-	for _, tt := range tests {
-		tt := tt
-		t.Run(tt.name, func(t *testing.T) {
-			got, err := AddCardInfo(ctx, tt.body, storage)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("AddCardInfo() error = %v, wantErr %v", err, tt.wantErr)
-				return
-			}
-			if got != tt.want {
-				t.Errorf("AddCardInfo() = %v, want %v", got, tt.want)
-			}
-		})
-	}
+	t.Run("Успешное выполнение", func(t *testing.T) {
+		status, err := addCommon(ctx, []byte(`{"label": "success", "info": "info"}`), obj, strg)
+		if err != nil {
+			t.Errorf("unexpected error: %v, want: nil", err)
+			return
+		}
+		if status != http.StatusOK {
+			t.Errorf("status error: %d, want: %d", status, http.StatusOK)
+			return
+		}
+	})
+}
+func TestAddCardInfo(t *testing.T) {
+	addCommonTest(t, storage.Cards{})
 }
 
 func TestAddDataInfo(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	storage := mocks.NewMockStorage(ctrl)
-	s := labelInfo{Label: "success", Info: "info"}
-	b := labelInfo{Label: "bad", Info: "info"}
-	e := errors.New("error")
-	storage.EXPECT().AddDataInfo(ctx, uint(uid), s.Label, s.Info).Return(nil)
-	storage.EXPECT().AddDataInfo(ctx, uint(uid), b.Label, b.Info).Return(e)
-	su, err := json.Marshal(&s)
-	if err != nil {
-		t.Errorf("marshal error: %v", err)
-		return
-	}
-	bu, err := json.Marshal(&b)
-	if err != nil {
-		t.Errorf("marshal error: %v", err)
-		return
-	}
+	addCommonTest(t, storage.SendDataInfo{})
+}
 
-	tests := []struct {
-		name    string
-		body    []byte
-		want    int
-		wantErr bool
-	}{
-		{"Успешный запрос", su, http.StatusOK, false},
-		{"Ошибка БД при запросе", bu, http.StatusInternalServerError, true},
-	}
-	for _, tt := range tests {
-		tt := tt
-		t.Run(tt.name, func(t *testing.T) {
-			got, err := AddDataInfo(ctx, tt.body, storage)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("AddDataInfo() error = %v, wantErr %v", err, tt.wantErr)
-				return
-			}
-			if got != tt.want {
-				t.Errorf("AddDataInfo() = %v, want %v", got, tt.want)
-			}
-		})
-	}
+func TestAddCreds(t *testing.T) {
+	addCommonTest(t, storage.CredsInfo{})
 }

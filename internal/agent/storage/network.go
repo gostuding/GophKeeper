@@ -42,9 +42,8 @@ type (
 	}
 	// LoginPwd internal struct.
 	loginPwd struct {
-		Login     string `json:"login"`
-		Pwd       string `json:"password"`
-		PublicKey string `json:"public_key"`
+		Login string `json:"login"`
+		Pwd   string `json:"password"`
 	}
 	// TokenKey internal struct.
 	tokenKey struct {
@@ -56,6 +55,14 @@ type (
 		Updated time.Time `json:"updated"`
 		Label   string    `json:"label"`
 		Info    string    `json:"info,omitempty"`
+		ID      int       `json:"id,omitempty"`
+	}
+	// Credent is struct for login and password information.
+	Credent struct {
+		Updated time.Time `json:"updated"`
+		Label   string    `json:"label"`
+		Login   string    `json:"login"`
+		Pwd     string    `json:"pwd"`
 		ID      int       `json:"id,omitempty"`
 	}
 	// CardInfo is struct for card information.
@@ -132,7 +139,19 @@ func (ns *NetStorage) doRequest(msg []byte, url string, method string) (*http.Re
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrConnection, err)
 	}
-	return res, nil
+	if res.StatusCode == http.StatusOK {
+		return res, nil
+	}
+	defer res.Body.Close() //nolint:errcheck //<-senselessly
+	switch res.StatusCode {
+	case http.StatusUnauthorized:
+		return nil, ErrAuthorization
+	case http.StatusNotFound:
+		return nil, ErrNotFound
+	case http.StatusConflict:
+		return nil, ErrLoginRepeat
+	}
+	return nil, makeError(ErrResponseStatusCode, res.StatusCode)
 }
 
 func (ns *NetStorage) ServerAESKey() []byte {
@@ -151,27 +170,18 @@ func (ns *NetStorage) Authentification(url string, l, p string) (string, error) 
 		return "", err
 	}
 	defer res.Body.Close() //nolint:errcheck //<-senselessly
-	switch res.StatusCode {
-	case http.StatusConflict:
-		return "", ErrLoginRepeat
-	case http.StatusUnauthorized:
-		return "", ErrUserNotFound
-	case http.StatusOK:
-		ns.Pwd = user.Pwd
-		data, err := io.ReadAll(res.Body)
-		if err != nil {
-			return "", makeError(ErrResponseRead, err)
-		}
-		var t tokenKey
-		if err = json.Unmarshal(data, &t); err != nil {
-			return "", makeError(ErrJSONUnmarshal, err)
-		}
-		ns.JWTToken = t.Token
-		ns.serverAESKey = []byte(t.Key)
-		return t.Token, nil
-	default:
-		return "", makeError(ErrResponseStatusCode, res.StatusCode)
+	ns.Pwd = user.Pwd
+	data, err = io.ReadAll(res.Body)
+	if err != nil {
+		return "", makeError(ErrResponseRead, err)
 	}
+	var t tokenKey
+	if err = json.Unmarshal(data, &t); err != nil {
+		return "", makeError(ErrJSONUnmarshal, err)
+	}
+	ns.JWTToken = t.Token
+	ns.serverAESKey = []byte(t.Key)
+	return t.Token, nil
 }
 
 // GetAESKey decripts user key.
@@ -206,29 +216,41 @@ func (ns *NetStorage) GetItemsListCommon(url, name string) (string, error) {
 		return "", err
 	}
 	defer res.Body.Close() //nolint:errcheck //<-senselessly
-	switch res.StatusCode {
-	case http.StatusUnauthorized:
-		return "", ErrAuthorization
-	case http.StatusBadRequest:
-		return "", makeError(ErrServerDecrypt, nil)
-	case http.StatusOK:
-		data, err := io.ReadAll(res.Body)
-		if err != nil {
-			return "", makeError(ErrResponseRead, err)
-		}
-		var lst []DataInfo
-		err = json.Unmarshal(data, &lst)
-		if err != nil {
-			return "", makeError(ErrJSONUnmarshal, err)
-		}
-		datas := ""
-		for _, val := range lst {
-			datas += fmt.Sprintf("%s id: %d. '%s'\t'%s'\n", name, val.ID, val.Label, val.Updated.Format(TimeFormat))
-		}
-		return datas, nil
-	default:
-		return "", makeError(ErrResponseStatusCode, res.StatusCode)
+	data, err := io.ReadAll(res.Body)
+	if err != nil {
+		return "", makeError(ErrResponseRead, err)
 	}
+	var lst []DataInfo
+	err = json.Unmarshal(data, &lst)
+	if err != nil {
+		return "", makeError(ErrJSONUnmarshal, err)
+	}
+	datas := ""
+	for _, val := range lst {
+		datas += fmt.Sprintf("%s id: %d. '%s'\t'%s'\n", name, val.ID, val.Label, val.Updated.Format(TimeFormat))
+	}
+	return datas, nil
+}
+
+func getItemCommon(body io.ReadCloser, key []byte) ([]byte, *DataInfo, error) {
+	data, err := io.ReadAll(body)
+	if err != nil {
+		return nil, nil, makeError(ErrResponse, err)
+	}
+	var l DataInfo
+	err = json.Unmarshal(data, &l)
+	if err != nil {
+		return nil, nil, makeError(ErrJSONUnmarshal, err)
+	}
+	msg, err := hex.DecodeString(l.Info)
+	if err != nil {
+		return nil, &l, makeError(ErrDecode, err)
+	}
+	info, err := decryptAES(key, msg)
+	if err != nil {
+		return nil, &l, makeError(ErrDecryptMessage, err)
+	}
+	return info, &l, nil
 }
 
 // GetCard requests card info.
@@ -238,40 +260,18 @@ func (ns *NetStorage) GetCard(url string) (*CardInfo, error) {
 		return nil, err
 	}
 	defer res.Body.Close() //nolint:errcheck //<-senselessly
-	switch res.StatusCode {
-	case http.StatusUnauthorized:
-		return nil, ErrAuthorization
-	case http.StatusNotFound:
-		return nil, ErrNotFound
-	case http.StatusOK:
-		data, err := io.ReadAll(res.Body)
-		if err != nil {
-			return nil, makeError(ErrResponse, err)
-		}
-		var l DataInfo
-		err = json.Unmarshal(data, &l)
-		if err != nil {
-			return nil, makeError(ErrJSONUnmarshal, err)
-		}
-		msg, err := hex.DecodeString(l.Info)
-		if err != nil {
-			return nil, makeError(ErrDecode, err)
-		}
-		info, err := decryptAES(ns.Key, msg)
-		if err != nil {
-			return nil, makeError(ErrDecryptMessage, err)
-		}
-		var card CardInfo
-		err = json.Unmarshal(info, &card)
-		if err != nil {
-			return nil, makeError(ErrJSONUnmarshal, err, string(info))
-		}
-		card.Updated = l.Updated
-		card.Label = l.Label
-		return &card, nil
-	default:
-		return nil, makeError(ErrResponseStatusCode, res.StatusCode)
+	info, l, err := getItemCommon(res.Body, ns.Key)
+	if err != nil {
+		return nil, err
 	}
+	var card CardInfo
+	err = json.Unmarshal(info, &card)
+	if err != nil {
+		return nil, makeError(ErrJSONUnmarshal, err, string(info))
+	}
+	card.Updated = l.Updated
+	card.Label = l.Label
+	return &card, nil
 }
 
 // addUpdateCard common in add and update card functions.
@@ -281,20 +281,11 @@ func (ns *NetStorage) addUpdateCommon(url, method string, data []byte) error {
 		return err
 	}
 	defer res.Body.Close() //nolint:errcheck //<-senselessly
-	switch res.StatusCode {
-	case http.StatusConflict:
-		return ErrDublicateError
-	case http.StatusUnauthorized:
-		return ErrAuthorization
-	case http.StatusOK:
-		return nil
-	default:
-		return makeError(ErrResponseStatusCode, res.StatusCode)
-	}
+	return nil
 }
 
-func addCardCommon(key []byte, card *CardInfo) ([]byte, error) {
-	data, err := json.Marshal(&card)
+func encryptCommon(key []byte, label string, obj any) ([]byte, error) {
+	data, err := json.Marshal(&obj)
 	if err != nil {
 		return nil, makeError(ErrJSONMarshal, err)
 	}
@@ -302,7 +293,7 @@ func addCardCommon(key []byte, card *CardInfo) ([]byte, error) {
 	if err != nil {
 		return nil, makeError(ErrEncrypt, err)
 	}
-	send := DataInfo{Info: hex.EncodeToString(infoString), Label: card.Label}
+	send := DataInfo{Info: hex.EncodeToString(infoString), Label: label}
 	data, err = json.Marshal(send)
 	if err != nil {
 		return nil, makeError(ErrJSONMarshal, err)
@@ -312,7 +303,7 @@ func addCardCommon(key []byte, card *CardInfo) ([]byte, error) {
 
 // AddCard adds one card info to server.
 func (ns *NetStorage) AddCard(url string, card *CardInfo) error {
-	data, err := addCardCommon(ns.Key, card)
+	data, err := encryptCommon(ns.Key, card.Label, card)
 	if err != nil {
 		return makeError(ErrJSONMarshal, err)
 	}
@@ -321,7 +312,7 @@ func (ns *NetStorage) AddCard(url string, card *CardInfo) error {
 
 // UpdateCard edits one card info at server.
 func (ns *NetStorage) UpdateCard(url string, card *CardInfo) error {
-	data, err := addCardCommon(ns.Key, card)
+	data, err := encryptCommon(ns.Key, card.Label, card)
 	if err != nil {
 		return makeError(ErrJSONMarshal, err)
 	}
@@ -356,41 +347,59 @@ func (ns *NetStorage) UpdateDataInfo(url string, label string, info string) erro
 	return ns.addUpdateCommon(url, http.MethodPut, data)
 }
 
-// GetDataInfo requests card info.
+// GetDataInfo requests data info.
 func (ns *NetStorage) GetDataInfo(url string) (*DataInfo, error) {
 	res, err := ns.doRequest(nil, url, http.MethodGet)
 	if err != nil {
 		return nil, err
 	}
 	defer res.Body.Close() //nolint:errcheck //<-senselessly
-	switch res.StatusCode {
-	case http.StatusUnauthorized:
-		return nil, ErrAuthorization
-	case http.StatusNotFound:
-		return nil, ErrNotFound
-	case http.StatusOK:
-		data, err := io.ReadAll(res.Body)
-		if err != nil {
-			return nil, makeError(ErrResponse, err)
-		}
-		var l DataInfo
-		err = json.Unmarshal(data, &l)
-		if err != nil {
-			return nil, makeError(ErrJSONUnmarshal, err)
-		}
-		msg, err := hex.DecodeString(l.Info)
-		if err != nil {
-			return nil, makeError(ErrDecode, err)
-		}
-		info, err := decryptAES(ns.Key, msg)
-		if err != nil {
-			return nil, makeError(ErrDecryptMessage, err)
-		}
-		l.Info = string(info)
-		return &l, nil
-	default:
-		return nil, makeError(ErrResponseStatusCode, res.StatusCode)
+	info, l, err := getItemCommon(res.Body, ns.Key)
+	if err != nil {
+		return nil, err
 	}
+	l.Info = string(info)
+	return l, nil
+}
+
+// AddCredent adds one cred info to server.
+func (ns *NetStorage) AddCredent(url string, crd *Credent) error {
+	data, err := encryptCommon(ns.Key, crd.Label, crd)
+	if err != nil {
+		return fmt.Errorf("encrtypt data error: %w", err)
+	}
+	return ns.addUpdateCommon(url, http.MethodPost, data)
+}
+
+// GetCredent requests cred info.
+func (ns *NetStorage) GetCredent(url string) (*Credent, error) {
+	res, err := ns.doRequest(nil, url, http.MethodGet)
+	if err != nil {
+		return nil, err
+	}
+	defer res.Body.Close() //nolint:errcheck //<-senselessly
+	info, l, err := getItemCommon(res.Body, ns.Key)
+	if err != nil {
+		return nil, err
+	}
+	var c Credent
+	err = json.Unmarshal(info, &c)
+	if err != nil {
+		return nil, makeError(ErrJSONUnmarshal, err)
+	}
+	c.Label = l.Label
+	c.Updated = l.Updated
+	return &c, nil
+
+}
+
+// UpdateCredent edits one credent info at server.
+func (ns *NetStorage) UpdateCredent(url string, cred *Credent) error {
+	data, err := encryptCommon(ns.Key, cred.Label, cred)
+	if err != nil {
+		return makeError(ErrJSONMarshal, err)
+	}
+	return ns.addUpdateCommon(url, http.MethodPut, data)
 }
 
 // GetFilesList requests user's files list from server.
@@ -400,34 +409,25 @@ func (ns *NetStorage) GetFilesList(url string) (string, error) {
 		return "", err
 	}
 	defer res.Body.Close() //nolint:errcheck //<-senselessly
-	switch res.StatusCode {
-	case http.StatusUnauthorized:
-		return "", ErrAuthorization
-	case http.StatusBadRequest:
-		return "", makeError(ErrServerEncrypt, nil)
-	case http.StatusOK:
-		data, err := io.ReadAll(res.Body)
-		if err != nil {
-			return "", makeError(ErrResponseRead, err)
-		}
-		var lst []Files
-		err = json.Unmarshal(data, &lst)
-		if err != nil {
-			return "", makeError(ErrJSONUnmarshal, err)
-		}
-		files := ""
-		for _, val := range lst {
-			files += fmt.Sprintf("File: %d. Название:'%s'\tРазмер:'%s'\tДата: %s",
-				val.ID, val.Name, fileSize(val.Size), val.CreatedAt.Format(TimeFormat))
-			if !val.Loaded {
-				files += "\t'Загружен не полностью'"
-			}
-			files += "\n"
-		}
-		return files, nil
-	default:
-		return "", makeError(ErrResponseStatusCode, res.StatusCode)
+	data, err := io.ReadAll(res.Body)
+	if err != nil {
+		return "", makeError(ErrResponseRead, err)
 	}
+	var lst []Files
+	err = json.Unmarshal(data, &lst)
+	if err != nil {
+		return "", makeError(ErrJSONUnmarshal, err)
+	}
+	files := ""
+	for _, val := range lst {
+		files += fmt.Sprintf("File: %d. Название:'%s'\tРазмер:'%s'\tДата: %s",
+			val.ID, val.Name, fileSize(val.Size), val.CreatedAt.Format(TimeFormat))
+		if !val.Loaded {
+			files += "\t'Загружен не полностью'"
+		}
+		files += "\n"
+	}
+	return files, nil
 }
 
 // GetNewFileID sends request to server for generate new file identificator.
@@ -441,24 +441,15 @@ func (ns *NetStorage) GetNewFileID(url string, info os.FileInfo) (int, error) {
 		return 0, err
 	}
 	defer res.Body.Close() //nolint:errcheck //<-senselessly
-	switch res.StatusCode {
-	case http.StatusUnauthorized:
-		return 0, ErrAuthorization
-	case http.StatusBadRequest:
-		return 0, makeError(ErrServerDecrypt, nil)
-	case http.StatusOK:
-		f, err := io.ReadAll(res.Body)
-		if err != nil {
-			return 0, makeError(ErrResponseRead, err)
-		}
-		fid, err := strconv.Atoi(string(f))
-		if err != nil {
-			return 0, fmt.Errorf("convert file id error: %w", err)
-		}
-		return fid, nil
-	default:
-		return 0, makeError(ErrResponseStatusCode, res.StatusCode)
+	f, err := io.ReadAll(res.Body)
+	if err != nil {
+		return 0, makeError(ErrResponseRead, err)
 	}
+	fid, err := strconv.Atoi(string(f))
+	if err != nil {
+		return 0, fmt.Errorf("convert file id error: %w", err)
+	}
+	return fid, nil
 }
 
 // AddFile sends file's body to server.
@@ -575,14 +566,7 @@ func (ns *NetStorage) FihishFileTransfer(url string, fid int) error {
 		return err
 	}
 	defer res.Body.Close() //nolint:errcheck //<-senselessly
-	switch res.StatusCode {
-	case http.StatusOK:
-		return nil
-	case http.StatusUnauthorized:
-		return ErrAuthorization
-	default:
-		return makeError(ErrResponseStatusCode, res.StatusCode)
-	}
+	return nil
 }
 
 // DeleteItem sends request for delete any from database.
@@ -592,16 +576,7 @@ func (ns *NetStorage) DeleteItem(url string) error {
 		return err
 	}
 	defer res.Body.Close() //nolint:errcheck //<-senselessly
-	switch res.StatusCode {
-	case http.StatusUnauthorized:
-		return ErrAuthorization
-	case http.StatusNotFound:
-		return ErrNotFound
-	case http.StatusOK:
-		return nil
-	default:
-		return makeError(ErrResponseStatusCode, res.StatusCode)
-	}
+	return nil
 }
 
 // GetPreloadFileInfo requests file max index from database.
@@ -611,25 +586,16 @@ func (ns *NetStorage) GetPreloadFileInfo(url string) (string, int, error) {
 		return "", 0, err
 	}
 	defer resp.Body.Close() //nolint:errcheck //<-senselessly
-	switch resp.StatusCode {
-	case http.StatusUnauthorized:
-		return "", 0, ErrAuthorization
-	case http.StatusNotFound:
-		return "", 0, ErrNotFound
-	case http.StatusOK:
-		data, err := io.ReadAll(resp.Body)
-		if err != nil {
-			return "", 0, makeError(ErrDecryptMessage, err)
-		}
-		var f filesPreloadedData
-		err = json.Unmarshal(data, &f)
-		if err != nil {
-			return "", 0, makeError(ErrJSONUnmarshal, err)
-		}
-		return f.Name, f.MaxIndex, nil
-	default:
-		return "", 0, makeError(ErrResponseStatusCode, resp.StatusCode)
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", 0, makeError(ErrDecryptMessage, err)
 	}
+	var f filesPreloadedData
+	err = json.Unmarshal(data, &f)
+	if err != nil {
+		return "", 0, makeError(ErrJSONUnmarshal, err)
+	}
+	return f.Name, f.MaxIndex, nil
 }
 
 // GetFile loads file from server, decrypts it and saves in path.

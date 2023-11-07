@@ -86,8 +86,8 @@ func TestNetStorage_Authentification(t *testing.T) {
 		}
 	})
 	t.Run("Пользователь не найден", func(t *testing.T) {
-		if _, err := storage.Authentification(server.URL, "not", "p"); !errors.Is(err, ErrUserNotFound) {
-			t.Errorf("NetStorage.Authentification() error, want: %v, got: %v", ErrUserNotFound, err)
+		if _, err := storage.Authentification(server.URL, "not", "p"); !errors.Is(err, ErrAuthorization) {
+			t.Errorf("NetStorage.Authentification() error, want: %v, got: %v", ErrAuthorization, err)
 		}
 	})
 }
@@ -393,9 +393,9 @@ func TestNetStorage_GetNewFileID(t *testing.T) {
 			t.Errorf("NetStorage.GetNewFileID() get unexpected error: %v, want: %v", err, ErrAuthorization)
 		}
 	})
-	t.Run("Ошибка расшифровки запроса", func(t *testing.T) {
+	t.Run("Не найден", func(t *testing.T) {
 		_, err := storage.GetNewFileID(serverNotFound.URL, &file)
-		if !errors.Is(err, ErrStatusCode) {
+		if !errors.Is(err, ErrNotFound) {
 			t.Errorf("NetStorage.GetNewFileID() get unexpected error: %v, want: %v", err, ErrNotFound)
 		}
 	})
@@ -481,9 +481,9 @@ func TestNetStorage_FihishFileTransfer(t *testing.T) {
 			t.Errorf("NetStorage.FihishFileTransfer() get unexpected error: %v, want: %v", err, ErrAuthorization)
 		}
 	})
-	t.Run("Ошибка расшифровки запроса", func(t *testing.T) {
+	t.Run("Не найден", func(t *testing.T) {
 		err := storage.FihishFileTransfer(serverNotFound.URL, fid)
-		if !errors.Is(err, ErrStatusCode) {
+		if !errors.Is(err, ErrNotFound) {
 			t.Errorf("NetStorage.FihishFileTransfer() get unexpected error: %v, want: %v", err, ErrNotFound)
 		}
 	})

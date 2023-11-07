@@ -20,7 +20,6 @@ type (
 	// Cards is Gorm struct for user's cards information.
 	// Value field contains private card's data.
 	Cards struct {
-		CreatedAt time.Time `json:"created"`
 		UpdatedAt time.Time `json:"updated"`
 		Label     string    `gorm:"unique;type:varchar(255)" json:"lablel"`
 		Value     string    `gorm:"type:text" json:"value"`
@@ -46,6 +45,14 @@ type (
 		FID   uint `gorm:"numeric"`
 		UID   uint `gorm:"numeric"`
 	}
+	// CredsInfo struct for credentials save in server.
+	CredsInfo struct {
+		UpdatedAt time.Time `json:"updated"`
+		Label     string    `gorm:"type:varchar(255)" json:"label,omitempty"`
+		Info      string    `gorm:"type:text" json:"info,omitempty"`
+		ID        uint      `gorm:"primarykey" json:"id,omitempty"`
+		UID       uint      `gorm:"numeric" json:"-"`
+	}
 	// SendDataInfo struct sends card's information to clients.
 	SendDataInfo struct {
 		UpdatedAt time.Time `json:"updated"`
@@ -58,7 +65,7 @@ type (
 
 // structCheck checks database structure.
 func structCheck(con *gorm.DB) error {
-	err := con.AutoMigrate(&Users{}, &Cards{}, &Files{}, &FileData{}, &SendDataInfo{})
+	err := con.AutoMigrate(&Users{}, &Cards{}, &Files{}, &FileData{}, &SendDataInfo{}, &CredsInfo{})
 	if err != nil {
 		return fmt.Errorf("database structure error: %w", err)
 	}

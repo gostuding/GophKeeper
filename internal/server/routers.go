@@ -36,7 +36,7 @@ func writeResponseData(w http.ResponseWriter, data []byte, status int, l *zap.Su
 	w.WriteHeader(status)
 	_, err := w.Write(data)
 	if err != nil {
-		l.Warnf(makeError(ErrWriteResponse, err).Error())
+		l.Warnf(fmt.Sprintf("write response error: %v", err))
 	}
 }
 
@@ -45,8 +45,8 @@ func readRequestBody(w http.ResponseWriter, r *http.Request, l *zap.SugaredLogge
 	data, err := io.ReadAll(r.Body)
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
-		l.Warnln(makeError(ErrReadRequestBody, err).Error())
-		return nil, makeError(ErrReadRequestBody, err)
+		l.Warnln(fmt.Sprintf("read error: %v", err))
+		return nil, fmt.Errorf("request body read error: %w", err)
 	}
 	return data, nil
 }
@@ -58,7 +58,7 @@ func deleteCommon(
 ) {
 	id, err := strconv.Atoi(chi.URLParam(r, idString))
 	if err != nil {
-		s.Logger.Warnf(makeError(ErrConvertError, idString, err).Error())
+		s.Logger.Warnf(makeError(ConvertError, idString, err).Error())
 		writeResponseData(w, nil, http.StatusBadRequest, s.Logger)
 		return
 	}
@@ -118,7 +118,7 @@ func geterCommon(w http.ResponseWriter, r *http.Request, s *Server,
 ) {
 	id, err := strconv.Atoi(chi.URLParam(r, idString))
 	if err != nil {
-		s.Logger.Warnf(makeError(ErrConvertError, idString, err).Error())
+		s.Logger.Warnf(makeError(ConvertError, idString, err).Error())
 		writeResponseData(w, nil, http.StatusBadRequest, s.Logger)
 		return
 	}
@@ -139,7 +139,7 @@ func setterCommon(w http.ResponseWriter, r *http.Request, s *Server,
 	}
 	id, err := strconv.Atoi(chi.URLParam(r, idString))
 	if err != nil {
-		s.Logger.Warnf(makeError(ErrConvertError, idString, err).Error())
+		s.Logger.Warnf(makeError(ConvertError, idString, err).Error())
 		writeResponseData(w, nil, http.StatusBadRequest, s.Logger)
 		return
 	}
@@ -156,6 +156,7 @@ func makeRouter(s *Server) http.Handler {
 	docs.SwaggerInfo.Host = net.JoinHostPort(s.Config.IP, strconv.Itoa(s.Config.Port))
 	cardsURL := "/api/cards/{id}"
 	dataURL := "/api/data/{id}"
+	credsURL := "/api/creds/{id}"
 	filesURL := "/api/files/add"
 	redURL := "/"
 	router.Use(middleware.RealIP, middleware.Recoverer, middlewares.LoggerMiddleware(s.Logger),
@@ -215,6 +216,9 @@ func makeRouter(s *Server) http.Handler {
 		r.Get("/api/data", func(w http.ResponseWriter, r *http.Request) {
 			listCommon(w, r, s, GetDataInfoList)
 		})
+		r.Get("/api/creds", func(w http.ResponseWriter, r *http.Request) {
+			listCommon(w, r, s, GetCredsList)
+		})
 		r.Get("/api/files", func(w http.ResponseWriter, r *http.Request) {
 			listCommon(w, r, s, GetFilesList)
 		})
@@ -224,17 +228,26 @@ func makeRouter(s *Server) http.Handler {
 		r.Post("/api/data/add", func(w http.ResponseWriter, r *http.Request) {
 			addItemCommon(w, r, s, AddDataInfo)
 		})
+		r.Post("/api/creds/add", func(w http.ResponseWriter, r *http.Request) {
+			addItemCommon(w, r, s, AddCreds)
+		})
 		r.Get(cardsURL, func(w http.ResponseWriter, r *http.Request) {
 			geterCommon(w, r, s, GetCard)
 		})
 		r.Get(dataURL, func(w http.ResponseWriter, r *http.Request) {
 			geterCommon(w, r, s, GetDataInfo)
 		})
+		r.Get(credsURL, func(w http.ResponseWriter, r *http.Request) {
+			geterCommon(w, r, s, GetCredInfo)
+		})
 		r.Put(cardsURL, func(w http.ResponseWriter, r *http.Request) {
 			setterCommon(w, r, s, UpdateCardInfo)
 		})
 		r.Put(dataURL, func(w http.ResponseWriter, r *http.Request) {
 			setterCommon(w, r, s, UpdateDataInfo)
+		})
+		r.Put(credsURL, func(w http.ResponseWriter, r *http.Request) {
+			setterCommon(w, r, s, UpdateCreds)
 		})
 
 		r.Put(filesURL, func(w http.ResponseWriter, r *http.Request) {
@@ -264,7 +277,7 @@ func makeRouter(s *Server) http.Handler {
 			fid, err := strconv.Atoi(r.FormValue(f))
 			if err != nil {
 				writeResponseData(w, nil, http.StatusBadRequest, s.Logger)
-				s.Logger.Warnln(makeError(ErrConvertError, err).Error())
+				s.Logger.Warnln(makeError(ConvertError, err).Error())
 				return
 			}
 			status, err := AddFileFinish(r.Context(), s.Storage, uint(fid))
@@ -277,7 +290,7 @@ func makeRouter(s *Server) http.Handler {
 		r.Get("/api/files/preload/{id}", func(w http.ResponseWriter, r *http.Request) {
 			id, err := strconv.Atoi(chi.URLParam(r, idString))
 			if err != nil {
-				s.Logger.Warnf(makeError(ErrConvertError, idString, err).Error())
+				s.Logger.Warnf(makeError(ConvertError, idString, err).Error())
 				writeResponseData(w, nil, http.StatusBadRequest, s.Logger)
 				return
 			}
@@ -290,19 +303,19 @@ func makeRouter(s *Server) http.Handler {
 		r.Get("/api/files/load/{id}", func(w http.ResponseWriter, r *http.Request) {
 			id, err := strconv.Atoi(chi.URLParam(r, idString))
 			if err != nil {
-				s.Logger.Warnf(makeError(ErrConvertError, idString, err).Error())
+				s.Logger.Warnf(makeError(ConvertError, idString, err).Error())
 				writeResponseData(w, nil, http.StatusBadRequest, s.Logger)
 				return
 			}
 			index, err := strconv.Atoi(r.Header.Get(ind))
 			if err != nil {
-				s.Logger.Warnf(makeError(ErrConvertError, ind, err).Error())
+				s.Logger.Warnf(makeError(ConvertError, ind, err).Error())
 				writeResponseData(w, nil, http.StatusBadRequest, s.Logger)
 				return
 			}
 			uid, ok := r.Context().Value(middlewares.AuthUID).(int)
 			if !ok {
-				s.Logger.Warnf(makeError(ErrUserAuthorization, nil).Error())
+				s.Logger.Warnf(ErrUserAuthorization.Error())
 				writeResponseData(w, nil, http.StatusUnauthorized, s.Logger)
 				return
 			}
@@ -326,6 +339,9 @@ func makeRouter(s *Server) http.Handler {
 		})
 		r.Delete(dataURL, func(w http.ResponseWriter, r *http.Request) {
 			deleteCommon(w, r, s, DeleteDataInfo)
+		})
+		r.Delete(credsURL, func(w http.ResponseWriter, r *http.Request) {
+			deleteCommon(w, r, s, DeleteCredent)
 		})
 		r.Delete("/api/files/{id}", func(w http.ResponseWriter, r *http.Request) {
 			deleteCommon(w, r, s, DeleteFile)

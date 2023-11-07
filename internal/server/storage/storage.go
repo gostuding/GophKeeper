@@ -82,10 +82,13 @@ func randomString(length int) string {
 }
 
 func (s *Storage) GetKey(ctx context.Context, uid uint) ([]byte, error) {
-	usr := Users{ID: uid}
-	res := s.con.WithContext(ctx).Where(&usr).First(&usr)
+	var usr Users
+	res := s.con.WithContext(ctx).Where("id = ?", uid).First(&usr)
 	if res.Error != nil {
-		return nil, fmt.Errorf("database error: %w", res.Error)
+		return nil, fmt.Errorf("get key error: %w: %w", ErrDB, res.Error)
+	}
+	if res.RowsAffected == 0 {
+		return nil, gorm.ErrRecordNotFound
 	}
 	return []byte(usr.Key), nil
 }
@@ -138,149 +141,172 @@ func (s *Storage) Login(
 }
 
 // GetCardsList returns users cards json.
-func (s *Storage) GetCardsList(ctx context.Context, uid uint) ([]byte, error) {
-	var c []Cards
-	result := s.con.WithContext(ctx).Order(idOrder).Where(uidInQuery, uid).Find(&c)
+func (s *Storage) GetTextValues(ctx context.Context, obj any, uid uint) ([]byte, error) {
+	values := make([]SendDataInfo, 0)
+	var result *gorm.DB
+	var data []byte
+	var err error
+	switch obj.(type) {
+	case Cards:
+		var c []Cards
+		result = s.con.WithContext(ctx).Order(idOrder).Where(uidInQuery, uid).Find(&c)
+		for _, item := range c {
+			values = append(values, SendDataInfo{ID: item.ID, Label: item.Label, UpdatedAt: item.UpdatedAt})
+		}
+	case CredsInfo:
+		var c []CredsInfo
+		result = s.con.WithContext(ctx).Order(idOrder).Where(uidInQuery, uid).Find(&c)
+		for _, item := range c {
+			values = append(values, SendDataInfo{ID: item.ID, Label: item.Label, UpdatedAt: item.UpdatedAt})
+		}
+	case SendDataInfo:
+		result = s.con.WithContext(ctx).Order(idOrder).Where(uidInQuery, uid).Find(&values)
+	case Files:
+		var f []Files
+		result = s.con.WithContext(ctx).Order(idOrder).Where(uidInQuery, uid).Find(&f)
+		data, err = json.Marshal(f)
+		if err != nil {
+			return nil, makeError(ErrJSONMarshal, err)
+		}
+	default:
+		return nil, errors.New("undefined get object type")
+	}
 	if result.Error != nil {
-		return nil, makeError(ErrDatabase, result.Error)
+		return nil, fmt.Errorf("get values error: %w: %w", ErrDB, result.Error)
 	}
 	if result.RowsAffected == 0 {
 		return []byte(emptyJSON), nil
 	}
-	cards := make([]SendDataInfo, 0)
-	for _, item := range c {
-		cards = append(cards, SendDataInfo{ID: item.ID, Label: item.Label, UpdatedAt: item.UpdatedAt})
-	}
-	data, err := json.Marshal(cards)
-	if err != nil {
-		return nil, makeError(ErrJSONMarshal, err)
+	if data == nil {
+		data, err = json.Marshal(values)
+		if err != nil {
+			return nil, makeError(ErrJSONMarshal, err)
+		}
 	}
 	return data, nil
 }
 
-// GetDataInfoList returns users data info json.
-func (s *Storage) GetDataInfoList(ctx context.Context, uid uint) ([]byte, error) {
-	var c []SendDataInfo
-	result := s.con.WithContext(ctx).Order(idOrder).Where(uidInQuery, uid).Find(&c)
+// GetValue returns full info about one item.
+func (s *Storage) GetValue(ctx context.Context, obj any, id, uid uint) ([]byte, error) {
+	var value SendDataInfo
+	var result *gorm.DB
+	switch obj.(type) {
+	case Cards:
+		c := Cards{}
+		result = s.con.WithContext(ctx).Where(&Cards{UID: uid, ID: id}).First(&c)
+		value.Label = c.Label
+		value.Info = c.Value
+		value.UpdatedAt = c.UpdatedAt
+	case SendDataInfo:
+		result = s.con.WithContext(ctx).Where(&SendDataInfo{UID: uid, ID: id}).First(&value)
+	case CredsInfo:
+		c := CredsInfo{}
+		result = s.con.WithContext(ctx).Where(&CredsInfo{UID: uid, ID: id}).First(&c)
+		value.Label = c.Label
+		value.Info = c.Info
+		value.UpdatedAt = c.UpdatedAt
+	default:
+		return nil, errors.New("undefined get item type")
+	}
 	if result.Error != nil {
 		return nil, makeError(ErrDatabase, result.Error)
 	}
-	if result.RowsAffected == 0 {
-		return []byte(emptyJSON), nil
-	}
-	data, err := json.Marshal(&c)
+	data, err := json.Marshal(&value)
 	if err != nil {
-		return nil, makeError(ErrJSONMarshal, err)
+		return nil, fmt.Errorf("info convert error: %w", err)
 	}
 	return data, nil
 }
 
-// GetCard returns full info about one user's card.
-func (s *Storage) GetCard(ctx context.Context, id, uid uint) ([]byte, error) {
-	c := Cards{}
-	result := s.con.WithContext(ctx).Where(&Cards{UID: uid, ID: id}).First(&c)
+// AddTextValue adds new credential, card or datainfo object in database.
+func (s *Storage) AddTextValue(ctx context.Context, obj any, uid uint, label, value string) error {
+	var result *gorm.DB
+	switch obj.(type) {
+	case Cards:
+		result = s.con.WithContext(ctx).Create(&Cards{Label: label, Value: value, UID: uid})
+	case SendDataInfo:
+		result = s.con.WithContext(ctx).Create(&SendDataInfo{Label: label, Info: value, UID: uid})
+	case CredsInfo:
+		result = s.con.WithContext(ctx).Create(&CredsInfo{Label: label, Info: value, UID: uid})
+	default:
+		return fmt.Errorf("undefined add value type, %v", obj)
+	}
 	if result.Error != nil {
-		return nil, makeError(ErrDatabase, result.Error)
-	}
-	card := SendDataInfo{Label: c.Label, Info: c.Value, UpdatedAt: c.UpdatedAt}
-	data, err := json.Marshal(&card)
-	if err != nil {
-		return nil, fmt.Errorf("card info convert error: %w", err)
-	}
-	return data, nil
-}
-
-// GetDataInfo returns full info about one user's data info.
-func (s *Storage) GetDataInfo(ctx context.Context, id, uid uint) ([]byte, error) {
-	c := SendDataInfo{}
-	result := s.con.WithContext(ctx).Where(&SendDataInfo{UID: uid, ID: id}).First(&c)
-	if result.Error != nil {
-		return nil, makeError(ErrDatabase, result.Error)
-	}
-	data, err := json.Marshal(&c)
-	if err != nil {
-		return nil, fmt.Errorf("data info marshal error: %w", err)
-	}
-	return data, nil
-}
-
-// AddCard adds new card in database.
-func (s *Storage) AddCard(ctx context.Context, uid uint, label, value string) error {
-	card := Cards{Label: label, Value: value, UID: uid}
-	result := s.con.WithContext(ctx).Create(&card)
-	if result.Error != nil {
-		return makeError(ErrDatabase, result.Error)
+		return fmt.Errorf("add value error: %w: %w", ErrDB, result.Error)
 	}
 	return nil
 }
 
-// AddDataInfo adds new data in database.
-func (s *Storage) AddDataInfo(ctx context.Context, uid uint, label, value string) error {
-	info := SendDataInfo{Label: label, Info: value, UID: uid}
-	result := s.con.WithContext(ctx).Create(&info)
-	if result.Error != nil {
-		return makeError(ErrDatabase, result.Error)
+// DeleteValue deletes info about one user's item.
+func (s *Storage) DeleteValue(ctx context.Context, obj any) error {
+	var result *gorm.DB
+	switch x := obj.(type) {
+	case Cards, *SendDataInfo, CredsInfo:
+		result = s.con.WithContext(ctx).Delete(&obj)
+		if result.Error != nil {
+			return makeError(ErrDatabase, result.Error)
+		}
+	case Files:
+		err := s.con.Transaction(func(tx *gorm.DB) error {
+			result := tx.WithContext(ctx).Where(&FileData{UID: uint(x.UID), FID: x.ID}).Delete(&FileData{})
+			if result.Error != nil {
+				return makeError(ErrDatabase, result.Error)
+			}
+			result = tx.WithContext(ctx).Delete(&obj)
+			if result.Error != nil {
+				return makeError(ErrDatabase, result.Error)
+			}
+			err := os.RemoveAll(path.Join(s.Path, strconv.Itoa(x.UID), strconv.Itoa(int(x.ID))))
+			if err != nil {
+				return fmt.Errorf("file storage error: %w", err)
+			}
+			return nil
+		})
+		if err != nil {
+			return makeError(ErrDatabase, err)
+		}
+	default:
+		return errors.New("undefined delete object type")
 	}
 	return nil
-}
-
-func deleteCommon(ctx context.Context, con *gorm.DB, obj any) error {
-	result := con.WithContext(ctx).Delete(&obj)
-	if result.Error != nil {
-		return makeError(ErrDatabase, result.Error)
-	}
-	return nil
-}
-
-// DeleteCard deletes info about one user's card.
-func (s *Storage) DeleteCard(ctx context.Context, id, uid uint) error {
-	return deleteCommon(ctx, s.con, Cards{UID: uid, ID: id})
-}
-
-// DeleteDataInfo deletes info about one user's card.
-func (s *Storage) DeleteDataInfo(ctx context.Context, id, uid uint) error {
-	return deleteCommon(ctx, s.con, SendDataInfo{UID: uid, ID: id})
 }
 
 // UpdateCard updates user's card information.
-func (s *Storage) UpdateCard(ctx context.Context, id, uid uint, label, value string) error {
-	c := Cards{UID: uid, ID: id}
-	r := s.con.WithContext(ctx).Where(&c).First(&c)
-	if r.Error != nil {
+func (s *Storage) UpdateTextValue(ctx context.Context, obj any,
+	id, uid uint, label, value string) error {
+	var result *gorm.DB
+	var itemID uint
+	switch obj.(type) {
+	case Cards:
+		c := Cards{UID: uid, ID: id}
+		result = s.con.WithContext(ctx).Where(&c).First(&c)
+		itemID = c.ID
+	case SendDataInfo:
+		c := SendDataInfo{UID: uid, ID: id}
+		result = s.con.WithContext(ctx).Where(&c).First(&c)
+		itemID = c.ID
+	case CredsInfo:
+		c := CredsInfo{UID: uid, ID: id}
+		result = s.con.WithContext(ctx).Where(&c).First(&c)
+		itemID = c.ID
+	default:
+		return errors.New("undefinet update object type")
+	}
+	if result.Error != nil {
 		return gorm.ErrRecordNotFound
 	}
-	result := s.con.WithContext(ctx).Model(&c).Updates(Cards{Label: label, Value: value})
+	switch obj.(type) {
+	case Cards:
+		result = s.con.WithContext(ctx).Where(&Cards{ID: itemID}).Updates(Cards{Label: label, Value: value})
+	case SendDataInfo:
+		result = s.con.WithContext(ctx).Where(&SendDataInfo{ID: itemID}).Updates(SendDataInfo{Label: label, Info: value})
+	case CredsInfo:
+		result = s.con.WithContext(ctx).Where(&CredsInfo{ID: itemID}).Updates(CredsInfo{Label: label, Info: value})
+	}
 	if result.Error != nil {
 		return makeError(ErrDatabase, result.Error)
 	}
 	return nil
-}
-
-// UpdateDataInfo updates user's data information.
-func (s *Storage) UpdateDataInfo(ctx context.Context, id, uid uint, label, value string) error {
-	c := SendDataInfo{UID: uid, ID: id}
-	result := s.con.WithContext(ctx).Model(&c).Updates(SendDataInfo{Label: label, Info: value})
-	if result.Error != nil {
-		return makeError(ErrDatabase, result.Error)
-	}
-	return nil
-}
-
-// GetFilesList returns users cards json.
-func (s *Storage) GetFilesList(ctx context.Context, uid uint) ([]byte, error) {
-	var f []Files
-	result := s.con.WithContext(ctx).Order(idOrder).Where(uidInQuery, uid).Find(&f)
-	if result.Error != nil {
-		return nil, makeError(ErrDatabase, result.Error)
-	}
-	if result.RowsAffected == 0 {
-		return []byte(emptyJSON), nil
-	}
-	data, err := json.Marshal(f)
-	if err != nil {
-		return nil, makeError(ErrJSONMarshal, err)
-	}
-	return data, nil
 }
 
 // AddFile writes file info in database and returns new id for file.
@@ -332,29 +358,6 @@ func (s *Storage) AddFileFinish(
 	result := s.con.WithContext(ctx).Model(&c).Updates(Files{Loaded: true})
 	if result.Error != nil {
 		return makeError(ErrDatabase, result.Error)
-	}
-	return nil
-}
-
-// DeleteFile removes info about file from database.
-func (s *Storage) DeleteFile(ctx context.Context, id, uid uint) error {
-	err := s.con.Transaction(func(tx *gorm.DB) error {
-		result := tx.WithContext(ctx).Where(&FileData{UID: uid, FID: id}).Delete(FileData{})
-		if result.Error != nil {
-			return makeError(ErrDatabase, result.Error)
-		}
-		result = tx.WithContext(ctx).Where(&Files{UID: int(uid), ID: id}).Delete(Files{})
-		if result.Error != nil {
-			return makeError(ErrDatabase, result.Error)
-		}
-		err := os.RemoveAll(path.Join(s.Path, strconv.Itoa(int(uid)), strconv.Itoa(int(id))))
-		if err != nil {
-			return fmt.Errorf("file storage error: %w", err)
-		}
-		return nil
-	})
-	if err != nil {
-		return fmt.Errorf("transaction error: %w", err)
 	}
 	return nil
 }

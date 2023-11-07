@@ -10,6 +10,7 @@ import (
 	"os"
 	"strconv"
 
+	"github.com/gostuding/GophKeeper/internal/server/storage"
 	"github.com/gostuding/middlewares"
 	"gorm.io/gorm"
 )
@@ -33,7 +34,7 @@ func isValidateLoginPassword(body []byte) (*LoginPassword, error) {
 	var user LoginPassword
 	err := json.Unmarshal(body, &user)
 	if err != nil {
-		return nil, makeError(ErrMarshalJSON, err)
+		return nil, fmt.Errorf("user login unmarshal: %w: %w", ErrJSON, err)
 	}
 	if user.Login == "" || user.Password == "" {
 		return nil, errors.New("empty authorization values error")
@@ -45,11 +46,11 @@ func isValidateLoginPassword(body []byte) (*LoginPassword, error) {
 func createToken(key []byte, uid, time int, aesKey, ua, adr string) ([]byte, int, error) {
 	ip, _, err := net.SplitHostPort(adr)
 	if err != nil {
-		return nil, http.StatusBadRequest, makeError(ErrIPIncorrect, err)
+		return nil, http.StatusBadRequest, fmt.Errorf("incorrect ip adress: %w", err)
 	}
 	token, err := middlewares.CreateToken(key, time, uid, ua, ip)
 	if err != nil {
-		return nil, http.StatusInternalServerError, makeError(ErrCreateToken, err)
+		return nil, http.StatusInternalServerError, fmt.Errorf("create user JWT token error: %w", err)
 	}
 	token = fmt.Sprintf(`{"token": "%s", "key": "%s"}`, token, aesKey)
 	return []byte(token), http.StatusOK, nil
@@ -78,7 +79,7 @@ func GetCertificate(p string) ([]byte, error) {
 func GetUserKey(ctx context.Context, strg Storage) ([]byte, int, error) {
 	uid, ok := ctx.Value(middlewares.AuthUID).(int)
 	if !ok {
-		return nil, http.StatusUnauthorized, makeError(ErrUserAuthorization, nil)
+		return nil, http.StatusUnauthorized, ErrUserAuthorization
 	}
 	data, err := strg.GetKey(ctx, uint(uid))
 	if err != nil {
@@ -113,10 +114,10 @@ func Register(
 	aesKey, uid, err := strg.Registration(ctx, user.Login, user.Password)
 	if err != nil {
 		status := http.StatusInternalServerError
-		err = makeError(ErrGormGet, err)
+		err = makeError(GormGetError, err)
 		if strg.IsUniqueViolation(err) {
 			status = http.StatusConflict
-			err = makeError(ErrGormDublicate, user.Login)
+			err = fmt.Errorf("dublicate login error: %s", user.Login)
 		}
 		return nil, status, err
 	}
@@ -151,7 +152,7 @@ func Login(
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, http.StatusUnauthorized, fmt.Errorf("user not found. Login: '%s'", user.Login)
 		} else {
-			return nil, http.StatusInternalServerError, makeError(ErrGormGet, err)
+			return nil, http.StatusInternalServerError, makeError(GormGetError, err)
 		}
 	}
 	return createToken(key, uid, t, aesKey, ua, addr)
@@ -164,7 +165,7 @@ func Login(
 // @Param order body string true "Public key"
 // @Security ApiKeyAuth
 // @Param Authorization header string false "Токен авторизации"
-// @Router /api/cards/list [get]
+// @Router /api/cards [get]
 // @Success 200 "Список метаданных для карт пользователя"
 // @failure 400 "Ошибка шифрования"
 // @failure 401 "Пользователь не авторизован"
@@ -173,24 +174,22 @@ func GetCardsList(
 	ctx context.Context,
 	strg Storage,
 ) ([]byte, int, error) {
-	return getListCommon(ctx, strg.GetCardsList)
+	return getListCommon(ctx, storage.Cards{}, strg)
 }
 
-func addCommon(ctx context.Context, body []byte,
-	f func(context.Context, uint, string, string) error,
-) (int, error) {
+func addCommon(ctx context.Context, body []byte, obj any, strg Storage) (int, error) {
 	uid, ok := ctx.Value(middlewares.AuthUID).(int)
 	if !ok {
-		return http.StatusUnauthorized, makeError(ErrUserAuthorization, nil)
+		return http.StatusUnauthorized, ErrUserAuthorization
 	}
 	var l labelInfo
 	err := json.Unmarshal(body, &l)
 	if err != nil {
-		return http.StatusUnprocessableEntity, makeError(ErrUnmarshalJSON, err)
+		return http.StatusUnprocessableEntity, fmt.Errorf("%w:%w", ErrJSON, err)
 	}
-	err = f(ctx, uint(uid), l.Label, l.Info)
+	err = strg.AddTextValue(ctx, obj, uint(uid), l.Label, l.Info)
 	if err != nil {
-		return http.StatusInternalServerError, makeError(ErrGormGet, err)
+		return http.StatusInternalServerError, makeError(GormGetError, err)
 	}
 	return http.StatusOK, nil
 }
@@ -214,27 +213,25 @@ func AddCardInfo(
 	body []byte,
 	strg Storage,
 ) (int, error) {
-	status, err := addCommon(ctx, body, strg.AddCard)
+	status, err := addCommon(ctx, body, storage.Cards{}, strg)
 	if err != nil {
 		if strg.IsUniqueViolation(err) {
-			return http.StatusConflict, makeError(ErrGormDublicate, err)
+			return http.StatusConflict, fmt.Errorf("dublicate values error: %w", err)
 		}
 		return status, err
 	}
 	return status, nil
 }
 
-func getCommon(ctx context.Context, id uint,
-	f func(context.Context, uint, uint) ([]byte, error),
-) ([]byte, int, error) {
+func getCommon(ctx context.Context, id uint, obj any, strg Storage) ([]byte, int, error) {
 	uid, ok := ctx.Value(middlewares.AuthUID).(int)
 	if !ok {
-		return nil, http.StatusUnauthorized, makeError(ErrUserAuthorization, nil)
+		return nil, http.StatusUnauthorized, ErrUserAuthorization
 	}
-	data, err := f(ctx, id, uint(uid))
+	data, err := strg.GetValue(ctx, obj, id, uint(uid))
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, http.StatusNotFound, makeError(ErrNotFound, id)
+			return nil, http.StatusNotFound, ErrNotFound
 		}
 		return nil, http.StatusInternalServerError, makeError(InternalError, err)
 	}
@@ -258,22 +255,16 @@ func GetCard(
 	strg Storage,
 	id uint,
 ) ([]byte, int, error) {
-	return getCommon(ctx, id, strg.GetCard)
+	return getCommon(ctx, id, storage.Cards{}, strg)
 }
 
-func delCommon(ctx context.Context, id uint,
-	f func(context.Context, uint, uint) error,
-) (int, error) {
-	uid, ok := ctx.Value(middlewares.AuthUID).(int)
-	if !ok {
-		return http.StatusUnauthorized, makeError(ErrUserAuthorization, nil)
-	}
-	err := f(ctx, id, uint(uid))
+func delCommon(ctx context.Context, obj any, strg Storage) (int, error) {
+	err := strg.DeleteValue(ctx, obj)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return http.StatusNotFound, makeError(ErrNotFound, id)
+			return http.StatusNotFound, ErrNotFound
 		}
-		return http.StatusInternalServerError, makeError(InternalError, err)
+		return http.StatusInternalServerError, makeError(GormGetError, err)
 	}
 	return http.StatusOK, nil
 }
@@ -294,23 +285,26 @@ func DeleteCard(
 	strg Storage,
 	id int,
 ) (int, error) {
-	return delCommon(ctx, uint(id), strg.DeleteCard)
-}
-
-func updateCommon(ctx context.Context, body []byte, id uint,
-	f func(context.Context, uint, uint, string, string) error) (int, error) {
 	uid, ok := ctx.Value(middlewares.AuthUID).(int)
 	if !ok {
-		return http.StatusUnauthorized, makeError(ErrUserAuthorization, nil)
+		return http.StatusUnauthorized, ErrUserAuthorization
+	}
+	return delCommon(ctx, storage.Cards{ID: uint(id), UID: uint(uid)}, strg)
+}
+
+func updateCommon(ctx context.Context, body []byte, id uint, obj any, strg Storage) (int, error) {
+	uid, ok := ctx.Value(middlewares.AuthUID).(int)
+	if !ok {
+		return http.StatusUnauthorized, ErrUserAuthorization
 	}
 	var l labelInfo
 	err := json.Unmarshal(body, &l)
 	if err != nil {
-		return http.StatusUnprocessableEntity, makeError(ErrUnmarshalJSON, err)
+		return http.StatusUnprocessableEntity, fmt.Errorf("%w:%w", ErrJSON, err)
 	}
-	err = f(ctx, id, uint(uid), l.Label, l.Info)
+	err = strg.UpdateTextValue(ctx, obj, id, uint(uid), l.Label, l.Info)
 	if err != nil {
-		return http.StatusInternalServerError, makeError(InternalError)
+		return http.StatusInternalServerError, makeError(GormGetError, err)
 	}
 	return http.StatusOK, nil
 }
@@ -334,21 +328,18 @@ func UpdateCardInfo(
 	strg Storage,
 	id uint,
 ) (int, error) {
-	return updateCommon(ctx, body, id, strg.UpdateCard)
+	return updateCommon(ctx, body, id, storage.Cards{}, strg)
 }
 
 // GetListCommon is internal function.
-func getListCommon(
-	ctx context.Context,
-	f func(c context.Context, id uint) ([]byte, error),
-) ([]byte, int, error) {
+func getListCommon(ctx context.Context, obj any, strg Storage) ([]byte, int, error) {
 	uid, ok := ctx.Value(middlewares.AuthUID).(int)
 	if !ok {
-		return nil, http.StatusUnauthorized, makeError(ErrUserAuthorization, nil)
+		return nil, http.StatusUnauthorized, ErrUserAuthorization
 	}
-	data, err := f(ctx, uint(uid))
+	data, err := strg.GetTextValues(ctx, obj, uint(uid))
 	if err != nil {
-		return nil, http.StatusInternalServerError, makeError(InternalError)
+		return nil, http.StatusInternalServerError, makeError(GormGetError, err)
 	}
 	return data, http.StatusOK, nil
 }
@@ -360,7 +351,7 @@ func getListCommon(
 // @Param order body string true "Public key"
 // @Security ApiKeyAuth
 // @Param Authorization header string false "Токен авторизации"
-// @Router /api/cards/list [post]
+// @Router /api/cards [post]
 // @Success 200 "Список файлов пользователя"
 // @failure 400 "Ошибка шифрования"
 // @failure 401 "Пользователь не авторизован"
@@ -369,7 +360,7 @@ func GetFilesList(
 	ctx context.Context,
 	strg Storage,
 ) ([]byte, int, error) {
-	return getListCommon(ctx, strg.GetFilesList)
+	return getListCommon(ctx, storage.Files{}, strg)
 }
 
 // AddFile returns new id for file.
@@ -390,7 +381,7 @@ func AddFile(
 ) ([]byte, int, error) {
 	uid, ok := ctx.Value(middlewares.AuthUID).(int)
 	if !ok {
-		return nil, http.StatusUnauthorized, makeError(ErrUserAuthorization, nil)
+		return nil, http.StatusUnauthorized, ErrUserAuthorization
 	}
 	data, err := strg.AddFile(ctx, uint(uid), body)
 	if err != nil {
@@ -418,23 +409,23 @@ func AddFileData(
 ) (int, error) {
 	uid, ok := ctx.Value(middlewares.AuthUID).(int)
 	if !ok {
-		return http.StatusUnauthorized, makeError(ErrUserAuthorization, nil)
+		return http.StatusUnauthorized, ErrUserAuthorization
 	}
 	index, err := strconv.Atoi(r.Header.Get(ind))
 	if err != nil {
-		return http.StatusBadRequest, makeError(ErrConvertError, err)
+		return http.StatusBadRequest, makeError(ConvertError, err)
 	}
 	pos, err := strconv.Atoi(r.Header.Get("pos"))
 	if err != nil {
-		return http.StatusBadRequest, makeError(ErrConvertError, err)
+		return http.StatusBadRequest, makeError(ConvertError, err)
 	}
 	fid, err := strconv.Atoi(r.Header.Get("fid"))
 	if err != nil {
-		return http.StatusBadRequest, makeError(ErrConvertError, err)
+		return http.StatusBadRequest, makeError(ConvertError, err)
 	}
 	size, err := strconv.Atoi(r.Header.Get("size"))
 	if err != nil {
-		return http.StatusBadRequest, makeError(ErrConvertError, err)
+		return http.StatusBadRequest, makeError(ConvertError, err)
 	}
 	err = strg.AddFileData(ctx, uint(uid), uint(fid), index, pos, size, body)
 	if err != nil {
@@ -462,14 +453,14 @@ func AddFileFinish(
 ) (int, error) {
 	uid, ok := ctx.Value(middlewares.AuthUID).(int)
 	if !ok {
-		return http.StatusUnauthorized, makeError(ErrUserAuthorization, nil)
+		return http.StatusUnauthorized, ErrUserAuthorization
 	}
 	err := strg.AddFileFinish(ctx, fid, uid)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return http.StatusNotFound, makeError(ErrNotFound, fid)
+			return http.StatusNotFound, ErrNotFound
 		}
-		return http.StatusInternalServerError, makeError(InternalError)
+		return http.StatusInternalServerError, makeError(InternalError, err)
 	}
 	return http.StatusOK, nil
 }
@@ -491,16 +482,9 @@ func DeleteFile(
 ) (int, error) {
 	uid, ok := ctx.Value(middlewares.AuthUID).(int)
 	if !ok {
-		return http.StatusUnauthorized, makeError(ErrUserAuthorization, nil)
+		return http.StatusUnauthorized, ErrUserAuthorization
 	}
-	err := strg.DeleteFile(ctx, uint(id), uint(uid))
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return http.StatusNotFound, makeError(ErrNotFound, id)
-		}
-		return http.StatusInternalServerError, makeError(InternalError, err)
-	}
-	return http.StatusOK, nil
+	return delCommon(ctx, storage.Files{ID: uint(id), UID: uid}, strg)
 }
 
 // GetPreloadFileInfo returns information about one file from database.
@@ -521,12 +505,12 @@ func GetPreloadFileInfo(
 ) ([]byte, int, error) {
 	uid, ok := ctx.Value(middlewares.AuthUID).(int)
 	if !ok {
-		return nil, http.StatusUnauthorized, makeError(ErrUserAuthorization, nil)
+		return nil, http.StatusUnauthorized, ErrUserAuthorization
 	}
 	data, err := strg.GetPreloadFileInfo(ctx, id, uid)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, http.StatusNotFound, makeError(ErrNotFound, id)
+			return nil, http.StatusNotFound, ErrNotFound
 		}
 		return nil, http.StatusInternalServerError, makeError(InternalError, err)
 	}
@@ -540,7 +524,7 @@ func GetPreloadFileInfo(
 // @Param order body string true "Public key"
 // @Security ApiKeyAuth
 // @Param Authorization header string false "Токен авторизации"
-// @Router /api/data/list [post]
+// @Router /api/data [post]
 // @Success 200 "Список метаданных"
 // @failure 400 "Ошибка шифрования"
 // @failure 401 "Пользователь не авторизован"
@@ -549,18 +533,17 @@ func GetDataInfoList(
 	ctx context.Context,
 	strg Storage,
 ) ([]byte, int, error) {
-	return getListCommon(ctx, strg.GetDataInfoList)
+	return getListCommon(ctx, storage.SendDataInfo{}, strg)
 }
 
 // AddDataInfo adds new data in database handle.
 // @Tags Данные
-// @Summary Добавление информации. Шифрование открытым ключём сервера.
+// @Summary Добавление информации
 // @Accept json
 // @Security ApiKeyAuth
 // @Param Authorization header string false "Токен авторизации"
 // @Router /api/data/add [post]
 // @Success 200 "Информация о карточке успешно сохранена"
-// @failure 400 "Ошибка при расшифровке тела запроса"
 // @failure 401 "Пользователь не авторизован"
 // @failure 422 "Ошибка при конвертации json"
 // @failure 409 "Дублирование метаданных карточки"
@@ -570,7 +553,7 @@ func AddDataInfo(
 	body []byte,
 	strg Storage,
 ) (int, error) {
-	return addCommon(ctx, body, strg.AddDataInfo)
+	return addCommon(ctx, body, storage.SendDataInfo{}, strg)
 }
 
 // GetDataInfo returns information about one data info.
@@ -581,7 +564,6 @@ func AddDataInfo(
 // @Param Authorization header string false "Токен авторизации"
 // @Router /api/data/{id} [post]
 // @Success 200 "Инфорация об одной карте пользователя"
-// @failure 400 "Ошибка шифрования"
 // @failure 401 "Пользователь не авторизован"
 // @failure 404 "Карта не найдена"
 // @failure 500 "Внутренняя ошибка сервиса.".
@@ -590,7 +572,7 @@ func GetDataInfo(
 	strg Storage,
 	id uint,
 ) ([]byte, int, error) {
-	return getCommon(ctx, id, strg.GetDataInfo)
+	return getCommon(ctx, id, storage.SendDataInfo{}, strg)
 }
 
 // DeleteDataInfo deletes information about one data info from database.
@@ -600,7 +582,6 @@ func GetDataInfo(
 // @Param Authorization header string false "Токен авторизации"
 // @Router /api/data/{id} [delete]
 // @Success 200 "Инфорация удалена"
-// @failure 400 "Ошибка шифрования"
 // @failure 401 "Пользователь не авторизован"
 // @failure 404 "Карта не найдена"
 // @failure 500 "Внутренняя ошибка сервиса.".
@@ -609,7 +590,11 @@ func DeleteDataInfo(
 	strg Storage,
 	id int,
 ) (int, error) {
-	return delCommon(ctx, uint(id), strg.DeleteDataInfo)
+	uid, ok := ctx.Value(middlewares.AuthUID).(int)
+	if !ok {
+		return http.StatusUnauthorized, ErrUserAuthorization
+	}
+	return delCommon(ctx, storage.SendDataInfo{ID: uint(id), UID: uint(uid)}, strg)
 }
 
 // UpdateDataInfo updates data's info in database.
@@ -619,8 +604,7 @@ func DeleteDataInfo(
 // @Security ApiKeyAuth
 // @Param Authorization header string false "Токен авторизации"
 // @Router /api/data/edit [put]
-// @Success 200 "Информация о карточке успешно обновлена"
-// @failure 400 "Ошибка при расшифровке тела запроса"
+// @Success 200 "Информация успешно обновлена"
 // @failure 401 "Пользователь не авторизован"
 // @failure 422 "Ошибка при конвертации json"
 // @failure 500 "Внутренняя ошибка сервиса.".
@@ -630,5 +614,101 @@ func UpdateDataInfo(
 	strg Storage,
 	id uint,
 ) (int, error) {
-	return updateCommon(ctx, body, id, strg.UpdateDataInfo)
+	return updateCommon(ctx, body, id, storage.SendDataInfo{}, strg)
+}
+
+// AddCreds adds new credential in database handle.
+// @Tags Логин и пароль
+// @Summary Добавление логина и пароля
+// @Accept json
+// @Security ApiKeyAuth
+// @Param Authorization header string false "Токен авторизации"
+// @Router /api/cards/add [post]
+// @Success 200 "Информация успешно сохранена"
+// @failure 401 "Пользователь не авторизован"
+// @failure 422 "Ошибка при конвертации json"
+// @failure 500 "Внутренняя ошибка сервиса.".
+func AddCreds(
+	ctx context.Context,
+	body []byte,
+	strg Storage,
+) (int, error) {
+	return addCommon(ctx, body, storage.CredsInfo{}, strg)
+}
+
+// GetCredsList returns list of creds lables.
+// @Tags Логин и пароль
+// @Summary Запрос списка логинов и паролей пользователя
+// @Accept json
+// @Security ApiKeyAuth
+// @Param Authorization header string false "Токен авторизации"
+// @Router /api/creds [post]
+// @Success 200 "Список метаданных"
+// @failure 401 "Пользователь не авторизован"
+// @failure 500 "Внутренняя ошибка сервиса.".
+func GetCredsList(
+	ctx context.Context,
+	strg Storage,
+) ([]byte, int, error) {
+	return getListCommon(ctx, storage.CredsInfo{}, strg)
+}
+
+// UpdateCreds updates credent's info in database.
+// @Tags Логин и пароль
+// @Summary Редактирование информации.
+// @Accept json
+// @Security ApiKeyAuth
+// @Param Authorization header string false "Токен авторизации"
+// @Router /api/creds/edit [put]
+// @Success 200 "Информация успешно обновлена"
+// @failure 401 "Пользователь не авторизован"
+// @failure 422 "Ошибка при конвертации json"
+// @failure 500 "Внутренняя ошибка сервиса".
+func UpdateCreds(
+	ctx context.Context,
+	body []byte,
+	strg Storage,
+	id uint,
+) (int, error) {
+	return updateCommon(ctx, body, id, storage.CredsInfo{}, strg)
+}
+
+// GetCredInfo returns information about one credent info.
+// @Tags Логин и пароль
+// @Summary Запрос информации.
+// @Security ApiKeyAuth
+// @Param Authorization header string false "Токен авторизации"
+// @Router /api/creds/{id} [post]
+// @Success 200 "Инфорация"
+// @failure 401 "Пользователь не авторизован"
+// @failure 404 "Не найдено"
+// @failure 500 "Внутренняя ошибка сервиса.".
+func GetCredInfo(
+	ctx context.Context,
+	strg Storage,
+	id uint,
+) ([]byte, int, error) {
+	return getCommon(ctx, id, storage.CredsInfo{}, strg)
+}
+
+// DeleteCredent deletes information about one credent from database.
+// @Tags Логин и пароль
+// @Summary Удаление информации.
+// @Security ApiKeyAuth
+// @Param Authorization header string false "Токен авторизации"
+// @Router /api/creds/{id} [delete]
+// @Success 200 "Инфорация удалена"
+// @failure 401 "Пользователь не авторизован"
+// @failure 404 "Не найдено"
+// @failure 500 "Внутренняя ошибка сервиса.".
+func DeleteCredent(
+	ctx context.Context,
+	strg Storage,
+	id int,
+) (int, error) {
+	uid, ok := ctx.Value(middlewares.AuthUID).(int)
+	if !ok {
+		return http.StatusUnauthorized, ErrUserAuthorization
+	}
+	return delCommon(ctx, storage.CredsInfo{ID: uint(id), UID: uint(uid)}, strg)
 }
