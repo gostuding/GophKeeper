@@ -29,6 +29,7 @@ const (
 
 var (
 	ErrConnection = errors.New("connection error")
+	ErrItemType   = errors.New("unexpected object type")
 )
 
 type (
@@ -39,61 +40,6 @@ type (
 		JWTToken     string       // authorization token
 		Key          []byte       // user pasphrace to encrypt and decrypt stored data
 		serverAESKey []byte       // server's key to encrypt or decrypt user pashprace
-	}
-	// LoginPwd internal struct.
-	loginPwd struct {
-		Login string `json:"login"`
-		Pwd   string `json:"password"`
-	}
-	// TokenKey internal struct.
-	tokenKey struct {
-		Token string `json:"token"`
-		Key   string `json:"key"`
-	}
-	// DataInfo is struct for private data information.
-	DataInfo struct {
-		Updated time.Time `json:"updated"`
-		Label   string    `json:"label"`
-		Info    string    `json:"info,omitempty"`
-		ID      int       `json:"id,omitempty"`
-	}
-	// Credent is struct for login and password information.
-	Credent struct {
-		Updated time.Time `json:"updated"`
-		Label   string    `json:"label"`
-		Login   string    `json:"login"`
-		Pwd     string    `json:"pwd"`
-		ID      int       `json:"id,omitempty"`
-	}
-	// CardInfo is struct for card information.
-	CardInfo struct {
-		Updated  time.Time `json:"-"`                  // update time
-		Label    string    `json:"label,omitempty"`    // meta data for card
-		Number   string    `json:"number,omitempty"`   // card's number
-		User     string    `json:"user,omitempty"`     // card's holder
-		Duration string    `json:"duration,omitempty"` // card's duration
-		Csv      string    `json:"csv,omitempty"`      // card's csv code
-		ID       int       `json:"id"`                 // card's id in server
-	}
-	// Files is struct for user's files.
-	Files struct {
-		CreatedAt time.Time `json:"created"` // created date
-		Name      string    `json:"name"`    // file name
-		Size      int64     `json:"size"`    // file size in bytes
-		ID        uint      `json:"id"`      // file id in database
-		Loaded    bool      `json:"loaded"`  // flag that file load finished
-	}
-	// FileSend is struct for send file's data to server.
-	FileSend struct {
-		Data  []byte // file content
-		Pos   int64  // position of content
-		Index int    // block index
-		Size  int    // block size
-	}
-	// FilesPreloadedData is internal struct.
-	filesPreloadedData struct {
-		Name     string `json:"name"`
-		MaxIndex int    `json:"maxindex"`
 	}
 )
 
@@ -212,6 +158,7 @@ func (ns *NetStorage) GetAESKey(key, url string) error {
 	return nil
 }
 
+// GetItemsListCommon requests lists of texts values from server.
 func (ns *NetStorage) GetItemsListCommon(url, name string) (string, error) {
 	res, err := ns.doRequest(nil, url, http.MethodGet)
 	if err != nil {
@@ -234,46 +181,55 @@ func (ns *NetStorage) GetItemsListCommon(url, name string) (string, error) {
 	return datas, nil
 }
 
-func getItemCommon(body io.ReadCloser, key []byte) ([]byte, *DataInfo, error) {
-	data, err := io.ReadAll(body)
-	if err != nil {
-		return nil, nil, makeError(ErrResponse, err)
-	}
-	var l DataInfo
-	err = json.Unmarshal(data, &l)
-	if err != nil {
-		return nil, nil, makeError(ErrJSONUnmarshal, err)
-	}
-	msg, err := hex.DecodeString(l.Info)
-	if err != nil {
-		return nil, &l, makeError(ErrDecode, err)
-	}
-	info, err := decryptAES(key, msg)
-	if err != nil {
-		return nil, &l, makeError(ErrDecryptMessage, err)
-	}
-	return info, &l, nil
-}
-
-// GetCard requests card info.
-func (ns *NetStorage) GetCard(url string) (*CardInfo, error) {
+// GetTextValue requests text values from server.
+func (ns *NetStorage) GetTextValue(url string, obj any) (TextValuer, error) {
 	res, err := ns.doRequest(nil, url, http.MethodGet)
 	if err != nil {
 		return nil, err
 	}
 	defer res.Body.Close() //nolint:errcheck //<-senselessly
-	info, l, err := getItemCommon(res.Body, ns.Key)
+	data, err := io.ReadAll(res.Body)
 	if err != nil {
-		return nil, err
+		return nil, makeError(ErrResponse, err)
 	}
-	var card CardInfo
-	err = json.Unmarshal(info, &card)
+	var l DataInfo
+	err = json.Unmarshal(data, &l)
 	if err != nil {
-		return nil, makeError(ErrJSONUnmarshal, err, string(info))
+		return nil, makeError(ErrJSONUnmarshal, err)
 	}
-	card.Updated = l.Updated
-	card.Label = l.Label
-	return &card, nil
+	msg, err := hex.DecodeString(l.Info)
+	if err != nil {
+		return nil, makeError(ErrDecode, err)
+	}
+	info, err := decryptAES(ns.Key, msg)
+	if err != nil {
+		return nil, makeError(ErrDecryptMessage, err)
+	}
+	switch obj.(type) {
+	case *CardInfo:
+		var card CardInfo
+		err = json.Unmarshal(info, &card)
+		if err != nil {
+			return nil, makeError(ErrJSONUnmarshal, err, string(info))
+		}
+		card.Updated = l.Updated
+		card.Label = l.Label
+		return &card, nil
+	case *DataInfo:
+		l.Info = string(info)
+		return &l, nil
+	case *Credent:
+		var c Credent
+		err = json.Unmarshal(info, &c)
+		if err != nil {
+			return nil, makeError(ErrJSONUnmarshal, err)
+		}
+		c.Label = l.Label
+		c.Updated = l.Updated
+		return &c, nil
+	default:
+		return nil, ErrItemType
+	}
 }
 
 // addUpdateCard common in add and update card functions.
@@ -335,6 +291,15 @@ func (ns *NetStorage) AddDataInfo(url string, item *DataInfo) error {
 	return ns.addUpdateCommon(url, http.MethodPost, data)
 }
 
+// AddCredent adds one cred info to server.
+func (ns *NetStorage) AddCredent(url string, crd *Credent) error {
+	data, err := encryptCommon(ns.Key, crd.Label, crd)
+	if err != nil {
+		return fmt.Errorf("encrtypt data error: %w", err)
+	}
+	return ns.addUpdateCommon(url, http.MethodPost, data)
+}
+
 // UpdateDataInfo adds one private data info in server.
 func (ns *NetStorage) UpdateDataInfo(url string, item *DataInfo) error {
 	b, err := EncryptAES(ns.Key, []byte(item.Info))
@@ -347,51 +312,6 @@ func (ns *NetStorage) UpdateDataInfo(url string, item *DataInfo) error {
 		return makeError(ErrJSONMarshal, err)
 	}
 	return ns.addUpdateCommon(url, http.MethodPut, data)
-}
-
-// GetDataInfo requests data info.
-func (ns *NetStorage) GetDataInfo(url string) (*DataInfo, error) {
-	res, err := ns.doRequest(nil, url, http.MethodGet)
-	if err != nil {
-		return nil, err
-	}
-	defer res.Body.Close() //nolint:errcheck //<-senselessly
-	info, l, err := getItemCommon(res.Body, ns.Key)
-	if err != nil {
-		return nil, err
-	}
-	l.Info = string(info)
-	return l, nil
-}
-
-// AddCredent adds one cred info to server.
-func (ns *NetStorage) AddCredent(url string, crd *Credent) error {
-	data, err := encryptCommon(ns.Key, crd.Label, crd)
-	if err != nil {
-		return fmt.Errorf("encrtypt data error: %w", err)
-	}
-	return ns.addUpdateCommon(url, http.MethodPost, data)
-}
-
-// GetCredent requests cred info.
-func (ns *NetStorage) GetCredent(url string) (*Credent, error) {
-	res, err := ns.doRequest(nil, url, http.MethodGet)
-	if err != nil {
-		return nil, err
-	}
-	defer res.Body.Close() //nolint:errcheck //<-senselessly
-	info, l, err := getItemCommon(res.Body, ns.Key)
-	if err != nil {
-		return nil, err
-	}
-	var c Credent
-	err = json.Unmarshal(info, &c)
-	if err != nil {
-		return nil, makeError(ErrJSONUnmarshal, err)
-	}
-	c.Label = l.Label
-	c.Updated = l.Updated
-	return &c, nil
 }
 
 // UpdateCredent edits one credent info at server.

@@ -22,7 +22,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 	"testing"
 	"time"
@@ -65,8 +64,10 @@ func TestGetPasswd(t *testing.T) {
 	// capture and test the output.
 	for _, masked := range []bool{true, false} {
 		for _, d := range ds {
-			pipeBytesToStdin(d.input)
-
+			_, err := pipeBytesToStdin(d.input)
+			if err != nil {
+				t.Errorf("unexpected convert error: %v", err)
+			}
 			r, w, err := os.Pipe()
 			if err != nil {
 				t.Fatal(err.Error())
@@ -74,7 +75,7 @@ func TestGetPasswd(t *testing.T) {
 
 			result, err := getPasswd("", masked, os.Stdin, w)
 			if err != nil {
-				t.Errorf("Error getting password: %s", err.Error())
+				t.Errorf("error getting password: %s", err.Error())
 			}
 			leftOnBuffer := flushStdin()
 
@@ -82,8 +83,10 @@ func TestGetPasswd(t *testing.T) {
 			// deletes, overwrites and deletes again.  As a result, we need to
 			// remove those from the pipe afterwards to mimic the console's
 			// interpretation of those bytes.
-			w.Close()
-			output, err := ioutil.ReadAll(r)
+			if err = w.Close(); err != nil {
+				t.Errorf("unexpected error: %v", err)
+			}
+			output, err := io.ReadAll(r)
 			if err != nil {
 				t.Fatal(err.Error())
 			}
@@ -94,15 +97,17 @@ func TestGetPasswd(t *testing.T) {
 				expectedOutput = []byte("")
 			}
 			if !bytes.Equal(expectedOutput, output) {
-				t.Errorf("Expected output to equal %v (%q) but got %v (%q) instead when masked=%v. %s", expectedOutput, string(expectedOutput), output, string(output), masked, d.reason)
+				t.Errorf("expected output to equal %v (%q) but got %v (%q) instead when masked=%v. %s",
+					expectedOutput, string(expectedOutput), output, string(output), masked, d.reason)
 			}
 
 			if string(result) != d.password {
-				t.Errorf("Expected %q but got %q instead when masked=%v. %s", d.password, result, masked, d.reason)
+				t.Errorf("expected %q but got %q instead when masked=%v. %s", d.password, result, masked, d.reason)
 			}
 
 			if leftOnBuffer != d.byesLeft {
-				t.Errorf("Expected %v bytes left on buffer but instead got %v when masked=%v. %s", d.byesLeft, leftOnBuffer, masked, d.reason)
+				t.Errorf("expected %v bytes left on buffer but instead got %v when masked=%v. %s",
+					d.byesLeft, leftOnBuffer, masked, d.reason)
 			}
 		}
 	}
@@ -125,15 +130,15 @@ func TestPipe(t *testing.T) {
 	for _, d := range ds {
 		_, err := pipeToStdin(d.input)
 		if err != nil {
-			t.Log("Error writing input to stdin:", err)
+			t.Log("error writing input to stdin:", err)
 			t.FailNow()
 		}
 		pass, err := GetPasswd()
 		if string(pass) != d.password {
-			t.Errorf("Expected %q but got %q instead.", d.password, string(pass))
+			t.Errorf("expected %q but got %q instead.", d.password, string(pass))
 		}
-		if err != d.expError {
-			t.Errorf("Expected %v but got %q instead.", d.expError, err)
+		if !errors.Is(err, d.expError) {
+			t.Errorf("expected %v but got %q instead.", d.expError, err)
 		}
 	}
 }
@@ -152,9 +157,7 @@ func flushStdin() int {
 			}
 			ch <- b
 		}
-
 	}(ch)
-
 	numBytes := 0
 	for {
 		select {
@@ -175,29 +178,32 @@ func flushStdin() int {
 func pipeToStdin(s string) (int, error) {
 	pipeReader, pipeWriter, err := os.Pipe()
 	if err != nil {
-		fmt.Println("Error getting os pipes:", err)
+		fmt.Println("error getting os pipes:", err)
 		os.Exit(1)
 	}
-	os.Stdin = pipeReader
+	defer pipeWriter.Close() //nolint:errcheck //<-
+	os.Stdin = pipeReader    //nolint:reassign //<-
 	w, err := pipeWriter.WriteString(s)
-	pipeWriter.Close()
-	return w, err
+	if err != nil {
+		return w, fmt.Errorf("write string error: %w", err)
+	}
+	return w, nil
 }
 
 func pipeBytesToStdin(b []byte) (int, error) {
 	return pipeToStdin(string(b))
 }
 
-// TestGetPasswd_Err tests errors are properly handled from getch()
+// TestGetPasswd_Err tests errors are properly handled from getch().
 func TestGetPasswd_Err(t *testing.T) {
 	var inBuffer *bytes.Buffer
 	getch = func(io.Reader) (byte, error) {
 		b, err := inBuffer.ReadByte()
 		if err != nil {
-			return 13, err
+			return 13, fmt.Errorf("read byte error: %w", err)
 		}
 		if b == 'z' {
-			return 'z', fmt.Errorf("Forced error; byte returned should not be considered accurate.")
+			return 'z', fmt.Errorf("forced error; byte returned should not be considered accurate.")
 		}
 		return b, nil
 	}
@@ -207,10 +213,10 @@ func TestGetPasswd_Err(t *testing.T) {
 		inBuffer = bytes.NewBufferString(input)
 		p, err := GetPasswdMasked()
 		if string(p) != expectedPassword {
-			t.Errorf("Expected %q but got %q instead.", expectedPassword, p)
+			t.Errorf("expected %q but got %q instead.", expectedPassword, p)
 		}
 		if err == nil {
-			t.Errorf("Expected error to be returned.")
+			t.Errorf("expected error to be returned.")
 		}
 	}
 }
@@ -237,12 +243,12 @@ func TestMaxPasswordLength(t *testing.T) {
 	for _, d := range ds {
 		_, e := pipeBytesToStdin(d.input)
 		if e != nil {
-			t.Errorf("Expected error %v", e)
+			t.Errorf("expected error %v", e)
 			return
 		}
 		_, err := GetPasswd()
 		if !errors.Is(err, d.expectedErr) {
-			t.Errorf("Expected error to be %v; isntead got %v from %v", d.expectedErr, err, d.inputDesc)
+			t.Errorf("expected error to be %v; isntead got %v from %v", d.expectedErr, err, d.inputDesc)
 		}
 	}
 }

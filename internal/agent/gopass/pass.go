@@ -32,12 +32,18 @@ var defaultGetCh = func(r io.Reader) (byte, error) {
 	buf := make([]byte, 1)
 	if n, err := r.Read(buf); n == 0 || err != nil {
 		if err != nil {
-			return 0, err
+			return 0, fmt.Errorf("read error: %w", err)
 		}
 		return 0, io.EOF
 	}
 	return buf[0], nil
 }
+
+const (
+	b, d = byte(127), byte(8)
+	s, i = byte(13), byte(10)
+	intr = byte(3)
+)
 
 var (
 	maxLength            = 512
@@ -65,7 +71,7 @@ func getPasswd(prompt string, masked bool, r FdReader, w io.Writer) ([]byte, err
 			return pass, err
 		} else {
 			defer func() {
-				restore(r.Fd(), oldState)
+				restore(r.Fd(), oldState) //nolint:all //<-sensessly
 				fmt.Fprintln(w)
 			}()
 		}
@@ -79,23 +85,30 @@ func getPasswd(prompt string, masked bool, r FdReader, w io.Writer) ([]byte, err
 	// errors that might flood the console with nil or -1 bytes infinitely are
 	// capped.
 	var counter int
+
+loop:
 	for counter = 0; counter <= maxLength; counter++ {
-		if v, e := getch(r); e != nil {
+		v, e := getch(r)
+		if e != nil {
 			err = e
 			break
-		} else if v == 127 || v == 8 {
+		}
+		switch v {
+		case b, d:
 			if l := len(pass); l > 0 {
 				pass = pass[:l-1]
 				fmt.Fprint(w, string(bs))
 			}
-		} else if v == 13 || v == 10 {
-			break
-		} else if v == 3 {
+		case s, i:
+			break loop
+		case intr:
 			err = ErrInterrupted
-			break
-		} else if v != 0 {
-			pass = append(pass, v)
-			fmt.Fprint(w, string(mask))
+			break loop
+		default:
+			if v != 0 {
+				pass = append(pass, v)
+				fmt.Fprint(w, string(mask))
+			}
 		}
 	}
 

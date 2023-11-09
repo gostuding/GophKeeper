@@ -54,30 +54,4 @@ func TestAgent_DoCommand(t *testing.T) {
 			t.Errorf("inexpected error: %v", err)
 		}
 	})
-	// type fields struct {
-	// 	RStorage       *storage.NetStorage
-	// 	CacheStorage   *storage.Cache
-	// 	Config         *config.Config
-	// 	currentCommand string
-	// }
-	// tests := []struct {
-	// 	name    string
-	// 	fields  fields
-	// 	wantErr bool
-	// }{
-	// 	// TODO: Add test cases.
-	// }
-	// for _, tt := range tests {
-	// 	t.Run(tt.name, func(t *testing.T) {
-	// 		a := &Agent{
-	// 			RStorage:       tt.fields.RStorage,
-	// 			CacheStorage:   tt.fields.CacheStorage,
-	// 			Config:         tt.fields.Config,
-	// 			currentCommand: tt.fields.currentCommand,
-	// 		}
-	// 		if err := a.DoCommand(); (err != nil) != tt.wantErr {
-	// 			t.Errorf("Agent.DoCommand() error = %v, wantErr %v", err, tt.wantErr)
-	// 		}
-	// 	})
-	// }
 }

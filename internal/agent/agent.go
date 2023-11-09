@@ -3,7 +3,6 @@ package agent
 import (
 	"bufio"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/url"
@@ -187,6 +186,35 @@ func (a *Agent) DoCommand() error {
 		return a.addSwitcher()
 	case "cards_edit", "data_edit", "creds_edit":
 		return a.editSwitcher()
+	case "local":
+		values, err := a.LocalStorage.Values()
+		if err != nil {
+			return fmt.Errorf("local storage values error: %w", err)
+		}
+		for index, item := range values {
+			fmt.Printf("%d. %s\t%s\n", index+1, item.Cmd, item.Value)
+		}
+	case "local_clear":
+		if err := a.LocalStorage.Clear(); err != nil {
+			return fmt.Errorf("clear local storage error: %w", err)
+		}
+	case "local_sync":
+		values, err := a.LocalStorage.Lock()
+		if err != nil {
+			return fmt.Errorf("lock local storage error: %w", err)
+		}
+		errValues := make([]*storage.Command, 0)
+		for _, item := range values {
+			a.Config.Command = item.Cmd
+			a.Config.Arg = item.Value
+			if err := a.DoCommand(); err != nil {
+				fmt.Printf("cmd '%s %s' error: %v", item.Cmd, item.Value, err)
+				errValues = append(errValues, item)
+			}
+		}
+		if err = a.LocalStorage.Unlock(errValues); err != nil {
+			return fmt.Errorf("unlock storage error: %w", err)
+		}
 	default:
 		return ErrUndefinedTarget
 	}
@@ -197,7 +225,7 @@ func (a *Agent) DoCommand() error {
 func (a *Agent) registration() error {
 	var l, p, r string
 	fmt.Println("Регистрация пользователя на сервере.")
-	if err := scanStdin("Введите логин: ", &l); err != nil {
+	if err := scanStdin("Введите логин пользователя: ", &l); err != nil {
 		return err
 	}
 	fmt.Print("Введите пароль: ")
@@ -262,7 +290,7 @@ func (a *Agent) login() error {
 	}
 	a.Config.Token = token
 	if a.Config.Key == "" {
-		if err := scanStdin("Введите ключ шифрования Ваших приватных данных: ", &a.Config.Key); err != nil {
+		if err := scanStdin("Введите ключ шифрования приватных данных: ", &a.Config.Key); err != nil {
 			return err
 		}
 		key, err := storage.EncryptAES(a.RStorage.ServerAESKey(), []byte(a.Config.Key))
@@ -282,7 +310,7 @@ func (a *Agent) isSaveInLocal(err error) (bool, error) {
 	if err == nil {
 		return false, nil
 	}
-	if errors.Is(err, storage.ErrConnection) {
+	if !a.LocalStorage.IsLocked() && errors.Is(err, storage.ErrConnection) {
 		r := yes
 		if e := scanStdin("Сервер недоступен, сохранить команду локально? (Yes/no)", &r); e != nil {
 			return false, e
@@ -291,162 +319,16 @@ func (a *Agent) isSaveInLocal(err error) (bool, error) {
 			return true, nil
 		}
 	}
-	return false, fmt.Errorf("conncetion error: %w", err)
+	return false, fmt.Errorf("conection error: %w", err)
 }
-
-// saveInLocal saves value and command in local storage.
-func (a *Agent) saveInLocal(val any) error {
-	data, err := json.Marshal(&val)
-	if err != nil {
-		return fmt.Errorf("marshal value error: %w", err)
-	}
-	err = a.LocalStorage.Add(&storage.Command{
-		Cmd:   a.Config.Command,
-		Value: string(data),
-	})
-	if err != nil {
-		return fmt.Errorf("save in local error: %w", err)
-	}
-	return nil
-}
-
-func objectFromJSON(obj any, txt string) (any, error) {
-	switch obj.(type) {
-	case storage.CardInfo:
-		var card storage.CardInfo
-		if err := json.Unmarshal([]byte(txt), &card); err != nil {
-			return nil, makeError(ArgUnmarshalError, err)
-		}
-		return &card, nil
-	case storage.DataInfo:
-		var info storage.DataInfo
-		if err := json.Unmarshal([]byte(txt), &info); err != nil {
-			return nil, makeError(ArgUnmarshalError, err)
-		}
-		return &info, nil
-	case storage.Credent:
-		var cred storage.Credent
-		if err := json.Unmarshal([]byte(txt), &cred); err != nil {
-			return nil, makeError(ArgUnmarshalError, err)
-		}
-		return &cred, nil
-	}
-	return nil, ErrTypeUndefined
-}
-
-func makeObjectInfo(obj any) (any, error) {
-	switch obj := obj.(type) {
-	case storage.CardInfo:
-		if err := scanStdin(fmt.Sprintf("Название карты (%s): ", obj.Label), &obj.Label); err != nil {
-			return nil, fmt.Errorf("read card label error: %w", err)
-		}
-		if err := scanStdin(fmt.Sprintf("Номер карты (%s): ", obj.Number), &obj.Number); err != nil {
-			return nil, fmt.Errorf("read card number error: %w", err)
-		}
-		if err := scanStdin(fmt.Sprintf("Владелец карты (%s): ", obj.User), &obj.User); err != nil {
-			return nil, fmt.Errorf("read card user error: %w", err)
-		}
-		if err := scanStdin(fmt.Sprintf("Срок действия карты (%s): ", obj.Duration), &obj.Duration); err != nil {
-			return nil, fmt.Errorf("read card duration error: %w", err)
-		}
-		if err := scanStdin(fmt.Sprintf("CSV-код (%s): ", obj.Csv), &obj.Csv); err != nil {
-			return nil, fmt.Errorf("read card csv error: %w", err)
-		}
-		return obj, nil
-	case storage.Credent:
-		if err := scanStdin(fmt.Sprintf("Название (%s): ", obj.Label), &obj.Label); err != nil {
-			return nil, fmt.Errorf("read data label error: %w", err)
-		}
-		if err := scanStdin(fmt.Sprintf("Логин (%s): ", obj.Login), &obj.Login); err != nil {
-			return nil, fmt.Errorf("read data info error: %w", err)
-		}
-		if err := scanStdin(fmt.Sprintf("Пароль (%s): ", obj.Pwd), &obj.Pwd); err != nil {
-			return nil, fmt.Errorf("read data info error: %w", err)
-		}
-		return obj, nil
-	case storage.DataInfo:
-		if err := scanStdin(fmt.Sprintf("Название (%s): ", obj.Label), &obj.Label); err != nil {
-			return nil, fmt.Errorf("read data label error: %w", err)
-		}
-		if err := scanStdin(fmt.Sprintf("Данные (%s): ", obj.Info), &obj.Info); err != nil {
-			return nil, fmt.Errorf("read data info error: %w", err)
-		}
-		return obj, nil
-	}
-	return nil, ErrTypeUndefined
-}
-
-// func makeCardInfo(card *storage.CardInfo) (*storage.CardInfo, error) {
-// 	if err := scanStdin(fmt.Sprintf("Название карты (%s): ", card.Label), &card.Label); err != nil {
-// 		return nil, fmt.Errorf("read card label error: %w", err)
-// 	}
-// 	if err := scanStdin(fmt.Sprintf("Номер карты (%s): ", card.Number), &card.Number); err != nil {
-// 		return nil, fmt.Errorf("read card number error: %w", err)
-// 	}
-// 	if err := scanStdin(fmt.Sprintf("Владелец карты (%s): ", card.User), &card.User); err != nil {
-// 		return nil, fmt.Errorf("read card user error: %w", err)
-// 	}
-// 	if err := scanStdin(fmt.Sprintf("Срок действия карты (%s): ", card.Duration), &card.Duration); err != nil {
-// 		return nil, fmt.Errorf("read card duration error: %w", err)
-// 	}
-// 	if err := scanStdin(fmt.Sprintf("CSV-код (%s): ", card.Csv), &card.Csv); err != nil {
-// 		return nil, fmt.Errorf("read card csv error: %w", err)
-// 	}
-// 	return card, nil
-// }
-
-// func makeDataInfo(info *storage.DataInfo) (*storage.DataInfo, error) {
-// 	if err := scanStdin(fmt.Sprintf("Название (%s): ", info.Label), &info.Label); err != nil {
-// 		return nil, fmt.Errorf("read data label error: %w", err)
-// 	}
-// 	if err := scanStdin(fmt.Sprintf("Данные (%s): ", info.Info), &info.Info); err != nil {
-// 		return nil, fmt.Errorf("read data info error: %w", err)
-// 	}
-// 	return info, nil
-// }
-
-// func makeCredentInfo(cred *storage.Credent) (*storage.Credent, error) {
-// 	if err := scanStdin(fmt.Sprintf("Название (%s): ", cred.Label), &cred.Label); err != nil {
-// 		return nil, fmt.Errorf("read data label error: %w", err)
-// 	}
-// 	if err := scanStdin(fmt.Sprintf("Логин (%s): ", cred.Login), &cred.Login); err != nil {
-// 		return nil, fmt.Errorf("read data info error: %w", err)
-// 	}
-// 	if err := scanStdin(fmt.Sprintf("Пароль (%s): ", cred.Pwd), &cred.Pwd); err != nil {
-// 		return nil, fmt.Errorf("read data info error: %w", err)
-// 	}
-// 	return cred, nil
-// }
 
 // addSwitcher makes add Storage's function according to currentCommand.
 func (a *Agent) addSwitcher() error {
-	addCommon := func(obj any) (any, error) {
-		if a.Config.Arg == "" {
-			return makeObjectInfo(obj)
-		}
-		return objectFromJSON(obj, a.Config.Arg)
-	}
 	saveLocal, err := a.isSaveInLocal(a.RStorage.GetAESKey(a.Config.Key, a.url(urlAESKey)))
 	if err != nil {
 		return err
 	}
-	switch a.currentCommand {
-	case cards:
-		obj, err := addCommon(storage.CardInfo{})
-		if err != nil {
-			return err
-		}
-		card, ok := obj.(storage.CardInfo)
-		if !ok {
-			return ErrInternalConvert
-		}
-		if saveLocal {
-			return a.saveInLocal(card)
-		}
-		if err := a.RStorage.AddCard(a.url(urlCardsAdd), &card); err != nil {
-			return fmt.Errorf("card add error: %w", err)
-		}
-	case files:
+	if a.currentCommand == files {
 		if a.Config.Arg == "" {
 			if err := scanStdin("Введите путь до файла: ", &a.Config.Arg); err != nil {
 				return err
@@ -476,38 +358,45 @@ func (a *Agent) addSwitcher() error {
 		if err = a.RStorage.FihishFileTransfer(a.url(urlFileAdd), fid); err != nil {
 			return fmt.Errorf("confirm file add error: %w", err)
 		}
+	}
+	var obj storage.TextValuer
+	switch a.currentCommand {
+	case cards:
+		obj = &storage.CardInfo{}
 	case datas:
-		obj, err := addCommon(storage.DataInfo{})
-		if err != nil {
-			return err
-		}
-		info, ok := obj.(storage.DataInfo)
-		if !ok {
-			return ErrInternalConvert
-		}
-		if saveLocal {
-			return a.saveInLocal(info)
-		}
-		if err := a.RStorage.AddDataInfo(a.url(urlDataAdd), &info); err != nil {
-			return fmt.Errorf("add data error: %w", err)
-		}
+		obj = &storage.DataInfo{}
 	case creds:
-		obj, err := addCommon(storage.Credent{})
-		if err != nil {
-			return err
-		}
-		cred, ok := obj.(storage.Credent)
-		if !ok {
-			return ErrInternalConvert
-		}
-		if saveLocal {
-			return a.saveInLocal(cred)
-		}
-		if err := a.RStorage.AddCredent(a.url(urlCredsAdd), &cred); err != nil {
-			return fmt.Errorf("add error: %w", err)
-		}
+		obj = &storage.Credent{}
 	default:
 		return ErrUndefinedTarget
+	}
+	if err = obj.AskUser(); err != nil {
+		return fmt.Errorf("add item error: %w", err)
+	}
+	if saveLocal {
+		d, err := obj.ToJSON()
+		if err != nil {
+			return fmt.Errorf("marshal value error: %w", err)
+		}
+		err = a.LocalStorage.Add(&storage.Command{
+			Cmd:   a.Config.Command,
+			Value: string(d),
+		})
+		if err != nil {
+			return fmt.Errorf("save item in local error: %w", err)
+		}
+		return nil
+	}
+	switch obj := obj.(type) {
+	case *storage.CardInfo:
+		err = a.RStorage.AddCard(a.url(urlCardsAdd), obj)
+	case *storage.DataInfo:
+		err = a.RStorage.AddDataInfo(a.url(urlDataAdd), obj)
+	case *storage.Credent:
+		err = a.RStorage.AddCredent(a.url(urlCredsAdd), obj)
+	}
+	if err != nil {
+		return fmt.Errorf("add error: %w", err)
 	}
 	return nil
 }
@@ -530,37 +419,27 @@ func (a *Agent) listSwitcher() (string, error) {
 
 // getSwitcher makes get Storage's function according to currentCommand.
 func (a *Agent) getSwitcher() (string, error) {
+	if err := a.RStorage.GetAESKey(a.Config.Key, a.url(urlAESKey)); err != nil {
+		return "", fmt.Errorf("get key error: %w", err)
+	}
 	if a.Config.Arg == "" {
 		if err := scanStdin("Идентификатор: ", &a.Config.Arg); err != nil {
 			return "", fmt.Errorf("get id error: %w", err)
 		}
 	}
-	if err := a.RStorage.GetAESKey(a.Config.Key, a.url(urlAESKey)); err != nil {
-		return "", fmt.Errorf("get key error: %w", err)
-	}
 	_, err := strconv.Atoi(a.Config.Arg)
 	if err != nil {
 		return "", makeError(IDConverError, err)
 	}
+	var rURL string
+	var obj fmt.Stringer
 	switch a.currentCommand {
-	case cards:
-		u, err := url.JoinPath(a.url(urlCard), a.Config.Arg)
-		if err != nil {
-			return "", makeError(URLJoinError, err)
-		}
-		card, err := a.RStorage.GetCard(u)
-		if err != nil {
-			return "", fmt.Errorf("get error: %w", err)
-		}
-		info := fmt.Sprintf("Название: %s\nНомер: %s\nВладелец: %s\nСрок: %s\nCSV: %s\nДата изменения: %s",
-			card.Label, card.Number, card.User, card.Duration, card.Csv, card.Updated.Format(timeFormat))
-		return info, nil
 	case files:
-		u, err := url.JoinPath(a.url(urlFiles), "preload", a.Config.Arg)
+		rURL, err = url.JoinPath(a.url(urlFiles), "preload", a.Config.Arg)
 		if err != nil {
 			return "", makeError(URLJoinError, err)
 		}
-		path, maxIndex, err := a.RStorage.GetPreloadFileInfo(u)
+		path, maxIndex, err := a.RStorage.GetPreloadFileInfo(rURL)
 		if err != nil {
 			return "", fmt.Errorf("get file preload info error: %w", err)
 		}
@@ -571,47 +450,40 @@ func (a *Agent) getSwitcher() (string, error) {
 		if p == "" {
 			p = path
 		}
-		u, err = url.JoinPath(a.url(urlFiles), "load", a.Config.Arg)
+		rURL, err = url.JoinPath(a.url(urlFiles), "load", a.Config.Arg)
 		if err != nil {
 			return "", makeError(URLJoinError, err)
 		}
-		if err = a.RStorage.GetFile(u, p, maxIndex); err != nil {
+		if err = a.RStorage.GetFile(rURL, p, maxIndex); err != nil {
 			return "", fmt.Errorf("file transfer error: %w", err)
 		}
 		return "", nil
+	case cards:
+		rURL, err = url.JoinPath(a.url(urlCard), a.Config.Arg)
+		obj = &storage.CardInfo{}
 	case datas:
-		u, err := url.JoinPath(a.url(urlData), a.Config.Arg)
-		if err != nil {
-			return "", makeError(URLJoinError, err)
-		}
-		info, err := a.RStorage.GetDataInfo(u)
-		if err != nil {
-			return "", fmt.Errorf("get info error: %w", err)
-		}
-		txt := fmt.Sprintf("Название: %s\nДанные: %s\nДата изменения: %s",
-			info.Label, info.Info, info.Updated.Format(timeFormat))
-		return txt, nil
+		rURL, err = url.JoinPath(a.url(urlData), a.Config.Arg)
+		obj = &storage.DataInfo{}
 	case creds:
-		u, err := url.JoinPath(a.url(urlCreds), a.Config.Arg)
-		if err != nil {
-			return "", makeError(URLJoinError, err)
-		}
-		info, err := a.RStorage.GetCredent(u)
-		if err != nil {
-			return "", fmt.Errorf("get info error: %w", err)
-		}
-		txt := fmt.Sprintf("Название: %s\nЛогин: %s\nПароль: %s\nДата изменения: %s",
-			info.Label, info.Login, info.Pwd, info.Updated.Format(timeFormat))
-		return txt, nil
+		rURL, err = url.JoinPath(a.url(urlCreds), a.Config.Arg)
+		obj = &storage.Credent{}
 	default:
 		return "", ErrUndefinedTarget
 	}
+	if err != nil {
+		return "", makeError(URLJoinError, err)
+	}
+	item, err := a.RStorage.GetTextValue(rURL, obj)
+	if err != nil {
+		return "", fmt.Errorf("get item error: %w", err)
+	}
+	return item.String(), nil
 }
 
 // deleteSwitcher makes delete Storage's function according to currentCommand.
 func (a *Agent) deleteSwitcher() error {
 	if a.Config.Arg == "" {
-		if err := scanStdin("Введите идентификатор: ", &a.Config.Arg); err != nil {
+		if err := scanStdin("Идентификатор объекта: ", &a.Config.Arg); err != nil {
 			return fmt.Errorf("id error: %w", err)
 		}
 	}
@@ -651,209 +523,89 @@ func (a *Agent) deleteSwitcher() error {
 
 // editSwitcher makes edit Storage's function according to currentCommand.
 func (a *Agent) editSwitcher() error {
-	editCommon := func(obj any) (any, error) {
-		if a.Config.Arg == "" {
-			var id string
-			if err := scanStdin("Введите идентификатор: ", &id); err != nil {
-				return nil, fmt.Errorf("read id error: %w", err)
-			}
-			ident, err := strconv.Atoi(id)
-			if err != nil {
-				return nil, makeError(IDConverError, err)
-			}
-			switch obj := obj.(type) {
-			case storage.CardInfo:
-				obj.ID = ident
-			case storage.DataInfo:
-				obj.ID = ident
-			case storage.Credent:
-				obj.ID = ident
-			default:
-				return nil, ErrTypeUndefined
-			}
-			return obj, nil
-		}
-		return objectFromJSON(obj, a.Config.Arg)
-	}
-	localCommon := func(obj any) error {
-		if a.Config.Arg == "" {
-			var err error
-			obj, err = makeObjectInfo(obj)
-			if err != nil {
-				return err
-			}
-		}
-		if err := a.saveInLocal(obj); err != nil {
-			return fmt.Errorf("save card in local error: %w", err)
-		}
-		return nil
-	}
 	saveLocal, err := a.isSaveInLocal(a.RStorage.GetAESKey(a.Config.Key, a.url(urlAESKey)))
 	if err != nil {
 		return fmt.Errorf("get edit key error: %w", err)
 	}
+	var obj storage.TextValuer
+	var rURL string
 	switch a.currentCommand {
 	case cards:
-		obj, err := editCommon(storage.CardInfo{})
-		if err != nil {
-			return fmt.Errorf("card get id error: %w", err)
-		}
-		card, ok := obj.(storage.CardInfo)
-		if !ok {
-			return ErrInternalConvert
-		}
-		if saveLocal {
-			return localCommon(card)
-		}
-		rURL, err := url.JoinPath(a.url(urlCard), strconv.Itoa(card.ID))
-		if err != nil {
-			return makeError(URLJoinError, err)
-		}
-		c, err := a.RStorage.GetCard(rURL)
-		if err != nil {
-			return fmt.Errorf("get card error: %w", err)
-		}
-		if a.Config.Arg == "" {
-			obj, err = makeObjectInfo(*c)
-			if err != nil {
-				return err
-			}
-			card, ok = obj.(storage.CardInfo)
-			if !ok {
-				return ErrInternalConvert
-			}
-		}
-		if err := a.RStorage.UpdateCard(rURL, &card); err != nil {
-			return fmt.Errorf("card edit error: %w", err)
-		}
+		obj = &storage.CardInfo{}
+		rURL = a.url(urlCard)
 	case datas:
-		// info := &storage.DataInfo{}
-		// if a.Config.Arg == "" {
-		// 	info.ID, err = getEditID()
-		// 	if err != nil {
-		// 		return makeError(IDConverError, err)
-		// 	}
-		// } else {
-		// 	if err := json.Unmarshal([]byte(a.Config.Arg), info); err != nil {
-		// 		return makeError(ArgUnmarshalError, err)
-		// 	}
-		// }
-		// if saveLocal {
-		// 	if a.Config.Arg == "" {
-		// 		info, err = makeDataInfo(info)
-		// 		if err != nil {
-		// 			return err
-		// 		}
-		// 	}
-		// 	if err := a.saveInLocal(info); err != nil {
-		// 		return fmt.Errorf("save data in local error: %w", err)
-		// 	}
-		// } else {
-		// 	requestURL, err := url.JoinPath(a.url(urlData), strconv.Itoa(info.ID))
-		// 	if err != nil {
-		// 		return makeError(URLJoinError, err)
-		// 	}
-		// 	c, err := a.RStorage.GetDataInfo(requestURL)
-		// 	if err != nil {
-		// 		return fmt.Errorf("get data error: %w", err)
-		// 	}
-		// 	if a.Config.Arg == "" {
-		// 		info, err = makeDataInfo(c)
-		// 		if err != nil {
-		// 			return err
-		// 		}
-		// 	}
-		// 	if err := a.RStorage.UpdateDataInfo(requestURL, info); err != nil {
-		// 		return fmt.Errorf("data edit error: %w", err)
-		// 	}
-		// }
-		obj, err := editCommon(storage.DataInfo{})
-		if err != nil {
-			return fmt.Errorf("data get id error: %w", err)
-		}
-		info, ok := obj.(storage.DataInfo)
-		if !ok {
-			return ErrInternalConvert
-		}
-		if saveLocal {
-			return localCommon(info)
-		}
-		rURL, err := url.JoinPath(a.url(urlData), strconv.Itoa(info.ID))
-		if err != nil {
-			return makeError(URLJoinError, err)
-		}
-		c, err := a.RStorage.GetDataInfo(rURL)
-		if err != nil {
-			return fmt.Errorf("get data error: %w", err)
-		}
-		if a.Config.Arg == "" {
-			obj, err = makeObjectInfo(*c)
-			if err != nil {
-				return err
-			}
-			info, ok = obj.(storage.DataInfo)
-			if !ok {
-				return ErrInternalConvert
-			}
-		}
-		if err := a.RStorage.UpdateDataInfo(rURL, &info); err != nil {
-			return fmt.Errorf("data edit error: %w", err)
-		}
+		obj = &storage.DataInfo{}
+		rURL = a.url(urlData)
 	case creds:
-		obj, err := editCommon(storage.Credent{})
-		if err != nil {
-			return fmt.Errorf("creds get id error: %w", err)
-		}
-		cred, ok := obj.(storage.Credent)
-		if !ok {
-			return ErrInternalConvert
-		}
-		if saveLocal {
-			return localCommon(cred)
-		}
-		rURL, err := url.JoinPath(a.url(urlCreds), strconv.Itoa(cred.ID))
-		if err != nil {
-			return makeError(URLJoinError, err)
-		}
-		c, err := a.RStorage.GetCredent(rURL)
-		if err != nil {
-			return fmt.Errorf("get cred error: %w", err)
-		}
-		if a.Config.Arg == "" {
-			obj, err = makeObjectInfo(*c)
-			if err != nil {
-				return err
-			}
-			cred, ok = obj.(storage.Credent)
-			if !ok {
-				return ErrInternalConvert
-			}
-		}
-		if err := a.RStorage.UpdateCredent(rURL, &cred); err != nil {
-			return fmt.Errorf("cred edit error: %w", err)
-		}
-		// url, err := url.JoinPath(a.url(urlCreds), a.Config.Arg)
-		// if err != nil {
-		// 	return makeError(URLJoinError, err)
-		// }
-		// info, err := a.RStorage.GetCredent(url)
-		// if err != nil {
-		// 	return fmt.Errorf("get credent info error: %w", err)
-		// }
-		// if err := scanStdin(fmt.Sprintf("Название (%s): ", info.Label), &info.Label); err != nil {
-		// 	return fmt.Errorf("read credent label error: %w", err)
-		// }
-		// if err := scanStdin(fmt.Sprintf("Логин (%s): ", info.Login), &info.Login); err != nil {
-		// 	return fmt.Errorf("read credent login error: %w", err)
-		// }
-		// if err := scanStdin(fmt.Sprintf("Пароль (%s): ", info.Pwd), &info.Pwd); err != nil {
-		// 	return fmt.Errorf("read credent password error: %w", err)
-		// }
-		// if err := a.RStorage.UpdateCredent(url, info); err != nil {
-		// 	return fmt.Errorf("credent edit error: %w", err)
-		// }
+		obj = &storage.Credent{}
+		rURL = a.url(urlCreds)
 	default:
 		return ErrUndefinedTarget
+	}
+	if a.Config.Arg == "" {
+		var id string
+		if err := scanStdin("Введите идентификатор: ", &id); err != nil {
+			return fmt.Errorf("read id error: %w", err)
+		}
+		ident, err := strconv.Atoi(id)
+		if err != nil {
+			return makeError(IDConverError, err)
+		}
+		obj.SetID(ident)
+	} else {
+		if err := obj.FromJSON(a.Config.Arg); err != nil {
+			return makeError(ArgUnmarshalError, err)
+		}
+	}
+	if saveLocal {
+		if a.Config.Arg == "" {
+			if err := obj.AskUser(); err != nil {
+				return fmt.Errorf("get item data error: %w", err)
+			}
+		}
+		data, err := obj.ToJSON()
+		if err != nil {
+			return fmt.Errorf("object to json convert error: %w", err)
+		}
+		err = a.LocalStorage.Add(&storage.Command{
+			Cmd:   a.Config.Command,
+			Value: string(data),
+		})
+		if err != nil {
+			return fmt.Errorf("save in local error: %w", err)
+		}
+		return nil
+	}
+	rURL, err = url.JoinPath(rURL, strconv.Itoa(obj.GetID()))
+	if err != nil {
+		return makeError(URLJoinError, err)
+	}
+	existItem, err := a.RStorage.GetTextValue(rURL, obj)
+	if err != nil {
+		return fmt.Errorf("get exist item error: %w", err)
+	}
+	if a.Config.Arg == "" {
+		d, err := existItem.ToJSON()
+		if err != nil {
+			return fmt.Errorf("exist item convert error: %w", err)
+		}
+		if err = obj.FromJSON(string(d)); err != nil {
+			return fmt.Errorf("set exist values error: %w", err)
+		}
+		if err = obj.AskUser(); err != nil {
+			return fmt.Errorf("update exist values error: %w", err)
+		}
+	}
+	switch obj := obj.(type) {
+	case *storage.CardInfo:
+		err = a.RStorage.UpdateCard(rURL, obj)
+	case *storage.DataInfo:
+		err = a.RStorage.UpdateDataInfo(rURL, obj)
+	case *storage.Credent:
+		err = a.RStorage.UpdateCredent(rURL, obj)
+	}
+	if err != nil {
+		return fmt.Errorf("edit error: %w", err)
 	}
 	return nil
 }

@@ -4,7 +4,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -125,7 +124,7 @@ func TestNetStorage_GetItemsListCommon(t *testing.T) {
 	})
 }
 
-func TestNetStorage_GetCard(t *testing.T) {
+func TestNetStorage_GetTextValue(t *testing.T) {
 	storage := NetStorage{Client: &http.Client{}}
 	handler := func(w http.ResponseWriter, r *http.Request) {
 		card := CardInfo{Label: "card", Number: "2222 1111 3333 4444"}
@@ -157,19 +156,25 @@ func TestNetStorage_GetCard(t *testing.T) {
 	serverNotFound := httptest.NewServer(http.HandlerFunc(handlerNotFound))
 	defer serverNotFound.Close()
 	t.Run("Успешный запрос данных карты", func(t *testing.T) {
-		_, err := storage.GetCard(server.URL)
+		_, err := storage.GetTextValue(server.URL, &CardInfo{})
 		if err != nil {
 			t.Errorf("NetStorage.GetCard() error: %v", err)
 		}
 	})
+	t.Run("Ошибка типа данных", func(t *testing.T) {
+		_, err := storage.GetTextValue(server.URL, server)
+		if !errors.Is(err, ErrItemType) {
+			t.Errorf("NetStorage.GetCard() unexpected error: %v", err)
+		}
+	})
 	t.Run("Ошибка авторизации запроса карты", func(t *testing.T) {
-		_, err := storage.GetCard(serverAuthError.URL)
+		_, err := storage.GetTextValue(serverAuthError.URL, &CardInfo{})
 		if !errors.Is(err, ErrAuthorization) {
 			t.Errorf("NetStorage.GetCard() get unexpected error: %v, want: %v", err, ErrAuthorization)
 		}
 	})
 	t.Run("Карта не найдена", func(t *testing.T) {
-		_, err := storage.GetCard(serverNotFound.URL)
+		_, err := storage.GetTextValue(serverNotFound.URL, &CardInfo{})
 		if !errors.Is(err, ErrNotFound) {
 			t.Errorf("NetStorage.GetCard() get unexpected error: %v, want: %v", err, ErrNotFound)
 		}
@@ -561,13 +566,13 @@ func TestNetStorage_DeleteItem(t *testing.T) {
 func addUpdateHandle(
 	t *testing.T,
 	aesKey []byte,
-	info *DataInfo,
+	info DataInfo,
 ) func(w http.ResponseWriter, r *http.Request) {
 	t.Helper()
 	return func(w http.ResponseWriter, r *http.Request) {
 		data, err := io.ReadAll(r.Body)
 		if err != nil {
-			t.Errorf("info rsa decrypt error: %v", err)
+			t.Errorf("request body read error: %v", err)
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
@@ -583,7 +588,6 @@ func addUpdateHandle(
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
-		fmt.Println(data)
 		data, err = decryptAES(aesKey, data)
 		if err != nil {
 			t.Errorf("info decrypt error: %v", err)
@@ -591,7 +595,7 @@ func addUpdateHandle(
 			return
 		}
 		if info.Label != i.Label || info.Info != string(data) {
-			t.Errorf("info not equal: got - %s: %s, want: %s: %s", i.Label, i.Info, info.Label, info.Info)
+			t.Errorf("info not equal: got - %s: %s, want: %s: %s", i.Label, string(data), info.Label, info.Info)
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
@@ -603,7 +607,7 @@ func TestNetStorage_AddDataInfo(t *testing.T) {
 	storage := NetStorage{Client: &http.Client{}}
 	storage.Key = aesKey([]byte("add data info key"))
 	info := DataInfo{Label: "add data info label", Info: "data info"}
-	handler := addUpdateHandle(t, storage.Key, &info)
+	handler := addUpdateHandle(t, storage.Key, info)
 	server := httptest.NewServer(http.HandlerFunc(handler))
 	defer server.Close()
 	serverAuthError := httptest.NewServer(http.HandlerFunc(handlerAuthError))
@@ -630,7 +634,7 @@ func TestNetStorage_AddDataInfo(t *testing.T) {
 func TestNetStorage_UpdateDataInfo(t *testing.T) {
 	storage := NetStorage{Client: &http.Client{}}
 	info := DataInfo{Label: "update data label", Info: "information"}
-	handler := addUpdateHandle(t, storage.Key, &info)
+	handler := addUpdateHandle(t, storage.Key, info)
 	server := httptest.NewServer(http.HandlerFunc(handler))
 	defer server.Close()
 	serverAuthError := httptest.NewServer(http.HandlerFunc(handlerAuthError))
@@ -650,56 +654,6 @@ func TestNetStorage_UpdateDataInfo(t *testing.T) {
 	t.Run("Ошибка на сервере при обновлении", func(t *testing.T) {
 		if err := storage.UpdateDataInfo(serverBadRequest.URL, &info); !errors.Is(err, ErrStatusCode) {
 			t.Errorf("NetStorage.UpdateDataInfo() get unexpected error: %v, want: %v", err, ErrStatusCode)
-		}
-	})
-}
-
-func TestNetStorage_GetDataInfo(t *testing.T) {
-	storage := NetStorage{Client: &http.Client{}}
-	info := DataInfo{Label: "data", Info: "123"}
-	handler := func(w http.ResponseWriter, r *http.Request) {
-		data, err := EncryptAES(storage.Key, []byte(info.Info))
-		if err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
-			return
-		}
-		i := DataInfo{Label: info.Label, Info: hex.EncodeToString(data)}
-		data, err = json.Marshal(&i)
-		if err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
-			return
-		}
-		_, err = w.Write(data)
-		if err != nil {
-			t.Errorf(wdr, err)
-		}
-	}
-	server := httptest.NewServer(http.HandlerFunc(handler))
-	defer server.Close()
-	serverAuthError := httptest.NewServer(http.HandlerFunc(handlerAuthError))
-	defer serverAuthError.Close()
-	serverNotFound := httptest.NewServer(http.HandlerFunc(handlerNotFound))
-	defer serverNotFound.Close()
-	t.Run("Успешный запрос ", func(t *testing.T) {
-		d, err := storage.GetDataInfo(server.URL)
-		if err != nil {
-			t.Errorf("NetStorage.GetDataInfo() error: %v", err)
-			return
-		}
-		if d.Info != info.Info || d.Label != info.Label {
-			t.Errorf("NetStorage.GetDataInfo() not equal. Got: %v, want: %v", d, info)
-		}
-	})
-	t.Run("Ошибка авторизации запроса", func(t *testing.T) {
-		_, err := storage.GetDataInfo(serverAuthError.URL)
-		if !errors.Is(err, ErrAuthorization) {
-			t.Errorf("NetStorage.GetDataInfo() get unexpected error: %v, want: %v", err, ErrAuthorization)
-		}
-	})
-	t.Run("Данные не найдены", func(t *testing.T) {
-		_, err := storage.GetDataInfo(serverNotFound.URL)
-		if !errors.Is(err, ErrNotFound) {
-			t.Errorf("NetStorage.GetDataInfo() get unexpected error: %v, want: %v", err, ErrNotFound)
 		}
 	})
 }

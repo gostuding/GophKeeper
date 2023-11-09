@@ -46,10 +46,13 @@ func getCert() ([]byte, error) {
 		return nil, fmt.Errorf("create certificate error: %w", err)
 	}
 	var certPEM bytes.Buffer
-	pem.Encode(&certPEM, &pem.Block{
+	err = pem.Encode(&certPEM, &pem.Block{
 		Type:  "CERTIFICATE",
 		Bytes: certBytes,
 	})
+	if err != nil {
+		return nil, fmt.Errorf("encode certificate error: %w", err)
+	}
 	return certPEM.Bytes(), nil
 }
 

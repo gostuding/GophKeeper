@@ -1,7 +1,11 @@
 package storage
 
 import (
+	"bytes"
+	"encoding/json"
+	"errors"
 	"fmt"
+	"os"
 	"path"
 	"testing"
 )
@@ -105,4 +109,225 @@ func TestCache_GetValue(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestLocalStorage_valudateCommand(t *testing.T) {
+	strg := LocalStorage{Key: "test key"}
+	cmd := Command{Cmd: "cmd", Value: "value"}
+	d, err := json.Marshal(&cmd)
+	if err != nil {
+		t.Errorf("matshal test data error: %v", err)
+		return
+	}
+	enc, err := EncryptAES([]byte(strg.Key), d)
+	if err != nil {
+		t.Errorf("encrypt test data error: %v", err)
+		return
+	}
+	val := []byte("value")
+	jEnc, err := EncryptAES([]byte(strg.Key), val)
+	if err != nil {
+		t.Errorf("encrypt json error test data: %v", err)
+		return
+	}
+
+	t.Run("Успешно", func(t *testing.T) {
+		got, err := strg.valudateCommand(enc)
+		if err != nil {
+			t.Errorf("LocalStorage.valudateCommand() error = %v,", err)
+			return
+		}
+		if got.Cmd != cmd.Cmd || got.Value != cmd.Value {
+			t.Errorf("LocalStorage.valudateCommand() = %s:%s, want %s:%s", got.Cmd, got.Value, got.Cmd, got.Value)
+		}
+	})
+	t.Run("Ошибка дешифровки", func(t *testing.T) {
+		got, err := strg.valudateCommand(nil)
+		if err == nil {
+			t.Error("LocalStorage.valudateCommand() error is nil")
+		}
+		if got != nil {
+			t.Errorf("LocalStorage.valudateCommand() unexpected got: %v", got)
+		}
+	})
+	t.Run("Ошибка JSON", func(t *testing.T) {
+		got, err := strg.valudateCommand(jEnc)
+		if err == nil {
+			t.Error("LocalStorage.valudateCommand() error is nil")
+			return
+		}
+		if got != nil {
+			t.Errorf("LocalStorage.valudateCommand() unexpected got: %v", got)
+		}
+	})
+}
+
+func TestLocalStorage_Values(t *testing.T) {
+	strg, err := NewLocalStorage("key")
+	if err != nil {
+		t.Errorf("create LocalStorage error %v", err)
+		return
+	}
+	t.Run("Locked", func(t *testing.T) {
+		strg.isLocked = true
+		got, err := strg.Values()
+		if !errors.Is(err, ErrLocked) {
+			t.Errorf("LocalStorage.Values() error: %v", err)
+			return
+		}
+		if got != nil {
+			t.Errorf("LocalStorage.Values() unexpected got: %v", got)
+		}
+	})
+	t.Run("Path error", func(t *testing.T) {
+		strg.isLocked = false
+		strg.FilePath = ""
+		got, err := strg.Values()
+		if err != nil {
+			t.Errorf("LocalStorage.Values() error: %v", err)
+			return
+		}
+		if got == nil || len(got) > 0 {
+			t.Errorf("LocalStorage.Values() unexpected got: %v", got)
+		}
+	})
+}
+
+func TestLocalStorage_Add(t *testing.T) {
+	strg, err := NewLocalStorage("new add key")
+	if err != nil {
+		t.Errorf("create LocalStorage error %v", err)
+		return
+	}
+	t.Run("Locked", func(t *testing.T) {
+		strg.isLocked = true
+		err := strg.Add(&Command{})
+		if !errors.Is(err, ErrLocked) {
+			t.Errorf("LocalStorage.Values() error: %v", err)
+			return
+		}
+	})
+	t.Run("Path error", func(t *testing.T) {
+		strg.isLocked = false
+		strg.FilePath = ""
+		err := strg.Add(&Command{})
+		if err == nil {
+			t.Error("LocalStorage.Add() error is nil")
+			return
+		}
+	})
+	t.Run("Success", func(t *testing.T) {
+		strg.isLocked = false
+		strg.FilePath = path.Join(t.TempDir(), "tmp")
+		err := strg.Add(&Command{Cmd: "cmd", Value: "v"})
+		if err != nil {
+			t.Errorf("LocalStorage.Add() error: %v", err)
+			return
+		}
+		data, err := os.ReadFile(strg.FilePath)
+		if err != nil {
+			t.Errorf("read tmp file error: %v", err)
+			return
+		}
+		if data == nil {
+			t.Error("write data is nil")
+		}
+	})
+}
+
+func TestLocalStorage_Clear(t *testing.T) {
+	strg, err := NewLocalStorage("new clear key")
+	if err != nil {
+		t.Errorf("create LocalStorage error %v", err)
+		return
+	}
+	t.Run("Locked", func(t *testing.T) {
+		strg.isLocked = true
+		err := strg.Clear()
+		if !errors.Is(err, ErrLocked) {
+			t.Errorf("LocalStorage.Clear() error: %v", err)
+			return
+		}
+	})
+	t.Run("Path error", func(t *testing.T) {
+		strg.isLocked = false
+		strg.FilePath = ""
+		err := strg.Clear()
+		if err == nil {
+			t.Error("LocalStorage.Clear() error is nil")
+			return
+		}
+	})
+	t.Run("Success", func(t *testing.T) {
+		strg.isLocked = false
+		strg.FilePath = path.Join(t.TempDir(), "tmp")
+		err := os.WriteFile(strg.FilePath, []byte("any data"), writeFileMode)
+		if err != nil {
+			t.Errorf("write temp data error: %v", err)
+		}
+		err = strg.Clear()
+		if err != nil {
+			t.Errorf("LocalStorage.Clear() error: %v", err)
+			return
+		}
+		data, err := os.ReadFile(strg.FilePath)
+		if err != nil {
+			t.Errorf("read tmp file error: %v", err)
+			return
+		}
+		if !bytes.Equal(data, []byte("")) {
+			t.Errorf("clear data not empty: %s", string(data))
+		}
+	})
+}
+
+func TestLocalStorage_Lock(t *testing.T) {
+	strg, err := NewLocalStorage("new clear key")
+	if err != nil {
+		t.Errorf("create LocalStorage error %v", err)
+		return
+	}
+	t.Run("Locked", func(t *testing.T) {
+		strg.isLocked = true
+		vals, err := strg.Lock()
+		if !errors.Is(err, ErrLocked) {
+			t.Errorf("LocalStorage.Lock() error: %v", err)
+			return
+		}
+		if vals != nil {
+			t.Errorf("unexpected vals: %v", vals)
+		}
+	})
+	t.Run("Success", func(t *testing.T) {
+		strg.isLocked = false
+		_, err := strg.Lock()
+		if err != nil {
+			t.Errorf("LocalStorage.Lock() error: %v", err)
+			return
+		}
+	})
+}
+
+func TestLocalStorage_Unlock(t *testing.T) {
+	strg, err := NewLocalStorage("new clear key")
+	if err != nil {
+		t.Errorf("create LocalStorage error %v", err)
+		return
+	}
+	t.Run("UnLocked", func(t *testing.T) {
+		strg.isLocked = false
+		err := strg.Unlock(nil)
+		if !errors.Is(err, ErrLocked) {
+			t.Errorf("LocalStorage.Unlock() error: %v", err)
+			return
+		}
+	})
+	t.Run("Success", func(t *testing.T) {
+		strg.isLocked = true
+		err := strg.Unlock(nil)
+		if err != nil {
+			t.Errorf("LocalStorage.Unlock() error: %v", err)
+			return
+		}
+	})
 }

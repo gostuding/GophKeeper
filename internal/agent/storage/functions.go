@@ -1,12 +1,14 @@
 package storage
 
 import (
+	"bufio"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
 	"errors"
 	"fmt"
 	"io"
+	"os"
 )
 
 type ErrType int
@@ -122,4 +124,17 @@ func fileSize(size int64) string {
 		return fmt.Sprintf("%d Mb", int(size/(s*s)))
 	}
 	return fmt.Sprintf("%d Gb", int(size/(s*s*s)))
+}
+
+func scanValue(text string, to *string) error {
+	fmt.Print(text)
+	scanner := bufio.NewScanner(os.Stdin)
+	if scanner.Scan() {
+		if txt := scanner.Text(); txt != "" {
+			*to = txt
+		}
+	} else {
+		return fmt.Errorf("scan value error: %w", scanner.Err())
+	}
+	return nil
 }
