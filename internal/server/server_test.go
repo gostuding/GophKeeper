@@ -66,10 +66,12 @@ func hlp(t *testing.T, keyPath, certPath string) error {
 		return fmt.Errorf("create certificate error: %w", err)
 	}
 	var certPEM bytes.Buffer
-	pem.Encode(&certPEM, &pem.Block{
+	if err = pem.Encode(&certPEM, &pem.Block{
 		Type:  "CERTIFICATE",
 		Bytes: certBytes,
-	})
+	}); err != nil {
+		return fmt.Errorf("encode certificate file error: %w", err)
+	}
 	if err = os.WriteFile(certPath, certPEM.Bytes(), fBits); err != nil {
 		return fmt.Errorf("write certificate file error: %w", err)
 	}

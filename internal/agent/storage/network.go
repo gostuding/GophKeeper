@@ -73,6 +73,7 @@ type (
 		User     string    `json:"user,omitempty"`     // card's holder
 		Duration string    `json:"duration,omitempty"` // card's duration
 		Csv      string    `json:"csv,omitempty"`      // card's csv code
+		ID       int       `json:"id"`                 // card's id in server
 	}
 	// Files is struct for user's files.
 	Files struct {
@@ -100,12 +101,12 @@ type (
 func NewNetStorage(url string) (*NetStorage, error) {
 	strg := NetStorage{}
 	transport := &http.Transport{
-		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, //nolint:gosec //<-
 	}
 	strg.Client = &http.Client{Transport: transport}
 	resp, err := strg.Client.Get(url)
 	if err != nil {
-		return &strg, fmt.Errorf("%w: %w", ErrConnection, err)
+		return &strg, fmt.Errorf("connection error: %w: %w", ErrConnection, err)
 	}
 	defer resp.Body.Close() //nolint:errcheck //<-senselessly
 	if resp.StatusCode != http.StatusOK {
@@ -122,7 +123,8 @@ func NewNetStorage(url string) (*NetStorage, error) {
 	strg.Client = &http.Client{
 		Transport: &http.Transport{
 			TLSClientConfig: &tls.Config{
-				RootCAs: certPool,
+				MinVersion: tls.VersionTLS12,
+				RootCAs:    certPool,
 			},
 		},
 	}
@@ -137,7 +139,7 @@ func (ns *NetStorage) doRequest(msg []byte, url string, method string) (*http.Re
 	req.Header.Add(Authorization, ns.JWTToken)
 	res, err := ns.Client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %w", ErrConnection, err)
+		return nil, fmt.Errorf("request error: %w: %w", ErrConnection, err)
 	}
 	if res.StatusCode == http.StatusOK {
 		return res, nil
@@ -190,7 +192,7 @@ func (ns *NetStorage) GetAESKey(key, url string) error {
 	if err != nil {
 		return err
 	}
-	defer res.Body.Close()
+	defer res.Body.Close() //nolint:errcheck //<-
 	if res.StatusCode != http.StatusOK {
 		return makeError(ErrResponseStatusCode, res.StatusCode)
 	}
@@ -320,12 +322,12 @@ func (ns *NetStorage) UpdateCard(url string, card *CardInfo) error {
 }
 
 // AddDataInfo adds one private data info in server.
-func (ns *NetStorage) AddDataInfo(url string, label string, info string) error {
-	b, err := EncryptAES(ns.Key, []byte(info))
+func (ns *NetStorage) AddDataInfo(url string, item *DataInfo) error {
+	b, err := EncryptAES(ns.Key, []byte(item.Info))
 	if err != nil {
 		return makeError(ErrEncrypt, err)
 	}
-	item := DataInfo{Label: label, Info: hex.EncodeToString(b)}
+	item.Info = hex.EncodeToString(b)
 	data, err := json.Marshal(&item)
 	if err != nil {
 		return makeError(ErrJSONMarshal, err)
@@ -334,12 +336,12 @@ func (ns *NetStorage) AddDataInfo(url string, label string, info string) error {
 }
 
 // UpdateDataInfo adds one private data info in server.
-func (ns *NetStorage) UpdateDataInfo(url string, label string, info string) error {
-	b, err := EncryptAES(ns.Key, []byte(info))
+func (ns *NetStorage) UpdateDataInfo(url string, item *DataInfo) error {
+	b, err := EncryptAES(ns.Key, []byte(item.Info))
 	if err != nil {
 		return makeError(ErrEncrypt, err)
 	}
-	item := DataInfo{Label: label, Info: hex.EncodeToString(b)}
+	item.Info = hex.EncodeToString(b)
 	data, err := json.Marshal(&item)
 	if err != nil {
 		return makeError(ErrJSONMarshal, err)
@@ -390,7 +392,6 @@ func (ns *NetStorage) GetCredent(url string) (*Credent, error) {
 	c.Label = l.Label
 	c.Updated = l.Updated
 	return &c, nil
-
 }
 
 // UpdateCredent edits one credent info at server.

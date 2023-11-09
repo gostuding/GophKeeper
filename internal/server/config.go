@@ -22,6 +22,7 @@ const (
 	fBits                os.FileMode = 0740
 	defaultPort                      = 8080
 	defaultConCount                  = 10
+	defCertYears                     = 10
 	defaultTokenLiveTime             = 60 * 60 * 24
 	defaultIP                        = "127.0.0.1"
 	defaultDSN                       = "host=localhost user=postgres database=gophkeeper"
@@ -43,8 +44,8 @@ type Config struct {
 }
 
 // checkFileExist checks config file exists. Createss default config if the file wasn't found.
-func checkFileExist(cfg_path, keyPath, storagePath, certPath string) error {
-	_, err := os.Stat(cfg_path)
+func checkFileExist(cfgPath, keyPath, storagePath, certPath string) error {
+	_, err := os.Stat(cfgPath)
 	if err == nil {
 		return nil
 	}
@@ -65,7 +66,7 @@ func checkFileExist(cfg_path, keyPath, storagePath, certPath string) error {
 	if err = os.WriteFile(keyPath, prvPem, fBits); err != nil {
 		return fmt.Errorf("write private key error: %w", err)
 	}
-	serialNumberLimit := new(big.Int).Lsh(big.NewInt(1), 128)
+	serialNumberLimit := new(big.Int).Lsh(big.NewInt(1), 128) //nolint:gomnd //<-
 	serialNumber, err := rand.Int(rand.Reader, serialNumberLimit)
 	if err != nil {
 		return fmt.Errorf("failed to generate serial number: %w", err)
@@ -76,10 +77,10 @@ func checkFileExist(cfg_path, keyPath, storagePath, certPath string) error {
 			Organization: []string{"Yandex.Praktikum"},
 			Country:      []string{"RU"},
 		},
-		IPAddresses:           []net.IP{net.IPv4(127, 0, 0, 1), net.IPv6loopback},
+		IPAddresses:           []net.IP{net.IPv4(127, 0, 0, 1), net.IPv6loopback}, //nolint:gomnd //<-
 		DNSNames:              []string{"localhost"},
 		NotBefore:             time.Now(),
-		NotAfter:              time.Now().AddDate(10, 0, 0),
+		NotAfter:              time.Now().AddDate(defCertYears, 0, 0),
 		KeyUsage:              x509.KeyUsageDigitalSignature,
 		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
 		BasicConstraintsValid: true,
@@ -89,10 +90,12 @@ func checkFileExist(cfg_path, keyPath, storagePath, certPath string) error {
 		return fmt.Errorf("create certificate error: %w", err)
 	}
 	var certPEM bytes.Buffer
-	pem.Encode(&certPEM, &pem.Block{
+	if err = pem.Encode(&certPEM, &pem.Block{
 		Type:  "CERTIFICATE",
 		Bytes: certBytes,
-	})
+	}); err != nil {
+		return fmt.Errorf("encode certificate file error: %w", err)
+	}
 	if err = os.WriteFile(certPath, certPEM.Bytes(), fBits); err != nil {
 		return fmt.Errorf("write certificate file error: %w", err)
 	}
@@ -111,7 +114,7 @@ func checkFileExist(cfg_path, keyPath, storagePath, certPath string) error {
 	if err != nil {
 		return fmt.Errorf("marhsal: %w: %w", ErrJSON, err)
 	}
-	if err = os.WriteFile(cfg_path, data, fBits); err != nil {
+	if err = os.WriteFile(cfgPath, data, fBits); err != nil {
 		return fmt.Errorf("write config file error: %w", err)
 	}
 	return nil

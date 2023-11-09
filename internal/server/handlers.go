@@ -83,7 +83,7 @@ func GetUserKey(ctx context.Context, strg Storage) ([]byte, int, error) {
 	}
 	data, err := strg.GetKey(ctx, uint(uid))
 	if err != nil {
-		return nil, http.StatusInternalServerError, fmt.Errorf("get key error: %w", err)
+		return nil, http.StatusInternalServerError, fmt.Errorf("user key error: %w", err)
 	}
 	return data, http.StatusOK, nil
 }
@@ -185,7 +185,7 @@ func addCommon(ctx context.Context, body []byte, obj any, strg Storage) (int, er
 	var l labelInfo
 	err := json.Unmarshal(body, &l)
 	if err != nil {
-		return http.StatusUnprocessableEntity, fmt.Errorf("%w:%w", ErrJSON, err)
+		return http.StatusUnprocessableEntity, fmt.Errorf("add error: %w:%w", ErrJSON, err)
 	}
 	err = strg.AddTextValue(ctx, obj, uint(uid), l.Label, l.Info)
 	if err != nil {
@@ -300,7 +300,7 @@ func updateCommon(ctx context.Context, body []byte, id uint, obj any, strg Stora
 	var l labelInfo
 	err := json.Unmarshal(body, &l)
 	if err != nil {
-		return http.StatusUnprocessableEntity, fmt.Errorf("%w:%w", ErrJSON, err)
+		return http.StatusUnprocessableEntity, fmt.Errorf(" update error: %w:%w", ErrJSON, err)
 	}
 	err = strg.UpdateTextValue(ctx, obj, id, uint(uid), l.Label, l.Info)
 	if err != nil {

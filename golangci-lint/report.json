@@ -1,1 +1,617 @@
-[]
+[
+    {
+        "FromLinter": "goconst",
+        "Text": "string `\u0412\u0432\u0435\u0434\u0438\u0442\u0435 \u043b\u043e\u0433\u0438\u043d: ` has 2 occurrences, make it a constant",
+        "Severity": "error",
+        "SourceLines": [
+            "\tif err := scanStdin(\"\u0412\u0432\u0435\u0434\u0438\u0442\u0435 \u043b\u043e\u0433\u0438\u043d: \", &l); err != nil {"
+        ],
+        "Replacement": null,
+        "Pos": {
+            "Filename": "internal/agent/agent.go",
+            "Offset": 5301,
+            "Line": 199,
+            "Column": 22
+        },
+        "ExpectNoLint": false,
+        "ExpectedNoLintLinter": ""
+    },
+    {
+        "FromLinter": "goconst",
+        "Text": "string `\u0412\u0432\u0435\u0434\u0438\u0442\u0435 \u043a\u043b\u044e\u0447 \u0448\u0438\u0444\u0440\u043e\u0432\u0430\u043d\u0438\u044f \u0412\u0430\u0448\u0438\u0445 \u043f\u0440\u0438\u0432\u0430\u0442\u043d\u044b\u0445 \u0434\u0430\u043d\u043d\u044b\u0445: ` has 2 occurrences, make it a constant",
+        "Severity": "error",
+        "SourceLines": [
+            "\tif err := scanStdin(\"\u0412\u0432\u0435\u0434\u0438\u0442\u0435 \u043a\u043b\u044e\u0447 \u0448\u0438\u0444\u0440\u043e\u0432\u0430\u043d\u0438\u044f \u0412\u0430\u0448\u0438\u0445 \u043f\u0440\u0438\u0432\u0430\u0442\u043d\u044b\u0445 \u0434\u0430\u043d\u043d\u044b\u0445: \", &a.Config.Key); err != nil {"
+        ],
+        "Replacement": null,
+        "Pos": {
+            "Filename": "internal/agent/agent.go",
+            "Offset": 6041,
+            "Line": 224,
+            "Column": 22
+        },
+        "ExpectNoLint": false,
+        "ExpectedNoLintLinter": ""
+    },
+    {
+        "FromLinter": "goconst",
+        "Text": "string `\u041d\u0430\u0437\u0432\u0430\u043d\u0438\u0435 (%s): ` has 3 occurrences, make it a constant",
+        "Severity": "error",
+        "SourceLines": [
+            "\tif err := scanStdin(fmt.Sprintf(\"\u041d\u0430\u0437\u0432\u0430\u043d\u0438\u0435 (%s): \", info.Label), &info.Label); err != nil {"
+        ],
+        "Replacement": null,
+        "Pos": {
+            "Filename": "internal/agent/agent.go",
+            "Offset": 10828,
+            "Line": 376,
+            "Column": 34
+        },
+        "ExpectNoLint": false,
+        "ExpectedNoLintLinter": ""
+    },
+    {
+        "FromLinter": "goconst",
+        "Text": "string `read data label error: %w` has 2 occurrences, make it a constant",
+        "Severity": "error",
+        "SourceLines": [
+            "\t\treturn nil, fmt.Errorf(\"read data label error: %w\", err)"
+        ],
+        "Replacement": null,
+        "Pos": {
+            "Filename": "internal/agent/agent.go",
+            "Offset": 10920,
+            "Line": 377,
+            "Column": 26
+        },
+        "ExpectNoLint": false,
+        "ExpectedNoLintLinter": ""
+    },
+    {
+        "FromLinter": "goconst",
+        "Text": "string `read data info error: %w` has 3 occurrences, make it a constant",
+        "Severity": "error",
+        "SourceLines": [
+            "\t\treturn nil, fmt.Errorf(\"read data info error: %w\", err)"
+        ],
+        "Replacement": null,
+        "Pos": {
+            "Filename": "internal/agent/agent.go",
+            "Offset": 11076,
+            "Line": 380,
+            "Column": 26
+        },
+        "ExpectNoLint": false,
+        "ExpectedNoLintLinter": ""
+    },
+    {
+        "FromLinter": "goconst",
+        "Text": "string `\u041b\u043e\u0433\u0438\u043d (%s): ` has 2 occurrences, make it a constant",
+        "Severity": "error",
+        "SourceLines": [
+            "\tif err := scanStdin(fmt.Sprintf(\"\u041b\u043e\u0433\u0438\u043d (%s): \", cred.Login), &cred.Login); err != nil {"
+        ],
+        "Replacement": null,
+        "Pos": {
+            "Filename": "internal/agent/agent.go",
+            "Offset": 11400,
+            "Line": 389,
+            "Column": 34
+        },
+        "ExpectNoLint": false,
+        "ExpectedNoLintLinter": ""
+    },
+    {
+        "FromLinter": "goconst",
+        "Text": "string `\u041f\u0430\u0440\u043e\u043b\u044c (%s): ` has 2 occurrences, make it a constant",
+        "Severity": "error",
+        "SourceLines": [
+            "\tif err := scanStdin(fmt.Sprintf(\"\u041f\u0430\u0440\u043e\u043b\u044c (%s): \", cred.Pwd), &cred.Pwd); err != nil {"
+        ],
+        "Replacement": null,
+        "Pos": {
+            "Filename": "internal/agent/agent.go",
+            "Offset": 11555,
+            "Line": 392,
+            "Column": 34
+        },
+        "ExpectNoLint": false,
+        "ExpectedNoLintLinter": ""
+    },
+    {
+        "FromLinter": "goconst",
+        "Text": "string `get info error: %w` has 2 occurrences, make it a constant",
+        "Severity": "error",
+        "SourceLines": [
+            "\t\t\treturn \"\", fmt.Errorf(\"get info error: %w\", err)"
+        ],
+        "Replacement": null,
+        "Pos": {
+            "Filename": "internal/agent/agent.go",
+            "Offset": 16648,
+            "Line": 560,
+            "Column": 26
+        },
+        "ExpectNoLint": false,
+        "ExpectedNoLintLinter": ""
+    },
+    {
+        "FromLinter": "goconst",
+        "Text": "string `\u0412\u0432\u0435\u0434\u0438\u0442\u0435 \u0438\u0434\u0435\u043d\u0442\u0438\u0444\u0438\u043a\u0430\u0442\u043e\u0440: ` has 2 occurrences, make it a constant",
+        "Severity": "error",
+        "SourceLines": [
+            "\t\tif err := scanStdin(\"\u0412\u0432\u0435\u0434\u0438\u0442\u0435 \u0438\u0434\u0435\u043d\u0442\u0438\u0444\u0438\u043a\u0430\u0442\u043e\u0440: \", &a.Config.Arg); err != nil {"
+        ],
+        "Replacement": null,
+        "Pos": {
+            "Filename": "internal/agent/agent.go",
+            "Offset": 17515,
+            "Line": 585,
+            "Column": 23
+        },
+        "ExpectNoLint": false,
+        "ExpectedNoLintLinter": ""
+    },
+    {
+        "FromLinter": "goconst",
+        "Text": "string `id error: %w` has 2 occurrences, make it a constant",
+        "Severity": "error",
+        "SourceLines": [
+            "\t\t\treturn fmt.Errorf(\"id error: %w\", err)"
+        ],
+        "Replacement": null,
+        "Pos": {
+            "Filename": "internal/agent/agent.go",
+            "Offset": 17612,
+            "Line": 586,
+            "Column": 22
+        },
+        "ExpectNoLint": false,
+        "ExpectedNoLintLinter": ""
+    },
+    {
+        "FromLinter": "dupl",
+        "Text": "642-682 lines are duplicate of `internal/agent/agent.go:683-723`",
+        "Severity": "error",
+        "SourceLines": [
+            "\tcase cards:",
+            "\t\tcard := &storage.CardInfo{}",
+            "\t\tif a.Config.Arg == \"\" {",
+            "\t\t\tcard.ID, err = getEditID()",
+            "\t\t\tif err != nil {",
+            "\t\t\t\treturn makeError(IDConverError, err)",
+            "\t\t\t}",
+            "\t\t} else {",
+            "\t\t\tif err := json.Unmarshal([]byte(a.Config.Arg), card); err != nil {",
+            "\t\t\t\treturn makeError(ArgUnmarshalError, err)",
+            "\t\t\t}",
+            "\t\t}",
+            "\t\tif saveLocal {",
+            "\t\t\tif a.Config.Arg == \"\" {",
+            "\t\t\t\tcard, err = makeCardInfo(card)",
+            "\t\t\t\tif err != nil {",
+            "\t\t\t\t\treturn err",
+            "\t\t\t\t}",
+            "\t\t\t}",
+            "\t\t\tif err := a.saveInLocal(card); err != nil {",
+            "\t\t\t\treturn fmt.Errorf(\"save card in local error: %w\", err)",
+            "\t\t\t}",
+            "\t\t} else {",
+            "\t\t\trequestURL, err := url.JoinPath(a.url(urlCard), strconv.Itoa(card.ID))",
+            "\t\t\tif err != nil {",
+            "\t\t\t\treturn makeError(URLJoinError, err)",
+            "\t\t\t}",
+            "\t\t\tc, err := a.RStorage.GetCard(requestURL)",
+            "\t\t\tif err != nil {",
+            "\t\t\t\treturn fmt.Errorf(\"get card error: %w\", err)",
+            "\t\t\t}",
+            "\t\t\tif a.Config.Arg != \"\" {",
+            "\t\t\t\tcard, err = makeCardInfo(c)",
+            "\t\t\t\tif err != nil {",
+            "\t\t\t\t\treturn err",
+            "\t\t\t\t}",
+            "\t\t\t}",
+            "\t\t\tif err := a.RStorage.UpdateCard(requestURL, card); err != nil {",
+            "\t\t\t\treturn fmt.Errorf(\"card edit error: %w\", err)",
+            "\t\t\t}",
+            "\t\t}"
+        ],
+        "Replacement": null,
+        "LineRange": {
+            "From": 642,
+            "To": 682
+        },
+        "Pos": {
+            "Filename": "internal/agent/agent.go",
+            "Offset": 0,
+            "Line": 642,
+            "Column": 0
+        },
+        "ExpectNoLint": false,
+        "ExpectedNoLintLinter": ""
+    },
+    {
+        "FromLinter": "dupl",
+        "Text": "683-723 lines are duplicate of `internal/agent/agent.go:642-682`",
+        "Severity": "error",
+        "SourceLines": [
+            "\tcase datas:",
+            "\t\tinfo := &storage.DataInfo{}",
+            "\t\tif a.Config.Arg == \"\" {",
+            "\t\t\tinfo.ID, err = getEditID()",
+            "\t\t\tif err != nil {",
+            "\t\t\t\treturn makeError(IDConverError, err)",
+            "\t\t\t}",
+            "\t\t} else {",
+            "\t\t\tif err := json.Unmarshal([]byte(a.Config.Arg), info); err != nil {",
+            "\t\t\t\treturn makeError(ArgUnmarshalError, err)",
+            "\t\t\t}",
+            "\t\t}",
+            "\t\tif saveLocal {",
+            "\t\t\tif a.Config.Arg == \"\" {",
+            "\t\t\t\tinfo, err = makeDataInfo(info)",
+            "\t\t\t\tif err != nil {",
+            "\t\t\t\t\treturn err",
+            "\t\t\t\t}",
+            "\t\t\t}",
+            "\t\t\tif err := a.saveInLocal(info); err != nil {",
+            "\t\t\t\treturn fmt.Errorf(\"save data in local error: %w\", err)",
+            "\t\t\t}",
+            "\t\t} else {",
+            "\t\t\trequestURL, err := url.JoinPath(a.url(urlData), strconv.Itoa(info.ID))",
+            "\t\t\tif err != nil {",
+            "\t\t\t\treturn makeError(URLJoinError, err)",
+            "\t\t\t}",
+            "\t\t\tc, err := a.RStorage.GetDataInfo(requestURL)",
+            "\t\t\tif err != nil {",
+            "\t\t\t\treturn fmt.Errorf(\"get data error: %w\", err)",
+            "\t\t\t}",
+            "\t\t\tif a.Config.Arg == \"\" {",
+            "\t\t\t\tinfo, err = makeDataInfo(c)",
+            "\t\t\t\tif err != nil {",
+            "\t\t\t\t\treturn err",
+            "\t\t\t\t}",
+            "\t\t\t}",
+            "\t\t\tif err := a.RStorage.UpdateDataInfo(requestURL, info); err != nil {",
+            "\t\t\t\treturn fmt.Errorf(\"data edit error: %w\", err)",
+            "\t\t\t}",
+            "\t\t}"
+        ],
+        "Replacement": null,
+        "LineRange": {
+            "From": 683,
+            "To": 723
+        },
+        "Pos": {
+            "Filename": "internal/agent/agent.go",
+            "Offset": 0,
+            "Line": 683,
+            "Column": 0
+        },
+        "ExpectNoLint": false,
+        "ExpectedNoLintLinter": ""
+    },
+    {
+        "FromLinter": "dupword",
+        "Text": "Duplicate words (fields) found",
+        "Severity": "error",
+        "SourceLines": [
+            "\t// \tfields  fields"
+        ],
+        "Replacement": null,
+        "Pos": {
+            "Filename": "internal/agent/agent_test.go",
+            "Offset": 1836,
+            "Line": 65,
+            "Column": 2
+        },
+        "ExpectNoLint": false,
+        "ExpectedNoLintLinter": ""
+    },
+    {
+        "FromLinter": "errcheck",
+        "Text": "Error return value of `pem.Encode` is not checked",
+        "Severity": "error",
+        "SourceLines": [
+            "\tpem.Encode(&certPEM, &pem.Block{"
+        ],
+        "Replacement": null,
+        "Pos": {
+            "Filename": "internal/agent/example_test.go",
+            "Offset": 1363,
+            "Line": 49,
+            "Column": 12
+        },
+        "ExpectNoLint": false,
+        "ExpectedNoLintLinter": ""
+    },
+    {
+        "FromLinter": "wrapcheck",
+        "Text": "error returned from interface method should be wrapped: sig: func (io.Reader).Read(p []byte) (n int, err error)",
+        "Severity": "error",
+        "SourceLines": [
+            "\t\t\treturn 0, err"
+        ],
+        "Replacement": null,
+        "Pos": {
+            "Filename": "internal/agent/gopass/pass.go",
+            "Offset": 1040,
+            "Line": 35,
+            "Column": 14
+        },
+        "ExpectNoLint": false,
+        "ExpectedNoLintLinter": ""
+    },
+    {
+        "FromLinter": "errcheck",
+        "Text": "Error return value is not checked",
+        "Severity": "error",
+        "SourceLines": [
+            "\t\t\t\trestore(r.Fd(), oldState)"
+        ],
+        "Replacement": null,
+        "Pos": {
+            "Filename": "internal/agent/gopass/pass.go",
+            "Offset": 1914,
+            "Line": 68,
+            "Column": 12
+        },
+        "ExpectNoLint": false,
+        "ExpectedNoLintLinter": ""
+    },
+    {
+        "FromLinter": "gocritic",
+        "Text": "ifElseChain: rewrite if-else to switch statement",
+        "Severity": "error",
+        "SourceLines": [
+            "\t\t} else if v == 127 || v == 8 {"
+        ],
+        "Replacement": null,
+        "Pos": {
+            "Filename": "internal/agent/gopass/pass.go",
+            "Offset": 2313,
+            "Line": 86,
+            "Column": 10
+        },
+        "ExpectNoLint": false,
+        "ExpectedNoLintLinter": ""
+    },
+    {
+        "FromLinter": "gomnd",
+        "Text": "mnd: Magic number: 3, in <condition> detected",
+        "Severity": "error",
+        "SourceLines": [
+            "\t\t} else if v == 3 {"
+        ],
+        "Replacement": null,
+        "Pos": {
+            "Filename": "internal/agent/gopass/pass.go",
+            "Offset": 2483,
+            "Line": 93,
+            "Column": 18
+        },
+        "ExpectNoLint": false,
+        "ExpectedNoLintLinter": ""
+    },
+    {
+        "FromLinter": "staticcheck",
+        "Text": "SA1019: \"io/ioutil\" has been deprecated since Go 1.19: As of Go 1.16, the same functionality is now provided by package [io] or package [os], and those implementations should be preferred in new code. See the specific function documentation for details. ",
+        "Severity": "error",
+        "SourceLines": [
+            "\t\"io/ioutil\""
+        ],
+        "Replacement": null,
+        "Pos": {
+            "Filename": "internal/agent/gopass/pass_test.go",
+            "Offset": 838,
+            "Line": 25,
+            "Column": 2
+        },
+        "ExpectNoLint": false,
+        "ExpectedNoLintLinter": ""
+    },
+    {
+        "FromLinter": "errcheck",
+        "Text": "Error return value is not checked",
+        "Severity": "error",
+        "SourceLines": [
+            "\t\t\tpipeBytesToStdin(d.input)"
+        ],
+        "Replacement": null,
+        "Pos": {
+            "Filename": "internal/agent/gopass/pass_test.go",
+            "Offset": 2632,
+            "Line": 68,
+            "Column": 20
+        },
+        "ExpectNoLint": false,
+        "ExpectedNoLintLinter": ""
+    },
+    {
+        "FromLinter": "errcheck",
+        "Text": "Error return value of `w.Close` is not checked",
+        "Severity": "error",
+        "SourceLines": [
+            "\t\t\tw.Close()"
+        ],
+        "Replacement": null,
+        "Pos": {
+            "Filename": "internal/agent/gopass/pass_test.go",
+            "Offset": 3137,
+            "Line": 85,
+            "Column": 11
+        },
+        "ExpectNoLint": false,
+        "ExpectedNoLintLinter": ""
+    },
+    {
+        "FromLinter": "lll",
+        "Text": "line is 173 characters",
+        "Severity": "error",
+        "SourceLines": [
+            "\t\t\t\tt.Errorf(\"Expected output to equal %v (%q) but got %v (%q) instead when masked=%v. %s\", expectedOutput, string(expectedOutput), output, string(output), masked, d.reason)"
+        ],
+        "Replacement": null,
+        "Pos": {
+            "Filename": "internal/agent/gopass/pass_test.go",
+            "Offset": 0,
+            "Line": 97,
+            "Column": 0
+        },
+        "ExpectNoLint": false,
+        "ExpectedNoLintLinter": ""
+    },
+    {
+        "FromLinter": "lll",
+        "Text": "line is 130 characters",
+        "Severity": "error",
+        "SourceLines": [
+            "\t\t\t\tt.Errorf(\"Expected %v bytes left on buffer but instead got %v when masked=%v. %s\", d.byesLeft, leftOnBuffer, masked, d.reason)"
+        ],
+        "Replacement": null,
+        "Pos": {
+            "Filename": "internal/agent/gopass/pass_test.go",
+            "Offset": 0,
+            "Line": 105,
+            "Column": 0
+        },
+        "ExpectNoLint": false,
+        "ExpectedNoLintLinter": ""
+    },
+    {
+        "FromLinter": "errorlint",
+        "Text": "comparing with != will fail on wrapped errors. Use errors.Is to check for a specific error",
+        "Severity": "error",
+        "SourceLines": [
+            "\t\tif err != d.expError {"
+        ],
+        "Replacement": null,
+        "Pos": {
+            "Filename": "internal/agent/gopass/pass_test.go",
+            "Offset": 4484,
+            "Line": 135,
+            "Column": 6
+        },
+        "ExpectNoLint": false,
+        "ExpectedNoLintLinter": ""
+    },
+    {
+        "FromLinter": "whitespace",
+        "Text": "unnecessary trailing newline",
+        "Severity": "error",
+        "SourceLines": [
+            "",
+            "\t}(ch)"
+        ],
+        "Replacement": {
+            "NeedOnlyDelete": false,
+            "NewLines": [
+                "\t}(ch)"
+            ],
+            "Inline": null
+        },
+        "LineRange": {
+            "From": 155,
+            "To": 156
+        },
+        "Pos": {
+            "Filename": "internal/agent/gopass/pass_test.go",
+            "Offset": 0,
+            "Line": 155,
+            "Column": 0
+        },
+        "ExpectNoLint": false,
+        "ExpectedNoLintLinter": ""
+    },
+    {
+        "FromLinter": "reassign",
+        "Text": "reassigning variable Stdin in other package os",
+        "Severity": "error",
+        "SourceLines": [
+            "\tos.Stdin = pipeReader"
+        ],
+        "Replacement": null,
+        "Pos": {
+            "Filename": "internal/agent/gopass/pass_test.go",
+            "Offset": 5489,
+            "Line": 181,
+            "Column": 2
+        },
+        "ExpectNoLint": false,
+        "ExpectedNoLintLinter": ""
+    },
+    {
+        "FromLinter": "errcheck",
+        "Text": "Error return value of `pipeWriter.Close` is not checked",
+        "Severity": "error",
+        "SourceLines": [
+            "\tpipeWriter.Close()"
+        ],
+        "Replacement": null,
+        "Pos": {
+            "Filename": "internal/agent/gopass/pass_test.go",
+            "Offset": 5565,
+            "Line": 183,
+            "Column": 18
+        },
+        "ExpectNoLint": false,
+        "ExpectedNoLintLinter": ""
+    },
+    {
+        "FromLinter": "wrapcheck",
+        "Text": "error returned from external package is unwrapped: sig: func (*os.File).WriteString(s string) (n int, err error)",
+        "Severity": "error",
+        "SourceLines": [
+            "\treturn w, err"
+        ],
+        "Replacement": null,
+        "Pos": {
+            "Filename": "internal/agent/gopass/pass_test.go",
+            "Offset": 5579,
+            "Line": 184,
+            "Column": 12
+        },
+        "ExpectNoLint": false,
+        "ExpectedNoLintLinter": ""
+    },
+    {
+        "FromLinter": "godot",
+        "Text": "Comment should end in a period",
+        "Severity": "error",
+        "SourceLines": [
+            "// TestGetPasswd_Err tests errors are properly handled from getch()"
+        ],
+        "Replacement": {
+            "NeedOnlyDelete": false,
+            "NewLines": [
+                "// TestGetPasswd_Err tests errors are properly handled from getch()."
+            ],
+            "Inline": null
+        },
+        "Pos": {
+            "Filename": "internal/agent/gopass/pass_test.go",
+            "Offset": 5667,
+            "Line": 191,
+            "Column": 68
+        },
+        "ExpectNoLint": false,
+        "ExpectedNoLintLinter": ""
+    },
+    {
+        "FromLinter": "wrapcheck",
+        "Text": "error returned from external package is unwrapped: sig: func (*bytes.Buffer).ReadByte() (byte, error)",
+        "Severity": "error",
+        "SourceLines": [
+            "\t\t\treturn 13, err"
+        ],
+        "Replacement": null,
+        "Pos": {
+            "Filename": "internal/agent/gopass/pass_test.go",
+            "Offset": 5907,
+            "Line": 197,
+            "Column": 15
+        },
+        "ExpectNoLint": false,
+        "ExpectedNoLintLinter": ""
+    }
+]

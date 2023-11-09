@@ -611,17 +611,17 @@ func TestNetStorage_AddDataInfo(t *testing.T) {
 	serverBadRequest := httptest.NewServer(http.HandlerFunc(handlerBadRequest))
 	defer serverBadRequest.Close()
 	t.Run("Добавление информации", func(t *testing.T) {
-		if err := storage.AddDataInfo(server.URL, info.Label, info.Info); err != nil {
+		if err := storage.AddDataInfo(server.URL, &info); err != nil {
 			t.Errorf("NetStorage.AddDataInfo() error: %v", err)
 		}
 	})
 	t.Run("Ошибка авторизации при добавлении информации", func(t *testing.T) {
-		if err := storage.AddDataInfo(serverAuthError.URL, info.Label, info.Info); !errors.Is(err, ErrAuthorization) {
+		if err := storage.AddDataInfo(serverAuthError.URL, &info); !errors.Is(err, ErrAuthorization) {
 			t.Errorf("NetStorage.AddDataInfo() get unexpected error: %v, want: %v", err, ErrAuthorization)
 		}
 	})
 	t.Run("Ошибка на сервере при добавлении информации", func(t *testing.T) {
-		if err := storage.AddDataInfo(serverBadRequest.URL, info.Label, info.Info); !errors.Is(err, ErrStatusCode) {
+		if err := storage.AddDataInfo(serverBadRequest.URL, &info); !errors.Is(err, ErrStatusCode) {
 			t.Errorf("NetStorage.AddDataInfo() get unexpected error: %v, want: %v", err, ErrStatusCode)
 		}
 	})
@@ -638,17 +638,17 @@ func TestNetStorage_UpdateDataInfo(t *testing.T) {
 	serverBadRequest := httptest.NewServer(http.HandlerFunc(handlerBadRequest))
 	defer serverBadRequest.Close()
 	t.Run("Обновление информации", func(t *testing.T) {
-		if err := storage.UpdateDataInfo(server.URL, info.Label, info.Info); err != nil {
+		if err := storage.UpdateDataInfo(server.URL, &info); err != nil {
 			t.Errorf("NetStorage.UpdateDataInfo() error: %v", err)
 		}
 	})
 	t.Run("Ошибка авторизации при обновлении", func(t *testing.T) {
-		if err := storage.UpdateDataInfo(serverAuthError.URL, info.Label, info.Info); !errors.Is(err, ErrAuthorization) {
+		if err := storage.UpdateDataInfo(serverAuthError.URL, &info); !errors.Is(err, ErrAuthorization) {
 			t.Errorf("NetStorage.UpdateDataInfo() get unexpected error: %v, want: %v", err, ErrAuthorization)
 		}
 	})
 	t.Run("Ошибка на сервере при обновлении", func(t *testing.T) {
-		if err := storage.UpdateDataInfo(serverBadRequest.URL, info.Label, info.Info); !errors.Is(err, ErrStatusCode) {
+		if err := storage.UpdateDataInfo(serverBadRequest.URL, &info); !errors.Is(err, ErrStatusCode) {
 			t.Errorf("NetStorage.UpdateDataInfo() get unexpected error: %v, want: %v", err, ErrStatusCode)
 		}
 	})

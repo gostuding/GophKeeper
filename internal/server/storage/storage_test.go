@@ -1,5 +1,5 @@
-// ------------------//go:build sql_storage
-// =-------------------//build sql_storage
+//go:build sql_storage
+// +build sql_storage
 
 package storage
 

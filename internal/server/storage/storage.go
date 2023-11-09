@@ -140,7 +140,7 @@ func (s *Storage) Login(
 	return user.Key, int(user.ID), nil
 }
 
-// GetCardsList returns users cards json.
+// GetTextValues returns users cards json.
 func (s *Storage) GetTextValues(ctx context.Context, obj any, uid uint) ([]byte, error) {
 	values := make([]SendDataInfo, 0)
 	var result *gorm.DB
@@ -271,7 +271,7 @@ func (s *Storage) DeleteValue(ctx context.Context, obj any) error {
 	return nil
 }
 
-// UpdateCard updates user's card information.
+// UpdateTextValue updates user's card information.
 func (s *Storage) UpdateTextValue(ctx context.Context, obj any,
 	id, uid uint, label, value string) error {
 	var result *gorm.DB

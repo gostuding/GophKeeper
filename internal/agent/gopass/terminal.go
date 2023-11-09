@@ -34,9 +34,9 @@ func makeRaw(fd uintptr) (*terminalState, error) {
 
 	return &terminalState{
 		state: state,
-	}, err
+	}, err //nolint:wrapcheck //<-
 }
 
 func restore(fd uintptr, oldState *terminalState) error {
-	return term.Restore(int(fd), oldState.state)
+	return term.Restore(int(fd), oldState.state) //nolint:wrapcheck //<-
 }

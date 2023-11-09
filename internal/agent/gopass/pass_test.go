@@ -19,6 +19,7 @@ package gopass
 import (
 	"bufio"
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -225,15 +226,22 @@ func TestMaxPasswordLength(t *testing.T) {
 	}
 
 	ds := []testData{
-		{append(bytes.Repeat([]byte{'a'}, maxLength), '\n'), nil, fmt.Sprintf("%v 'a' bytes followed by a newline", maxLength)},
-		{append(bytes.Repeat([]byte{'a'}, maxLength+1), '\n'), ErrMaxLengthExceeded, fmt.Sprintf("%v 'a' bytes followed by a newline", maxLength+1)},
-		{append(bytes.Repeat([]byte{0x00}, maxLength+1), '\n'), ErrMaxLengthExceeded, fmt.Sprintf("%v 0x00 bytes followed by a newline", maxLength+1)},
+		{append(bytes.Repeat([]byte{'a'}, maxLength), '\n'), nil,
+			fmt.Sprintf("%v 'a' bytes followed by a newline", maxLength)},
+		{append(bytes.Repeat([]byte{'a'}, maxLength+1), '\n'), ErrMaxLengthExceeded,
+			fmt.Sprintf("%v 'a' bytes followed by a newline", maxLength+1)},
+		{append(bytes.Repeat([]byte{0x00}, maxLength+1), '\n'), ErrMaxLengthExceeded,
+			fmt.Sprintf("%v 0x00 bytes followed by a newline", maxLength+1)},
 	}
 
 	for _, d := range ds {
-		pipeBytesToStdin(d.input)
+		_, e := pipeBytesToStdin(d.input)
+		if e != nil {
+			t.Errorf("Expected error %v", e)
+			return
+		}
 		_, err := GetPasswd()
-		if err != d.expectedErr {
+		if !errors.Is(err, d.expectedErr) {
 			t.Errorf("Expected error to be %v; isntead got %v from %v", d.expectedErr, err, d.inputDesc)
 		}
 	}

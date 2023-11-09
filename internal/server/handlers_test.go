@@ -177,8 +177,13 @@ func TestGetCredsList(t *testing.T) {
 	getListCommonTest(t, storage.CredsInfo{ID: 1}, storage.CredsInfo{ID: 2})
 }
 
-func delCommonTest(t *testing.T, strg Storage, obj, e, n any) {
+func delCommonTest(t *testing.T, obj, e, n any) {
 	t.Helper()
+	ctrl := gomock.NewController(t)
+	strg := mocks.NewMockStorage(ctrl)
+	strg.EXPECT().DeleteValue(ctx, obj).Return(nil)
+	strg.EXPECT().DeleteValue(ctx, e).Return(storage.ErrDB)
+	strg.EXPECT().DeleteValue(ctx, n).Return(gorm.ErrRecordNotFound)
 	t.Run("Ошибка авторизации", func(t *testing.T) {
 		val, err := DeleteDataInfo(context.Background(), strg, 1)
 		if err == nil || !errors.Is(err, ErrUserAuthorization) {
@@ -222,51 +227,31 @@ func delCommonTest(t *testing.T, strg Storage, obj, e, n any) {
 }
 
 func TestDeleteDataInfo(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	strg := mocks.NewMockStorage(ctrl)
 	obj := storage.SendDataInfo{ID: 1}
 	e := storage.SendDataInfo{ID: 2}
 	n := storage.SendDataInfo{ID: 3}
-	strg.EXPECT().DeleteValue(ctx, obj).Return(nil)
-	strg.EXPECT().DeleteValue(ctx, e).Return(storage.ErrDB)
-	strg.EXPECT().DeleteValue(ctx, n).Return(gorm.ErrRecordNotFound)
-	delCommonTest(t, strg, obj, e, n)
+	delCommonTest(t, obj, e, n)
 }
 
 func TestDeleteCard(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	strg := mocks.NewMockStorage(ctrl)
 	obj := storage.Cards{ID: 1}
 	e := storage.Cards{ID: 2}
 	n := storage.Cards{ID: 3}
-	strg.EXPECT().DeleteValue(ctx, obj).Return(nil)
-	strg.EXPECT().DeleteValue(ctx, e).Return(storage.ErrDB)
-	strg.EXPECT().DeleteValue(ctx, n).Return(gorm.ErrRecordNotFound)
-	delCommonTest(t, strg, obj, e, n)
+	delCommonTest(t, obj, e, n)
 }
 
 func TestDeleteCredent(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	strg := mocks.NewMockStorage(ctrl)
 	obj := storage.CredsInfo{ID: 1}
 	e := storage.CredsInfo{ID: 2}
 	n := storage.CredsInfo{ID: 3}
-	strg.EXPECT().DeleteValue(ctx, obj).Return(nil)
-	strg.EXPECT().DeleteValue(ctx, e).Return(storage.ErrDB)
-	strg.EXPECT().DeleteValue(ctx, n).Return(gorm.ErrRecordNotFound)
-	delCommonTest(t, strg, obj, e, n)
+	delCommonTest(t, obj, e, n)
 }
 
 func TestDeleteFile(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	strg := mocks.NewMockStorage(ctrl)
 	obj := storage.Files{ID: 1}
 	e := storage.Files{ID: 2}
 	n := storage.Files{ID: 3}
-	strg.EXPECT().DeleteValue(ctx, obj).Return(nil)
-	strg.EXPECT().DeleteValue(ctx, e).Return(storage.ErrDB)
-	strg.EXPECT().DeleteValue(ctx, n).Return(gorm.ErrRecordNotFound)
-	delCommonTest(t, strg, obj, e, n)
+	delCommonTest(t, obj, e, n)
 }
 
 func TestAddFile(t *testing.T) {
