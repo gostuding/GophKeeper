@@ -139,16 +139,13 @@ func (ns *NetStorage) GetAESKey(key, url string) error {
 		return err
 	}
 	defer res.Body.Close() //nolint:errcheck //<-
-	if res.StatusCode != http.StatusOK {
-		return makeError(ErrResponseStatusCode, res.StatusCode)
-	}
 	ns.serverAESKey, err = io.ReadAll(res.Body)
 	if err != nil {
 		return fmt.Errorf("read request body error: %w", err)
 	}
 	k, err := hex.DecodeString(key)
 	if err != nil {
-		return fmt.Errorf("user key error: %w", err)
+		return fmt.Errorf("user key error: %w, '%s'", err, key)
 	}
 	k, err = decryptAES(ns.serverAESKey, k)
 	if err != nil {

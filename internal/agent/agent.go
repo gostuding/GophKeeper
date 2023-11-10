@@ -56,7 +56,7 @@ var (
 func makeError(t errType, value error) error {
 	switch t {
 	case IDConverError:
-		return fmt.Errorf("convert id error: %w", value)
+		return fmt.Errorf("convert error: %w: %w", ErrArgConvert, value)
 	case URLJoinError:
 		return fmt.Errorf("url join error: %w", value)
 	case ArgUnmarshalError:
@@ -101,7 +101,7 @@ type (
 	// Agent struct.
 	Agent struct {
 		RStorage       *storage.NetStorage   // interfaice for work with server
-		CacheStorage   *storage.Cache        // cache storage object
+		CasheStorage   *storage.Cashe        // cashe storage object
 		LocalStorage   *storage.LocalStorage // local storage object
 		Config         *config.Config        // configuration object
 		currentCommand string                // current user command
@@ -131,7 +131,7 @@ func NewAgent(c *config.Config) (*Agent, error) {
 	}
 	strg.JWTToken = c.Token
 	agent.RStorage = strg
-	agent.CacheStorage = storage.NewCache(c.Key)
+	agent.CasheStorage = storage.NewCashe(c.Key)
 	l, err := storage.NewLocalStorage(c.Key)
 	if err != nil {
 		return nil, fmt.Errorf("create local storage error: %w", err)
@@ -140,12 +140,12 @@ func NewAgent(c *config.Config) (*Agent, error) {
 	return &agent, nil
 }
 
-// getCacheValue checks cmd in cache and return it.
-func (a *Agent) getCacheValue(cmd string, err error) error {
+// getCasheValue checks cmd in cashe and return it.
+func (a *Agent) getCasheValue(cmd string, err error) error {
 	if errors.Is(err, storage.ErrConnection) {
-		val, e := a.CacheStorage.GetValue(cmd)
+		val, e := a.CasheStorage.GetValue(cmd)
 		if e != nil {
-			return fmt.Errorf("%w, cache get error: %w", err, e)
+			return fmt.Errorf("%w, cashe get error: %w", err, e)
 		}
 		fmt.Println(val)
 		return nil
@@ -164,21 +164,21 @@ func (a *Agent) DoCommand() error {
 	case cards, files, datas, creds:
 		str, err := a.listSwitcher()
 		if err != nil {
-			return a.getCacheValue(a.Config.Command, err)
+			return a.getCasheValue(a.Config.Command, err)
 		}
 		fmt.Println(str)
-		if err = a.CacheStorage.SetValue(a.Config.Command, str); err != nil {
-			return fmt.Errorf("save in cache error: %w", err)
+		if err = a.CasheStorage.SetValue(a.Config.Command, str); err != nil {
+			return fmt.Errorf("save in cashe error: %w", err)
 		}
 	case "files_get", "cards_get", "data_get", "creds_get":
 		str, err := a.getSwitcher()
 		cmd := path.Join(a.Config.Command, a.Config.Arg)
 		if err != nil {
-			return a.getCacheValue(cmd, err)
+			return a.getCasheValue(cmd, err)
 		}
 		fmt.Println(str)
-		if err = a.CacheStorage.SetValue(cmd, str); err != nil {
-			return fmt.Errorf("cache error: %w", err)
+		if err = a.CasheStorage.SetValue(cmd, str); err != nil {
+			return fmt.Errorf("cashe error: %w", err)
 		}
 	case "files_del", "cards_del", "data_del", "creds_del":
 		return a.deleteSwitcher()
@@ -370,8 +370,14 @@ func (a *Agent) addSwitcher() error {
 	default:
 		return ErrUndefinedTarget
 	}
-	if err = obj.AskUser(); err != nil {
-		return fmt.Errorf("add item error: %w", err)
+	if a.Config.Arg == "" {
+		if err = obj.AskUser(); err != nil {
+			return fmt.Errorf("add item error: %w", err)
+		}
+	} else {
+		if err = obj.FromJSON(a.Config.Arg); err != nil {
+			return makeError(IDConverError, err)
+		}
 	}
 	if saveLocal {
 		d, err := obj.ToJSON()

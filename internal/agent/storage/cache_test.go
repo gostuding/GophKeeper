@@ -10,7 +10,7 @@ import (
 	"testing"
 )
 
-func TestCache_SetValue(t *testing.T) {
+func TestCashe_SetValue(t *testing.T) {
 	type fields struct {
 		FilePath string
 		Key      string
@@ -40,23 +40,23 @@ func TestCache_SetValue(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			c := &Cache{
+			c := &Cashe{
 				FilePath: tt.fields.FilePath,
 				Key:      tt.fields.Key,
 			}
 			if err := c.SetValue(tt.args.cmd, tt.args.value); (err != nil) != tt.wantErr {
-				t.Errorf("Cache.SetValue() error = %v, wantErr %v", err, tt.wantErr)
+				t.Errorf("Cashe.SetValue() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})
 	}
 }
 
-func TestCache_GetValue(t *testing.T) {
+func TestCashe_GetValue(t *testing.T) {
 	tmpFilePath := path.Join(t.TempDir(), "temp")
 	tmpKey := "key"
 	tmpValue := "value"
-	cache := Cache{FilePath: tmpFilePath, Key: tmpKey}
-	if err := cache.SetValue(tmpValue, tmpValue); err != nil {
+	cashe := Cashe{FilePath: tmpFilePath, Key: tmpKey}
+	if err := cashe.SetValue(tmpValue, tmpValue); err != nil {
 		t.Errorf("write test file error: %v", err)
 		return
 	}
@@ -95,17 +95,17 @@ func TestCache_GetValue(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			c := &Cache{
+			c := &Cashe{
 				FilePath: tt.fields.FilePath,
 				Key:      tt.fields.Key,
 			}
 			got, err := c.GetValue(tt.cmd)
 			if (err != nil) != tt.wantErr {
-				t.Errorf("Cache.GetValue() error = %v, wantErr %v", err, tt.wantErr)
+				t.Errorf("Cashe.GetValue() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
 			if got != tt.want {
-				t.Errorf("Cache.GetValue() = %v, want %v", got, tt.want)
+				t.Errorf("Cashe.GetValue() = %v, want %v", got, tt.want)
 			}
 		})
 	}

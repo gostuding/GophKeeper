@@ -14,18 +14,19 @@ import (
 )
 
 const (
-	prefix = "!!! Cached values: !!!\n"
+	prefix = "!!! Cashed values: !!!\n"
 )
 
 var (
-	ErrLocked = errors.New("storage locked")
-	spliter   = []byte(":splitter:")
+	ErrEmptyCashe = errors.New("cashe is empty")
+	ErrLocked     = errors.New("storage locked")
+	spliter       = []byte(":splitter:")
 )
 
 type (
-	// Cache struct for cache requests resalts.
-	Cache struct {
-		FilePath string // Path to cache file.
+	// Cashe struct for cashe requests resalts.
+	Cashe struct {
+		FilePath string // Path to cashe file.
 		Key      string // Key for encrypt and decrypt values.
 	}
 	// LocalStorage storage for commands when server unreacheble.
@@ -41,28 +42,31 @@ type (
 	}
 )
 
-func NewCache(key string) *Cache {
-	return &Cache{
-		FilePath: path.Join(os.TempDir(), ".gophCache"),
+func NewCashe(key string) *Cashe {
+	return &Cashe{
+		FilePath: path.Join(os.TempDir(), ".gophCashe"),
 		Key:      key,
 	}
 }
 
-// readValues reads values from cache file.
-func (c *Cache) readValues() (map[string]string, error) {
+// readValues reads values from cashe file.
+func (c *Cashe) readValues() (map[string]string, error) {
 	var items map[string]string
 	data, err := os.ReadFile(c.FilePath)
+	if errors.Is(err, os.ErrNotExist) {
+		return make(map[string]string, 0), nil
+	}
 	if err != nil {
-		return nil, fmt.Errorf("read cache error: %w", err)
+		return nil, fmt.Errorf("read cashe error: %w", err)
 	}
 	if err = json.Unmarshal(data, &items); err != nil {
-		return nil, fmt.Errorf("unmarhsal cache error")
+		return nil, fmt.Errorf("unmarhsal cashe error")
 	}
 	return items, nil
 }
 
-// SetValue writes cmd and value to cache file.
-func (c *Cache) SetValue(cmd, value string) error {
+// SetValue writes cmd and value to cashe file.
+func (c *Cashe) SetValue(cmd, value string) error {
 	items := make(map[string]string, 0)
 	i, err := c.readValues()
 	if err == nil {
@@ -70,12 +74,12 @@ func (c *Cache) SetValue(cmd, value string) error {
 	}
 	data, err := EncryptAES([]byte(c.Key), []byte(value))
 	if err != nil {
-		return fmt.Errorf("encrypt cache value error: %w", err)
+		return fmt.Errorf("encrypt cashe value error: %w", err)
 	}
 	items[cmd] = hex.EncodeToString(data)
 	data, err = json.Marshal(items)
 	if err != nil {
-		return fmt.Errorf("marshal cache value error: %w", err)
+		return fmt.Errorf("marshal cashe value error: %w", err)
 	}
 	if err = os.WriteFile(c.FilePath, data, writeFileMode); err != nil {
 		return fmt.Errorf("write cahce file error: %w", err)
@@ -83,14 +87,14 @@ func (c *Cache) SetValue(cmd, value string) error {
 	return nil
 }
 
-// GetValue returns value for cmd from cache file.
-func (c *Cache) GetValue(cmd string) (string, error) {
+// GetValue returns value for cmd from cashe file.
+func (c *Cashe) GetValue(cmd string) (string, error) {
 	items, err := c.readValues()
 	if err != nil {
 		return "", err
 	}
 	if items[cmd] == "" {
-		return "", errors.New("cache is empty")
+		return "", ErrEmptyCashe
 	}
 	b, err := hex.DecodeString(items[cmd])
 	if err != nil {
