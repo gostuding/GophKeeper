@@ -3,83 +3,87 @@ package storage
 import (
 	"bufio"
 	"bytes"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"path"
-	"path/filepath"
-	"sync"
-)
-
-const (
-	prefix = "!!! Cashed values: !!!\n"
 )
 
 var (
-	ErrEmptyCashe = errors.New("cashe is empty")
-	ErrLocked     = errors.New("storage locked")
-	spliter       = []byte(":splitter:")
+	ErrEmptyCashe  = errors.New("cashe is empty")
+	ErrCashedValue = errors.New("cashed values")
+	ErrLocked      = errors.New("storage locked")
+	spliter        = []byte(":splitter:")
 )
 
 type (
 	// Cashe struct for cashe requests resalts.
 	Cashe struct {
-		FilePath string // Path to cashe file.
-		Key      string // Key for encrypt and decrypt values.
+		FilePath    string // Path to cashe file.
+		StoragePath string // Path to cashe local storage file.
+		Key         string // Key for encrypt and decrypt values.
 	}
-	// LocalStorage storage for commands when server unreacheble.
-	LocalStorage struct {
-		mutex    *sync.RWMutex
-		FilePath string
-		Key      string
-		isLocked bool
+	CasheValue struct {
+		Ver   string `json:"ver"`
+		Value string `json:"value"`
 	}
 	Command struct {
 		Cmd   string `json:"cmd"`
 		Value string `json:"value"`
 	}
+	Commander interface {
+		Command() string
+		Arg() string
+	}
 )
+
+func (c *Command) Command() string {
+	return c.Cmd
+}
+func (c *Command) Arg() string {
+	return c.Value
+}
 
 func NewCashe(key string) *Cashe {
 	return &Cashe{
-		FilePath: path.Join(os.TempDir(), ".gophCashe"),
-		Key:      key,
+		FilePath:    path.Join(os.TempDir(), ".gophCashe"),
+		StoragePath: path.Join(os.TempDir(), ".gophStarage"),
+		Key:         key,
 	}
 }
 
 // readValues reads values from cashe file.
-func (c *Cashe) readValues() (map[string]string, error) {
-	var items map[string]string
+func (c *Cashe) readValues() (map[string]CasheValue, error) {
+	items := make(map[string]CasheValue, 0)
 	data, err := os.ReadFile(c.FilePath)
 	if errors.Is(err, os.ErrNotExist) {
-		return make(map[string]string, 0), nil
+		return items, nil
 	}
 	if err != nil {
-		return nil, fmt.Errorf("read cashe error: %w", err)
+		return items, fmt.Errorf("read cashe error: %w", err)
+	}
+	data, err = decryptAES([]byte(c.Key), data)
+	if err != nil {
+		return items, fmt.Errorf("decrypt cashe error: %w", err)
 	}
 	if err = json.Unmarshal(data, &items); err != nil {
-		return nil, fmt.Errorf("unmarhsal cashe error")
+		return items, fmt.Errorf("unmarhsal cashe error")
 	}
 	return items, nil
 }
 
 // SetValue writes cmd and value to cashe file.
-func (c *Cashe) SetValue(cmd, value string) error {
-	items := make(map[string]string, 0)
-	i, err := c.readValues()
-	if err == nil {
-		items = i
-	}
-	data, err := EncryptAES([]byte(c.Key), []byte(value))
-	if err != nil {
-		return fmt.Errorf("encrypt cashe value error: %w", err)
-	}
-	items[cmd] = hex.EncodeToString(data)
-	data, err = json.Marshal(items)
+func (c *Cashe) SetValue(cmd, ver, value string) error {
+	items, _ := c.readValues()
+	items[cmd] = CasheValue{Ver: ver, Value: value}
+	data, err := json.Marshal(items)
 	if err != nil {
 		return fmt.Errorf("marshal cashe value error: %w", err)
+	}
+	data, err = EncryptAES([]byte(c.Key), data)
+	if err != nil {
+		return fmt.Errorf("encrypt cashe value error: %w", err)
 	}
 	if err = os.WriteFile(c.FilePath, data, writeFileMode); err != nil {
 		return fmt.Errorf("write cahce file error: %w", err)
@@ -88,38 +92,32 @@ func (c *Cashe) SetValue(cmd, value string) error {
 }
 
 // GetValue returns value for cmd from cashe file.
-func (c *Cashe) GetValue(cmd string) (string, error) {
+func (c *Cashe) GetValue(cmd, ver string) (string, error) {
 	items, err := c.readValues()
 	if err != nil {
 		return "", err
 	}
-	if items[cmd] == "" {
-		return "", ErrEmptyCashe
+	if ver == "" {
+		if items[cmd].Value != "" {
+			return items[cmd].Value, ErrCashedValue
+		}
+	} else {
+		if items[cmd].Ver == ver {
+			return items[cmd].Value, nil
+		}
 	}
-	b, err := hex.DecodeString(items[cmd])
-	if err != nil {
-		return "", fmt.Errorf("cache decode value error: %w", err)
-	}
-	val, err := decryptAES([]byte(c.Key), b)
-	if err != nil {
-		return "", fmt.Errorf("get cache value error: %w", err)
-	}
-	return fmt.Sprintf("%s%s", prefix, string(val)), nil
+	return "", ErrEmptyCashe
 }
 
-// NewLocalStorage creates new local storage.
-func NewLocalStorage(key string) (*LocalStorage, error) {
-	s := LocalStorage{FilePath: "", Key: key, isLocked: false, mutex: &sync.RWMutex{}}
-	p, err := os.Executable()
-	if err != nil {
-		return &s, fmt.Errorf("path error: %w", err)
+func (c *Cashe) Clear() error {
+	if err := os.WriteFile(c.FilePath, nil, writeFileMode); err != nil {
+		return fmt.Errorf("clear cahce file error: %w", err)
 	}
-	s.FilePath = path.Join(filepath.Dir(p), ".local")
-	return &s, nil
+	return nil
 }
 
 // valudateCommand decrypts line and unmarshal to Command object.
-func (s *LocalStorage) valudateCommand(line []byte) (*Command, error) {
+func (s *Cashe) valudateCommand(line []byte) (Commander, error) {
 	data, err := decryptAES([]byte(s.Key), line)
 	if err != nil {
 		return nil, fmt.Errorf("decode line error: %w", err)
@@ -133,11 +131,8 @@ func (s *LocalStorage) valudateCommand(line []byte) (*Command, error) {
 }
 
 // Values returns list of commands in file.
-func (s *LocalStorage) Values() ([]*Command, error) {
-	if s.IsLocked() {
-		return nil, ErrLocked
-	}
-	items := make([]*Command, 0)
+func (s *Cashe) GetStorageValues() ([]Commander, error) {
+	items := make([]Commander, 0)
 	file, err := os.OpenFile(s.FilePath, os.O_RDONLY, writeFileMode)
 	if errors.Is(err, os.ErrNotExist) {
 		fmt.Printf("file not exist: %s\n", s.FilePath)
@@ -165,11 +160,8 @@ func (s *LocalStorage) Values() ([]*Command, error) {
 }
 
 // Add writes new Command in file.
-func (s *LocalStorage) Add(c *Command) error {
-	if s.IsLocked() {
-		return ErrLocked
-	}
-	if c.Cmd == "" || c.Value == "" {
+func (s *Cashe) AddStorageValue(c Commander) error {
+	if c.Command() == "" || c.Arg() == "" {
 		return errors.New("empty values error")
 	}
 	data, err := json.Marshal(c)
@@ -198,11 +190,8 @@ func (s *LocalStorage) Add(c *Command) error {
 	return nil
 }
 
-// Clear clears data in file.
-func (s *LocalStorage) Clear() error {
-	if s.IsLocked() {
-		return ErrLocked
-	}
+// StorageClear clears data in file.
+func (s *Cashe) ClearStorageValues() error {
 	file, err := os.OpenFile(s.FilePath, os.O_CREATE|os.O_TRUNC, writeFileMode)
 	if err != nil {
 		return fmt.Errorf("clear file error: %w", err)
@@ -211,46 +200,4 @@ func (s *LocalStorage) Clear() error {
 		return fmt.Errorf("close file error: %w", err)
 	}
 	return nil
-}
-
-// Lock gets commands and locks storage.
-func (s *LocalStorage) Lock() ([]*Command, error) {
-	if s.IsLocked() {
-		return nil, ErrLocked
-	}
-	items, err := s.Values()
-	if err != nil {
-		return nil, err
-	}
-	s.mutex.Lock()
-	s.isLocked = true
-	s.mutex.Unlock()
-	return items, nil
-}
-
-// Unlock clears storage and writes values in storage.
-func (s *LocalStorage) Unlock(values []*Command) error {
-	if !s.IsLocked() {
-		return ErrLocked
-	}
-	s.mutex.Lock()
-	s.isLocked = false
-	s.mutex.Unlock()
-	if err := s.Clear(); err != nil {
-		return err
-	}
-	for _, item := range values {
-		fmt.Println(item)
-		if err := s.Add(item); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-// IsLocked checks if storage locked.
-func (s *LocalStorage) IsLocked() bool {
-	s.mutex.RLock()
-	defer s.mutex.RUnlock()
-	return s.isLocked
 }

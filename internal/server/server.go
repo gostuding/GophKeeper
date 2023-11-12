@@ -39,8 +39,8 @@ type (
 		Registration(context.Context, string, string) (string, int, error)
 		Login(context.Context, string, string) (string, int, error)
 		GetKey(context.Context, uint) ([]byte, error)
-		GetTextValues(ctx context.Context, obj any, uid uint) ([]byte, error)
-		GetValue(ctx context.Context, obj any, id, uid uint) ([]byte, error)
+		GetTextValues(ctx context.Context, obj_type string, uid uint) ([]byte, error)
+		GetValue(ctx context.Context, obj_type string, id, uid uint) ([]byte, error)
 		AddTextValue(ctx context.Context, obj any, uid uint, label, value string) error
 		DeleteValue(ctx context.Context, obj any) error
 		UpdateTextValue(ctx context.Context, obj any, id, uid uint, label, value string) error

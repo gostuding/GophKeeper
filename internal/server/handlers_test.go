@@ -109,7 +109,7 @@ func TestLogin(t *testing.T) {
 	}
 }
 
-func getListCommonTest(t *testing.T, obj, e any) {
+func getListCommonTest(t *testing.T, obj, e string) {
 	t.Helper()
 	r := []byte("[]")
 	ctrl := gomock.NewController(t)
@@ -164,17 +164,17 @@ func getListCommonTest(t *testing.T, obj, e any) {
 }
 
 func TestGetCardsList(t *testing.T) {
-	getListCommonTest(t, storage.Cards{ID: 1}, storage.Cards{ID: 2})
+	getListCommonTest(t, "success", "error")
 }
 
 func TestGetFilesList(t *testing.T) {
-	getListCommonTest(t, storage.Files{ID: 1}, storage.Files{ID: 2})
+	getListCommonTest(t, "success", "error")
 }
 func TestGetDataInfoList(t *testing.T) {
-	getListCommonTest(t, storage.SendDataInfo{ID: 1}, storage.SendDataInfo{ID: 2})
+	getListCommonTest(t, "success", "error")
 }
 func TestGetCredsList(t *testing.T) {
-	getListCommonTest(t, storage.CredsInfo{ID: 1}, storage.CredsInfo{ID: 2})
+	getListCommonTest(t, "success", "error")
 }
 
 func delCommonTest(t *testing.T, obj, e, n any) {
@@ -504,7 +504,7 @@ func TestUpdateCreds(t *testing.T) {
 	updateCommonTest(t, storage.CredsInfo{ID: 1})
 }
 
-func getCommonTest(t *testing.T, obj, e, n any) {
+func getCommonTest(t *testing.T, obj, e, n string) {
 	t.Helper()
 	r := []byte("[]")
 	ctrl := gomock.NewController(t)
@@ -573,22 +573,13 @@ func getCommonTest(t *testing.T, obj, e, n any) {
 	})
 }
 func TestGetCard(t *testing.T) {
-	obj := storage.Cards{ID: 1}
-	e := storage.Cards{ID: 2}
-	n := storage.Cards{ID: 3}
-	getCommonTest(t, obj, e, n)
+	getCommonTest(t, "success", "error", "not found")
 }
 func TestGetDataInfo(t *testing.T) {
-	obj := storage.SendDataInfo{ID: 1}
-	e := storage.SendDataInfo{ID: 2}
-	n := storage.SendDataInfo{ID: 3}
-	getCommonTest(t, obj, e, n)
+	getCommonTest(t, "success", "error", "not found")
 }
 func TestGetCredInfo(t *testing.T) {
-	obj := storage.CredsInfo{ID: 1}
-	e := storage.CredsInfo{ID: 2}
-	n := storage.CredsInfo{ID: 3}
-	getCommonTest(t, obj, e, n)
+	getCommonTest(t, "success", "error", "not found")
 }
 
 func addCommonTest(t *testing.T, obj any) {

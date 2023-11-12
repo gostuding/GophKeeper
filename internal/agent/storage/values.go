@@ -22,6 +22,7 @@ type (
 		Updated time.Time `json:"updated,omitempty"`
 		Label   string    `json:"label"`
 		Info    string    `json:"info,omitempty"`
+		Ver     string    `json:"version"`
 		ID      int       `json:"id,omitempty"`
 	}
 	// Credent is struct for login and password information.
@@ -71,11 +72,45 @@ type (
 		ToJSON() ([]byte, error)
 		AskUser() error
 		String() string
+		Meta() string
+		UpdateTime() time.Time
+		SetUpdateTime(time.Time)
+	}
+	Texter interface {
+		Text() string
 	}
 )
 
+func NewTextValuer(t string) (TextValuer, error) {
+	switch t {
+	case CardsType:
+		return &CardInfo{}, nil
+	case DatasType:
+		return &DataInfo{}, nil
+	case CredsType:
+		return &Credent{}, nil
+	default:
+		return nil, ErrItemType
+	}
+}
+
+func (f *Files) Text() string {
+	txt := fmt.Sprintf("File: %d. Название:'%s'\tРазмер:'%s'\tДата: %s",
+		f.ID, f.Name, fileSize(f.Size), f.CreatedAt.Format(TimeFormat))
+	if !f.Loaded {
+		txt += "\t'Загружен не полностью'"
+	}
+	txt += "\n"
+	return txt
+}
+func (d *DataInfo) Text() string {
+	return fmt.Sprintf("ID: %d. '%s'\t'%s'\n", d.ID, d.Label, d.Updated.Format(TimeFormat))
+}
 func (d *DataInfo) GetID() int {
 	return d.ID
+}
+func (d *DataInfo) Meta() string {
+	return d.Label
 }
 func (d *DataInfo) SetID(id int) {
 	d.ID = id
@@ -101,6 +136,12 @@ func (d *DataInfo) AskUser() error {
 		return err
 	}
 	return nil
+}
+func (d *DataInfo) UpdateTime() time.Time {
+	return d.Updated
+}
+func (d *DataInfo) SetUpdateTime(t time.Time) {
+	d.Updated = t
 }
 func (d *DataInfo) String() string {
 	return fmt.Sprintf("Название: %s\nДанные: %s\nДата изменения: %s",
@@ -144,10 +185,18 @@ func (d *CardInfo) AskUser() error {
 	}
 	return nil
 }
-
+func (d *CardInfo) Meta() string {
+	return d.Label
+}
 func (d *CardInfo) String() string {
 	return fmt.Sprintf("Название: %s\nНомер: %s\nВладелец: %s\nСрок: %s\nCSV: %s\nДата изменения: %s",
 		d.Label, d.Number, d.User, d.Duration, d.Csv, d.Updated.Format(TimeFormat))
+}
+func (d *CardInfo) UpdateTime() time.Time {
+	return d.Updated
+}
+func (d *CardInfo) SetUpdateTime(t time.Time) {
+	d.Updated = t
 }
 
 func (d *Credent) GetID() int {
@@ -181,8 +230,16 @@ func (d *Credent) AskUser() error {
 	}
 	return nil
 }
-
+func (d *Credent) Meta() string {
+	return d.Label
+}
 func (d *Credent) String() string {
 	return fmt.Sprintf("Название: %s\nЛогин: %s\nПароль: %s\nДата изменения: %s",
 		d.Label, d.Login, d.Pwd, d.Updated.Format(TimeFormat))
+}
+func (d *Credent) UpdateTime() time.Time {
+	return d.Updated
+}
+func (d *Credent) SetUpdateTime(t time.Time) {
+	d.Updated = t
 }

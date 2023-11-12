@@ -165,7 +165,7 @@ func (mr *MockStorageMockRecorder) GetPreloadFileInfo(arg0, arg1, arg2 interface
 }
 
 // GetTextValues mocks base method.
-func (m *MockStorage) GetTextValues(arg0 context.Context, arg1 interface{}, arg2 uint) ([]byte, error) {
+func (m *MockStorage) GetTextValues(arg0 context.Context, arg1 string, arg2 uint) ([]byte, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetTextValues", arg0, arg1, arg2)
 	ret0, _ := ret[0].([]byte)
@@ -180,7 +180,7 @@ func (mr *MockStorageMockRecorder) GetTextValues(arg0, arg1, arg2 interface{}) *
 }
 
 // GetValue mocks base method.
-func (m *MockStorage) GetValue(arg0 context.Context, arg1 interface{}, arg2, arg3 uint) ([]byte, error) {
+func (m *MockStorage) GetValue(arg0 context.Context, arg1 string, arg2, arg3 uint) ([]byte, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetValue", arg0, arg1, arg2, arg3)
 	ret0, _ := ret[0].([]byte)

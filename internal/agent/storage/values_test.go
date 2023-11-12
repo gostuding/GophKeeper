@@ -38,3 +38,25 @@ func TestDataInfo_ToJSON(t *testing.T) {
 		}
 	})
 }
+
+func TestNewTextValuer(t *testing.T) {
+	tests := []struct {
+		name    string
+		t       string
+		wantErr bool
+	}{
+		{"Cards", CardsType, false},
+		{"Datas", DatasType, false},
+		{"Creds", CredsType, false},
+		{"Undefine", "", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := NewTextValuer(tt.t)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("NewTextValuer() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+		})
+	}
+}

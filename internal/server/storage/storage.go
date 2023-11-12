@@ -30,6 +30,10 @@ const (
 	fileMode   = 0740
 )
 
+var (
+	ErrUndefindedType = errors.New("undefined object type")
+)
+
 type (
 	// Storage is struct for Gorm connection to database.
 	Storage struct {
@@ -141,27 +145,27 @@ func (s *Storage) Login(
 }
 
 // GetTextValues returns users cards json.
-func (s *Storage) GetTextValues(ctx context.Context, obj any, uid uint) ([]byte, error) {
+func (s *Storage) GetTextValues(ctx context.Context, t string, uid uint) ([]byte, error) {
 	values := make([]SendDataInfo, 0)
 	var result *gorm.DB
 	var data []byte
 	var err error
-	switch obj.(type) {
-	case Cards:
+	switch t {
+	case CardsType:
 		var c []Cards
 		result = s.con.WithContext(ctx).Order(idOrder).Where(uidInQuery, uid).Find(&c)
 		for _, item := range c {
 			values = append(values, SendDataInfo{ID: item.ID, Label: item.Label, UpdatedAt: item.UpdatedAt})
 		}
-	case CredsInfo:
+	case CredsType:
 		var c []CredsInfo
 		result = s.con.WithContext(ctx).Order(idOrder).Where(uidInQuery, uid).Find(&c)
 		for _, item := range c {
 			values = append(values, SendDataInfo{ID: item.ID, Label: item.Label, UpdatedAt: item.UpdatedAt})
 		}
-	case SendDataInfo:
+	case DatasType:
 		result = s.con.WithContext(ctx).Order(idOrder).Where(uidInQuery, uid).Find(&values)
-	case Files:
+	case FilesType:
 		var f []Files
 		result = s.con.WithContext(ctx).Order(idOrder).Where(uidInQuery, uid).Find(&f)
 		data, err = json.Marshal(f)
@@ -169,7 +173,7 @@ func (s *Storage) GetTextValues(ctx context.Context, obj any, uid uint) ([]byte,
 			return nil, makeError(ErrJSONMarshal, err)
 		}
 	default:
-		return nil, errors.New("undefined get object type")
+		return nil, ErrUndefindedType
 	}
 	if result.Error != nil {
 		return nil, fmt.Errorf("get values error: %w: %w", ErrDB, result.Error)
@@ -187,26 +191,26 @@ func (s *Storage) GetTextValues(ctx context.Context, obj any, uid uint) ([]byte,
 }
 
 // GetValue returns full info about one item.
-func (s *Storage) GetValue(ctx context.Context, obj any, id, uid uint) ([]byte, error) {
+func (s *Storage) GetValue(ctx context.Context, t string, id, uid uint) ([]byte, error) {
 	var value SendDataInfo
 	var result *gorm.DB
-	switch obj.(type) {
-	case Cards:
+	switch t {
+	case CardsType:
 		c := Cards{}
 		result = s.con.WithContext(ctx).Where(&Cards{UID: uid, ID: id}).First(&c)
 		value.Label = c.Label
 		value.Info = c.Value
 		value.UpdatedAt = c.UpdatedAt
-	case SendDataInfo:
+	case DatasType:
 		result = s.con.WithContext(ctx).Where(&SendDataInfo{UID: uid, ID: id}).First(&value)
-	case CredsInfo:
+	case CredsType:
 		c := CredsInfo{}
 		result = s.con.WithContext(ctx).Where(&CredsInfo{UID: uid, ID: id}).First(&c)
 		value.Label = c.Label
 		value.Info = c.Info
 		value.UpdatedAt = c.UpdatedAt
 	default:
-		return nil, errors.New("undefined get item type")
+		return nil, ErrUndefindedType
 	}
 	if result.Error != nil {
 		return nil, makeError(ErrDatabase, result.Error)
@@ -229,7 +233,7 @@ func (s *Storage) AddTextValue(ctx context.Context, obj any, uid uint, label, va
 	case CredsInfo:
 		result = s.con.WithContext(ctx).Create(&CredsInfo{Label: label, Info: value, UID: uid})
 	default:
-		return fmt.Errorf("undefined add value type, %v", obj)
+		return ErrUndefindedType
 	}
 	if result.Error != nil {
 		return fmt.Errorf("add value error: %w: %w", ErrDB, result.Error)
@@ -266,7 +270,7 @@ func (s *Storage) DeleteValue(ctx context.Context, obj any) error {
 			return makeError(ErrDatabase, err)
 		}
 	default:
-		return errors.New("undefined delete object type")
+		return ErrUndefindedType
 	}
 	return nil
 }
@@ -290,7 +294,7 @@ func (s *Storage) UpdateTextValue(ctx context.Context, obj any,
 		result = s.con.WithContext(ctx).Where(&c).First(&c)
 		itemID = c.ID
 	default:
-		return errors.New("undefinet update object type")
+		return ErrUndefindedType
 	}
 	if result.Error != nil {
 		return gorm.ErrRecordNotFound

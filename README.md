@@ -11,6 +11,15 @@ git clone https://github.com/gostuding/GophKeeper
 2. База данный для сервера (по умолчанию используется название БД `gokeeper`) (см. документацию `https://postgrespro.ru/docs/postgresql/15/tutorial-createdb`)
 3. Пользователь для работы с БД (по умолчанию используется `gopher`, пароль `password`) (см. документацию `https://postgrespro.ru/docs/postgresql/15/app-createuser`)
 
+Для запуска и корректной работы сервера, необходимо указать строку подключения к БД в настройках сервера (файла: server_config.json):
+
+```
+...
+    "dsn": "host=localhost user=postgres database=gokeeper"
+...
+``` 
+
+
 # Swager
 
 1. Запустить сервер 

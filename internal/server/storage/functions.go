@@ -7,6 +7,13 @@ import (
 	"gorm.io/gorm"
 )
 
+const (
+	CardsType = "cards"
+	FilesType = "files"
+	DatasType = "datas"
+	CredsType = "creds"
+)
+
 type (
 	// Users is Gorm struct for users info.
 	Users struct {

@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"crypto/md5"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -86,6 +87,38 @@ func GetUserKey(ctx context.Context, strg Storage) ([]byte, int, error) {
 		return nil, http.StatusInternalServerError, fmt.Errorf("user key error: %w", err)
 	}
 	return data, http.StatusOK, nil
+}
+
+// GetVersion handler returns user's data version.
+// @Tags Авторизация
+// @Summary Запрос версии пользовательских данных на сервере.
+// @Router /api/ver/{type}/{id} [get]
+// @Success 200 "Отправка версии"
+// @Success 401 "Не авторизован"
+// @Success 404 "Данные отсутствуют"
+// @failure 500 "Внутренняя ошибка сервиса".
+func GetVersion(ctx context.Context, strg Storage, t, id string) ([]byte, int, error) {
+	uid, ok := ctx.Value(middlewares.AuthUID).(int)
+	if !ok {
+		return nil, http.StatusUnauthorized, ErrUserAuthorization
+	}
+	var err error
+	ident, _ := strconv.Atoi(id)
+	var data []byte
+	if ident == 0 {
+		data, err = strg.GetTextValues(ctx, t, uint(uid))
+	} else {
+		data, err = strg.GetValue(ctx, t, uint(ident), uint(uid))
+	}
+	if errors.Is(err, storage.ErrUndefindedType) || errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, http.StatusNotFound, fmt.Errorf("version error: %w", err)
+	}
+	if err != nil {
+		return nil, http.StatusInternalServerError, fmt.Errorf("get version error: %w", err)
+	}
+	h := md5.New()
+	h.Write(data)
+	return h.Sum(nil), http.StatusOK, nil
 }
 
 // Register new user handler.
@@ -174,7 +207,7 @@ func GetCardsList(
 	ctx context.Context,
 	strg Storage,
 ) ([]byte, int, error) {
-	return getListCommon(ctx, storage.Cards{}, strg)
+	return getListCommon(ctx, storage.CardsType, strg)
 }
 
 func addCommon(ctx context.Context, body []byte, obj any, strg Storage) (int, error) {
@@ -223,12 +256,12 @@ func AddCardInfo(
 	return status, nil
 }
 
-func getCommon(ctx context.Context, id uint, obj any, strg Storage) ([]byte, int, error) {
+func getCommon(ctx context.Context, id uint, t string, strg Storage) ([]byte, int, error) {
 	uid, ok := ctx.Value(middlewares.AuthUID).(int)
 	if !ok {
 		return nil, http.StatusUnauthorized, ErrUserAuthorization
 	}
-	data, err := strg.GetValue(ctx, obj, id, uint(uid))
+	data, err := strg.GetValue(ctx, t, id, uint(uid))
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, http.StatusNotFound, ErrNotFound
@@ -255,7 +288,7 @@ func GetCard(
 	strg Storage,
 	id uint,
 ) ([]byte, int, error) {
-	return getCommon(ctx, id, storage.Cards{}, strg)
+	return getCommon(ctx, id, storage.CardsType, strg)
 }
 
 func delCommon(ctx context.Context, obj any, strg Storage) (int, error) {
@@ -332,12 +365,12 @@ func UpdateCardInfo(
 }
 
 // GetListCommon is internal function.
-func getListCommon(ctx context.Context, obj any, strg Storage) ([]byte, int, error) {
+func getListCommon(ctx context.Context, t string, strg Storage) ([]byte, int, error) {
 	uid, ok := ctx.Value(middlewares.AuthUID).(int)
 	if !ok {
 		return nil, http.StatusUnauthorized, ErrUserAuthorization
 	}
-	data, err := strg.GetTextValues(ctx, obj, uint(uid))
+	data, err := strg.GetTextValues(ctx, t, uint(uid))
 	if err != nil {
 		return nil, http.StatusInternalServerError, makeError(GormGetError, err)
 	}
@@ -360,7 +393,7 @@ func GetFilesList(
 	ctx context.Context,
 	strg Storage,
 ) ([]byte, int, error) {
-	return getListCommon(ctx, storage.Files{}, strg)
+	return getListCommon(ctx, storage.FilesType, strg)
 }
 
 // AddFile returns new id for file.
@@ -533,7 +566,7 @@ func GetDataInfoList(
 	ctx context.Context,
 	strg Storage,
 ) ([]byte, int, error) {
-	return getListCommon(ctx, storage.SendDataInfo{}, strg)
+	return getListCommon(ctx, storage.DatasType, strg)
 }
 
 // AddDataInfo adds new data in database handle.
@@ -572,7 +605,7 @@ func GetDataInfo(
 	strg Storage,
 	id uint,
 ) ([]byte, int, error) {
-	return getCommon(ctx, id, storage.SendDataInfo{}, strg)
+	return getCommon(ctx, id, storage.DatasType, strg)
 }
 
 // DeleteDataInfo deletes information about one data info from database.
@@ -650,7 +683,7 @@ func GetCredsList(
 	ctx context.Context,
 	strg Storage,
 ) ([]byte, int, error) {
-	return getListCommon(ctx, storage.CredsInfo{}, strg)
+	return getListCommon(ctx, storage.CredsType, strg)
 }
 
 // UpdateCreds updates credent's info in database.
@@ -688,7 +721,7 @@ func GetCredInfo(
 	strg Storage,
 	id uint,
 ) ([]byte, int, error) {
-	return getCommon(ctx, id, storage.CredsInfo{}, strg)
+	return getCommon(ctx, id, storage.CredsType, strg)
 }
 
 // DeleteCredent deletes information about one credent from database.

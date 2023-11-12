@@ -155,7 +155,7 @@ func makeRouter(s *Server) http.Handler {
 	router := chi.NewRouter()
 	docs.SwaggerInfo.Host = net.JoinHostPort(s.Config.IP, strconv.Itoa(s.Config.Port))
 	cardsURL := "/api/cards/{id}"
-	dataURL := "/api/data/{id}"
+	dataURL := "/api/datas/{id}"
 	credsURL := "/api/creds/{id}"
 	filesURL := "/api/files/add"
 	redURL := "/"
@@ -210,10 +210,21 @@ func makeRouter(s *Server) http.Handler {
 			w.Header().Set(ContentType, TextPlain)
 			writeResponseData(w, data, status, s.Logger)
 		})
+
+		r.Get("/ver/{cmd}/{id}", func(w http.ResponseWriter, r *http.Request) {
+			data, status, err := GetVersion(r.Context(), s.Storage, chi.URLParam(r, "cmd"),
+				chi.URLParam(r, idString))
+			if err != nil {
+				s.Logger.Warnf(fmt.Errorf("get version error: %w", err).Error())
+			}
+			w.Header().Set(ContentType, TextPlain)
+			writeResponseData(w, data, status, s.Logger)
+		})
+
 		r.Get("/api/cards", func(w http.ResponseWriter, r *http.Request) {
 			listCommon(w, r, s, GetCardsList)
 		})
-		r.Get("/api/data", func(w http.ResponseWriter, r *http.Request) {
+		r.Get("/api/datas", func(w http.ResponseWriter, r *http.Request) {
 			listCommon(w, r, s, GetDataInfoList)
 		})
 		r.Get("/api/creds", func(w http.ResponseWriter, r *http.Request) {
@@ -225,7 +236,7 @@ func makeRouter(s *Server) http.Handler {
 		r.Post("/api/cards/add", func(w http.ResponseWriter, r *http.Request) {
 			addItemCommon(w, r, s, AddCardInfo)
 		})
-		r.Post("/api/data/add", func(w http.ResponseWriter, r *http.Request) {
+		r.Post("/api/datas/add", func(w http.ResponseWriter, r *http.Request) {
 			addItemCommon(w, r, s, AddDataInfo)
 		})
 		r.Post("/api/creds/add", func(w http.ResponseWriter, r *http.Request) {
