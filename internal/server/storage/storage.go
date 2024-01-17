@@ -40,6 +40,10 @@ type (
 		con  *gorm.DB // connection to database
 		Path string   // file storage path
 	}
+	userKeyData struct {
+		Key     string `json:"key"`          // Server's part of user's encrypt key.
+		Checker string `json:"check_string"` // Check string for user's path of key.
+	}
 )
 
 // NewStorage creates and checks database connection.
@@ -94,7 +98,12 @@ func (s *Storage) GetKey(ctx context.Context, uid uint) ([]byte, error) {
 	if res.RowsAffected == 0 {
 		return nil, gorm.ErrRecordNotFound
 	}
-	return []byte(usr.Key), nil
+	keyData := userKeyData{Key: usr.Key, Checker: usr.CheckKey}
+	data, err := json.Marshal(keyData)
+	if err != nil {
+		return nil, fmt.Errorf("key data marshal error: %w", err)
+	}
+	return data, nil
 }
 
 // Registration new users and returns it's id in database.

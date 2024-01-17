@@ -14,8 +14,9 @@ type (
 	}
 	// TokenKey internal struct.
 	tokenKey struct {
-		Token string `json:"token"`
-		Key   string `json:"key"`
+		Token          string `json:"token"`
+		Key            string `json:"key"`
+		CheckKeyString string `json:"check_string"`
 	}
 	// DataInfo is struct for private data information.
 	DataInfo struct {

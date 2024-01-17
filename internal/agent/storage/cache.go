@@ -20,9 +20,9 @@ var (
 type (
 	// Cashe struct for cashe requests resalts.
 	Cashe struct {
-		FilePath    string // Path to cashe file.
-		StoragePath string // Path to cashe local storage file.
-		Key         string // Key for encrypt and decrypt values.
+		FilePath     string // Path to cashe file.
+		Key          string // Key for encrypt and decrypt values.
+		CommandsPath string // Storage for users's edit commands.
 	}
 	CasheValue struct {
 		Ver   string `json:"ver"`
@@ -45,11 +45,13 @@ func (c *Command) Arg() string {
 	return c.Value
 }
 
+// NewCashe creates cashe object. It contains user's commands and server's data wich users asked.
+// When user ask data, it will writes in FilePath file. If server inavailable values from it will be shown.
 func NewCashe(key string) *Cashe {
 	return &Cashe{
-		FilePath:    path.Join(os.TempDir(), ".gophCashe"),
-		StoragePath: path.Join(os.TempDir(), ".gophStarage"),
-		Key:         key,
+		FilePath:     path.Join(os.TempDir(), ".gophStorageCashe"),
+		CommandsPath: path.Join(os.TempDir(), ".gophCommandsCashe"),
+		Key:          key,
 	}
 }
 
@@ -109,9 +111,10 @@ func (c *Cashe) GetValue(cmd, ver string) (string, error) {
 	return "", ErrEmptyCashe
 }
 
+// Clear writes nil to cashe files.
 func (c *Cashe) Clear() error {
 	if err := os.WriteFile(c.FilePath, nil, writeFileMode); err != nil {
-		return fmt.Errorf("clear cahce file error: %w", err)
+		return fmt.Errorf("clear data cahce file error: %w", err)
 	}
 	return nil
 }
@@ -130,16 +133,16 @@ func (s *Cashe) valudateCommand(line []byte) (Commander, error) {
 	return &c, nil
 }
 
-// Values returns list of commands in file.
-func (s *Cashe) GetStorageValues() ([]Commander, error) {
+// GetCommandsCashe returns list of users commands in cashe wich not sync with server.
+func (s *Cashe) GetCommandsCashe() ([]Commander, error) {
 	items := make([]Commander, 0)
-	file, err := os.OpenFile(s.FilePath, os.O_RDONLY, writeFileMode)
+	file, err := os.OpenFile(s.CommandsPath, os.O_RDONLY, writeFileMode)
 	if errors.Is(err, os.ErrNotExist) {
-		fmt.Printf("file not exist: %s\n", s.FilePath)
+		fmt.Printf("commands cashe file not exist: %s\n", s.FilePath)
 		return items, nil
 	}
 	if err != nil {
-		return nil, fmt.Errorf("get values open file error: %w", err)
+		return nil, fmt.Errorf("commands cache file open error: %w", err)
 	}
 	defer file.Close() //nolint:all //<-
 	scanner := bufio.NewScanner(file)
@@ -147,8 +150,7 @@ func (s *Cashe) GetStorageValues() ([]Commander, error) {
 	for scanner.Scan() {
 		val := scanner.Bytes()
 		if bytes.Equal(val, spliter) {
-			c, err := s.valudateCommand(b)
-			if err == nil {
+			if c, err := s.valudateCommand(b); err == nil {
 				items = append(items, c)
 			}
 			b = []byte("")
@@ -160,21 +162,21 @@ func (s *Cashe) GetStorageValues() ([]Commander, error) {
 }
 
 // Add writes new Command in file.
-func (s *Cashe) AddStorageValue(c Commander) error {
+func (s *Cashe) AddCommandValue(c Commander) error {
 	if c.Command() == "" || c.Arg() == "" {
 		return errors.New("empty values error")
 	}
 	data, err := json.Marshal(c)
 	if err != nil {
-		return fmt.Errorf("marhsal command error: %w", err)
+		return fmt.Errorf("marshal command error: %w", err)
 	}
 	data, err = EncryptAES([]byte(s.Key), data)
 	if err != nil {
 		return fmt.Errorf("encrypt command error: %w", err)
 	}
-	file, err := os.OpenFile(s.FilePath, os.O_WRONLY|os.O_APPEND|os.O_CREATE, writeFileMode)
+	file, err := os.OpenFile(s.CommandsPath, os.O_WRONLY|os.O_APPEND|os.O_CREATE, writeFileMode)
 	if err != nil {
-		return fmt.Errorf("open storage file error: %w", err)
+		return fmt.Errorf("open storage cashe file error: %w", err)
 	}
 	defer file.Close() //nolint:errcheck //<-
 	w := bufio.NewWriter(file)
@@ -190,14 +192,10 @@ func (s *Cashe) AddStorageValue(c Commander) error {
 	return nil
 }
 
-// StorageClear clears data in file.
-func (s *Cashe) ClearStorageValues() error {
-	file, err := os.OpenFile(s.FilePath, os.O_CREATE|os.O_TRUNC, writeFileMode)
-	if err != nil {
-		return fmt.Errorf("clear file error: %w", err)
-	}
-	if err = file.Close(); err != nil {
-		return fmt.Errorf("close file error: %w", err)
+// ClearCommandStorage writes nil to CommandStorage file.
+func (c *Cashe) ClearCommandStorage() error {
+	if err := os.WriteFile(c.CommandsPath, nil, writeFileMode); err != nil {
+		return fmt.Errorf("clear commands cahce file error: %w", err)
 	}
 	return nil
 }

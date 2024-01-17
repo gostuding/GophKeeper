@@ -21,7 +21,6 @@ type (
 	LoginPassword struct {
 		Login    string `json:"login"`    //
 		Password string `json:"password"` //
-		// PublicKey string `json:"public_key"` //
 	}
 	// LabelInfo is struct for marshal requests body.
 	labelInfo struct {
@@ -77,7 +76,7 @@ func GetCertificate(p string) ([]byte, error) {
 // @Router /api/get/key [get]
 // @Success 200 "Отправка ключа"
 // @failure 500 "Внутренняя ошибка сервиса".
-func GetUserKey(ctx context.Context, strg Storage) ([]byte, int, error) {
+func GetUserKey(ctx context.Context, strg Storager) ([]byte, int, error) {
 	uid, ok := ctx.Value(middlewares.AuthUID).(int)
 	if !ok {
 		return nil, http.StatusUnauthorized, ErrUserAuthorization
@@ -97,7 +96,7 @@ func GetUserKey(ctx context.Context, strg Storage) ([]byte, int, error) {
 // @Success 401 "Не авторизован"
 // @Success 404 "Данные отсутствуют"
 // @failure 500 "Внутренняя ошибка сервиса".
-func GetVersion(ctx context.Context, strg Storage, t, id string) ([]byte, int, error) {
+func GetVersion(ctx context.Context, strg Storager, t, id string) ([]byte, int, error) {
 	uid, ok := ctx.Value(middlewares.AuthUID).(int)
 	if !ok {
 		return nil, http.StatusUnauthorized, ErrUserAuthorization
@@ -136,7 +135,7 @@ func GetVersion(ctx context.Context, strg Storage, t, id string) ([]byte, int, e
 func Register(
 	ctx context.Context,
 	body, key []byte,
-	strg Storage,
+	strg Storager,
 	t int,
 	ua, addr string,
 ) ([]byte, int, error) {
@@ -172,7 +171,7 @@ func Register(
 func Login(
 	ctx context.Context,
 	body, key []byte,
-	strg Storage,
+	strg Storager,
 	t int,
 	ua, addr string,
 ) ([]byte, int, error) {
@@ -205,12 +204,12 @@ func Login(
 // @failure 500 "Внутренняя ошибка сервиса.".
 func GetCardsList(
 	ctx context.Context,
-	strg Storage,
+	strg Storager,
 ) ([]byte, int, error) {
 	return getListCommon(ctx, storage.CardsType, strg)
 }
 
-func addCommon(ctx context.Context, body []byte, obj any, strg Storage) (int, error) {
+func addCommon(ctx context.Context, body []byte, obj any, strg Storager) (int, error) {
 	uid, ok := ctx.Value(middlewares.AuthUID).(int)
 	if !ok {
 		return http.StatusUnauthorized, ErrUserAuthorization
@@ -244,7 +243,7 @@ func addCommon(ctx context.Context, body []byte, obj any, strg Storage) (int, er
 func AddCardInfo(
 	ctx context.Context,
 	body []byte,
-	strg Storage,
+	strg Storager,
 ) (int, error) {
 	status, err := addCommon(ctx, body, storage.Cards{}, strg)
 	if err != nil {
@@ -256,7 +255,7 @@ func AddCardInfo(
 	return status, nil
 }
 
-func getCommon(ctx context.Context, id uint, t string, strg Storage) ([]byte, int, error) {
+func getCommon(ctx context.Context, id uint, t string, strg Storager) ([]byte, int, error) {
 	uid, ok := ctx.Value(middlewares.AuthUID).(int)
 	if !ok {
 		return nil, http.StatusUnauthorized, ErrUserAuthorization
@@ -285,13 +284,13 @@ func getCommon(ctx context.Context, id uint, t string, strg Storage) ([]byte, in
 // @failure 500 "Внутренняя ошибка сервиса.".
 func GetCard(
 	ctx context.Context,
-	strg Storage,
+	strg Storager,
 	id uint,
 ) ([]byte, int, error) {
 	return getCommon(ctx, id, storage.CardsType, strg)
 }
 
-func delCommon(ctx context.Context, obj any, strg Storage) (int, error) {
+func delCommon(ctx context.Context, obj any, strg Storager) (int, error) {
 	err := strg.DeleteValue(ctx, obj)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -315,7 +314,7 @@ func delCommon(ctx context.Context, obj any, strg Storage) (int, error) {
 // @failure 500 "Внутренняя ошибка сервиса.".
 func DeleteCard(
 	ctx context.Context,
-	strg Storage,
+	strg Storager,
 	id int,
 ) (int, error) {
 	uid, ok := ctx.Value(middlewares.AuthUID).(int)
@@ -325,7 +324,7 @@ func DeleteCard(
 	return delCommon(ctx, storage.Cards{ID: uint(id), UID: uint(uid)}, strg)
 }
 
-func updateCommon(ctx context.Context, body []byte, id uint, obj any, strg Storage) (int, error) {
+func updateCommon(ctx context.Context, body []byte, id uint, obj any, strg Storager) (int, error) {
 	uid, ok := ctx.Value(middlewares.AuthUID).(int)
 	if !ok {
 		return http.StatusUnauthorized, ErrUserAuthorization
@@ -358,14 +357,14 @@ func updateCommon(ctx context.Context, body []byte, id uint, obj any, strg Stora
 func UpdateCardInfo(
 	ctx context.Context,
 	body []byte,
-	strg Storage,
+	strg Storager,
 	id uint,
 ) (int, error) {
 	return updateCommon(ctx, body, id, storage.Cards{}, strg)
 }
 
 // GetListCommon is internal function.
-func getListCommon(ctx context.Context, t string, strg Storage) ([]byte, int, error) {
+func getListCommon(ctx context.Context, t string, strg Storager) ([]byte, int, error) {
 	uid, ok := ctx.Value(middlewares.AuthUID).(int)
 	if !ok {
 		return nil, http.StatusUnauthorized, ErrUserAuthorization
@@ -391,7 +390,7 @@ func getListCommon(ctx context.Context, t string, strg Storage) ([]byte, int, er
 // @failure 500 "Внутренняя ошибка сервиса.".
 func GetFilesList(
 	ctx context.Context,
-	strg Storage,
+	strg Storager,
 ) ([]byte, int, error) {
 	return getListCommon(ctx, storage.FilesType, strg)
 }
@@ -410,7 +409,7 @@ func GetFilesList(
 func AddFile(
 	ctx context.Context,
 	body []byte,
-	strg Storage,
+	strg Storager,
 ) ([]byte, int, error) {
 	uid, ok := ctx.Value(middlewares.AuthUID).(int)
 	if !ok {
@@ -437,7 +436,7 @@ func AddFile(
 func AddFileData(
 	ctx context.Context,
 	body []byte,
-	strg Storage,
+	strg Storager,
 	r *http.Request,
 ) (int, error) {
 	uid, ok := ctx.Value(middlewares.AuthUID).(int)
@@ -481,7 +480,7 @@ func AddFileData(
 // @failure 500 "Внутренняя ошибка сервиса.".
 func AddFileFinish(
 	ctx context.Context,
-	strg Storage,
+	strg Storager,
 	fid uint,
 ) (int, error) {
 	uid, ok := ctx.Value(middlewares.AuthUID).(int)
@@ -510,7 +509,7 @@ func AddFileFinish(
 // @failure 500 "Внутренняя ошибка сервиса.".
 func DeleteFile(
 	ctx context.Context,
-	strg Storage,
+	strg Storager,
 	id int,
 ) (int, error) {
 	uid, ok := ctx.Value(middlewares.AuthUID).(int)
@@ -533,7 +532,7 @@ func DeleteFile(
 // @failure 500 "Внутренняя ошибка сервиса.".
 func GetPreloadFileInfo(
 	ctx context.Context,
-	strg Storage,
+	strg Storager,
 	id uint,
 ) ([]byte, int, error) {
 	uid, ok := ctx.Value(middlewares.AuthUID).(int)
@@ -564,7 +563,7 @@ func GetPreloadFileInfo(
 // @failure 500 "Внутренняя ошибка сервиса.".
 func GetDataInfoList(
 	ctx context.Context,
-	strg Storage,
+	strg Storager,
 ) ([]byte, int, error) {
 	return getListCommon(ctx, storage.DatasType, strg)
 }
@@ -584,7 +583,7 @@ func GetDataInfoList(
 func AddDataInfo(
 	ctx context.Context,
 	body []byte,
-	strg Storage,
+	strg Storager,
 ) (int, error) {
 	return addCommon(ctx, body, storage.SendDataInfo{}, strg)
 }
@@ -602,7 +601,7 @@ func AddDataInfo(
 // @failure 500 "Внутренняя ошибка сервиса.".
 func GetDataInfo(
 	ctx context.Context,
-	strg Storage,
+	strg Storager,
 	id uint,
 ) ([]byte, int, error) {
 	return getCommon(ctx, id, storage.DatasType, strg)
@@ -620,7 +619,7 @@ func GetDataInfo(
 // @failure 500 "Внутренняя ошибка сервиса.".
 func DeleteDataInfo(
 	ctx context.Context,
-	strg Storage,
+	strg Storager,
 	id int,
 ) (int, error) {
 	uid, ok := ctx.Value(middlewares.AuthUID).(int)
@@ -644,7 +643,7 @@ func DeleteDataInfo(
 func UpdateDataInfo(
 	ctx context.Context,
 	body []byte,
-	strg Storage,
+	strg Storager,
 	id uint,
 ) (int, error) {
 	return updateCommon(ctx, body, id, storage.SendDataInfo{}, strg)
@@ -664,7 +663,7 @@ func UpdateDataInfo(
 func AddCreds(
 	ctx context.Context,
 	body []byte,
-	strg Storage,
+	strg Storager,
 ) (int, error) {
 	return addCommon(ctx, body, storage.CredsInfo{}, strg)
 }
@@ -681,7 +680,7 @@ func AddCreds(
 // @failure 500 "Внутренняя ошибка сервиса.".
 func GetCredsList(
 	ctx context.Context,
-	strg Storage,
+	strg Storager,
 ) ([]byte, int, error) {
 	return getListCommon(ctx, storage.CredsType, strg)
 }
@@ -700,7 +699,7 @@ func GetCredsList(
 func UpdateCreds(
 	ctx context.Context,
 	body []byte,
-	strg Storage,
+	strg Storager,
 	id uint,
 ) (int, error) {
 	return updateCommon(ctx, body, id, storage.CredsInfo{}, strg)
@@ -718,7 +717,7 @@ func UpdateCreds(
 // @failure 500 "Внутренняя ошибка сервиса.".
 func GetCredInfo(
 	ctx context.Context,
-	strg Storage,
+	strg Storager,
 	id uint,
 ) ([]byte, int, error) {
 	return getCommon(ctx, id, storage.CredsType, strg)
@@ -736,7 +735,7 @@ func GetCredInfo(
 // @failure 500 "Внутренняя ошибка сервиса.".
 func DeleteCredent(
 	ctx context.Context,
-	strg Storage,
+	strg Storager,
 	id int,
 ) (int, error) {
 	uid, ok := ctx.Value(middlewares.AuthUID).(int)

@@ -22,13 +22,14 @@ type (
 		Login     string `gorm:"unique"`
 		Pwd       string `gorm:"type:varchar(255)"`
 		Key       string `gorm:"type:varchar(32)"`
+		CheckKey  string `gorm:"type:varchar(255)"`
 		ID        uint   `gorm:"primarykey"`
 	}
 	// Cards is Gorm struct for user's cards information.
 	// Value field contains private card's data.
 	Cards struct {
 		UpdatedAt time.Time `json:"updated"`
-		Label     string    `gorm:"unique;type:varchar(255)" json:"lablel"`
+		Label     string    `gorm:"type:varchar(255)" json:"lablel"`
 		Value     string    `gorm:"type:text" json:"value"`
 		ID        uint      `gorm:"primarykey" json:"-"`
 		UID       uint      `gorm:"numeric" json:"-"`

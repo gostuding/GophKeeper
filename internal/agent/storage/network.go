@@ -25,6 +25,7 @@ const (
 	TimeFormat        = "02.01.2006 15:04:05" //
 	writeFileMode     = 0600
 	urlSD             = "%s/%d"
+	fileAddUrl        = "/api/files/add"
 
 	CardsType = "cards"
 	DatasType = "datas"
@@ -48,6 +49,10 @@ type (
 		serverAESKey  []byte // server's key to encrypt or decrypt user pashprace
 		StorageCashe  *Cashe //
 		ServerAddress string
+	}
+	keyCheck struct {
+		Key     string `json:"key"`
+		Checker string `json:"check_string"`
 	}
 )
 
@@ -141,7 +146,7 @@ func (ns *NetStorage) Authentification(action string, l, p string) (string, erro
 }
 
 func (ns *NetStorage) SaveInLocal(cmd, arg string) error {
-	return ns.StorageCashe.AddStorageValue(&Command{Cmd: cmd, Value: arg})
+	return ns.StorageCashe.AddCommandValue(&Command{Cmd: cmd, Value: arg})
 }
 
 // getVersion requests data version from server.
@@ -165,17 +170,29 @@ func (ns *NetStorage) getAESKey() error {
 		return err
 	}
 	defer res.Body.Close() //nolint:errcheck //<-
-	ns.serverAESKey, err = io.ReadAll(res.Body)
+	data, err := io.ReadAll(res.Body)
 	if err != nil {
-		return fmt.Errorf("read request body error: %w", err)
+		return makeError(ErrResponseRead, err)
 	}
+	var keyData keyCheck
+	if err := json.Unmarshal(data, &keyData); err != nil {
+		return makeError(ErrJSONUnmarshal, err)
+	}
+	ns.serverAESKey = []byte(keyData.Key)
 	k, err := hex.DecodeString(ns.StorageCashe.Key)
 	if err != nil {
-		return fmt.Errorf("user key error: %w", err)
+		return makeError(ErrDecode, err)
 	}
 	k, err = decryptAES(ns.serverAESKey, k)
 	if err != nil {
 		return makeError(ErrDecryptMessage, err)
+	}
+	i, err := decryptAES(k, []byte(keyData.Checker))
+	if err != nil {
+		return makeError(ErrDecryptMessage, "decript check key string error", err)
+	}
+	if _, err = strconv.Atoi(string(i)); err != nil {
+		return makeError(ErrDecryptMessage, "check key error", err)
 	}
 	ns.Key = k
 	return nil
@@ -389,7 +406,7 @@ func (ns *NetStorage) getNewFileID(info os.FileInfo) (int, error) {
 	if err != nil {
 		return 0, makeError(ErrJSONMarshal, err)
 	}
-	res, err := ns.doRequest(data, fmt.Sprintf("%s/api/files/add", ns.ServerAddress), http.MethodPut)
+	res, err := ns.doRequest(data, fmt.Sprintf("%s%s", ns.ServerAddress, fileAddUrl), http.MethodPut)
 	if err != nil {
 		return 0, err
 	}
@@ -421,7 +438,6 @@ func (ns *NetStorage) addFileBody(filePath string, fid int) error {
 		}
 		defer file.Close() //nolint:errcheck //<-senselessly
 		block := make([]byte, readFileBlockSize)
-		pos := int64(0)
 		index := 0
 	label:
 		for {
@@ -440,8 +456,7 @@ func (ns *NetStorage) addFileBody(filePath string, fid int) error {
 					return
 				}
 				index++
-				sendChan <- FileSend{Index: index, Pos: pos, Size: len(data), Data: data}
-				pos += int64(len(data))
+				sendChan <- FileSend{Index: index, Pos: 0, Size: n, Data: data}
 			}
 		}
 	}()
@@ -461,7 +476,7 @@ func (ns *NetStorage) addFileBody(filePath string, fid int) error {
 					return
 				default:
 					req, err := http.NewRequest(http.MethodPost,
-						fmt.Sprintf("%s/api/files/add/%d", ns.ServerAddress, fid),
+						fmt.Sprintf("%s%s", ns.ServerAddress, fileAddUrl),
 						bytes.NewReader(item.Data))
 					if err != nil {
 						errChan <- makeError(ErrRequest, err)
@@ -515,7 +530,7 @@ func (ns *NetStorage) addFileBody(filePath string, fid int) error {
 
 // FihishFileTransfer sends get request to server for confirm send finishing.
 func (ns *NetStorage) fihishFileTransfer(fid int) error {
-	res, err := ns.doRequest(nil, fmt.Sprintf("%s/api/files/add?fid=%d", ns.ServerAddress, fid),
+	res, err := ns.doRequest(nil, fmt.Sprintf("%s%s?fid=%d", ns.ServerAddress, fileAddUrl, fid),
 		http.MethodGet)
 	if err != nil {
 		return err
@@ -526,6 +541,9 @@ func (ns *NetStorage) fihishFileTransfer(fid int) error {
 
 // GetFile loads file from server, decrypts it and saves in path.
 func (ns *NetStorage) GetFile(fid, filePath string) error {
+	if err := ns.getAESKey(); err != nil {
+		return err
+	}
 	resp, err := ns.doRequest(nil, fmt.Sprintf("%s/api/files/preload/%s", ns.ServerAddress, fid),
 		http.MethodGet)
 	if err != nil {

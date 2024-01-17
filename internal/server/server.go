@@ -28,14 +28,14 @@ type (
 	// Server is struct for object.
 	Server struct {
 		Config  *Config            // server's options
-		Storage Storage            // Storage interface
+		Storage Storager           // Storage interface
 		Logger  *zap.SugaredLogger // server's logger
 		srv     http.Server        // internal server
 		mutex   sync.Mutex
 		isRun   bool // flag to check is server run
 	}
-	// Storage for server.
-	Storage interface {
+	// Storager for server.
+	Storager interface {
 		Registration(context.Context, string, string) (string, int, error)
 		Login(context.Context, string, string) (string, int, error)
 		GetKey(context.Context, uint) ([]byte, error)
@@ -55,7 +55,7 @@ type (
 )
 
 // NewServer create new server.
-func NewServer(config *Config, s Storage) (*Server, error) {
+func NewServer(config *Config, s Storager) (*Server, error) {
 	logger, err := zap.NewDevelopment()
 	if err != nil {
 		return nil, fmt.Errorf("logger init error: %w", err)

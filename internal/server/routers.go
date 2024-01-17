@@ -54,7 +54,7 @@ func readRequestBody(w http.ResponseWriter, r *http.Request, l *zap.SugaredLogge
 // deleteCommon is using for no duplicate code.
 func deleteCommon(
 	w http.ResponseWriter, r *http.Request, s *Server,
-	f func(context.Context, Storage, int) (int, error),
+	f func(context.Context, Storager, int) (int, error),
 ) {
 	id, err := strconv.Atoi(chi.URLParam(r, idString))
 	if err != nil {
@@ -72,7 +72,7 @@ func deleteCommon(
 // loginRegistrationCommon is using for no duplicate code.
 func loginRegistrationCommon(
 	w http.ResponseWriter, r *http.Request, s *Server, name string,
-	f func(context.Context, []byte, []byte, Storage, int, string, string) ([]byte, int, error),
+	f func(context.Context, []byte, []byte, Storager, int, string, string) ([]byte, int, error),
 ) {
 	data, err := readRequestBody(w, r, s.Logger)
 	if err != nil {
@@ -88,7 +88,7 @@ func loginRegistrationCommon(
 
 // listCommon is using for no duplicate code.
 func listCommon(w http.ResponseWriter, r *http.Request, s *Server,
-	f func(context.Context, Storage) ([]byte, int, error),
+	f func(context.Context, Storager) ([]byte, int, error),
 ) {
 	data, status, err := f(r.Context(), s.Storage)
 	if err != nil {
@@ -99,7 +99,7 @@ func listCommon(w http.ResponseWriter, r *http.Request, s *Server,
 
 // addItemCommon is using for no duplicate code.
 func addItemCommon(w http.ResponseWriter, r *http.Request, s *Server,
-	f func(context.Context, []byte, Storage) (int, error),
+	f func(context.Context, []byte, Storager) (int, error),
 ) {
 	body, err := readRequestBody(w, r, s.Logger)
 	if err != nil {
@@ -114,7 +114,7 @@ func addItemCommon(w http.ResponseWriter, r *http.Request, s *Server,
 
 // geterCommon is using for no duplicate code.
 func geterCommon(w http.ResponseWriter, r *http.Request, s *Server,
-	f func(context.Context, Storage, uint) ([]byte, int, error),
+	f func(context.Context, Storager, uint) ([]byte, int, error),
 ) {
 	id, err := strconv.Atoi(chi.URLParam(r, idString))
 	if err != nil {
@@ -131,7 +131,7 @@ func geterCommon(w http.ResponseWriter, r *http.Request, s *Server,
 
 // setterCommon is using for no duplicate code.
 func setterCommon(w http.ResponseWriter, r *http.Request, s *Server,
-	f func(context.Context, []byte, Storage, uint) (int, error),
+	f func(context.Context, []byte, Storager, uint) (int, error),
 ) {
 	body, err := readRequestBody(w, r, s.Logger)
 	if err != nil {
@@ -190,10 +190,10 @@ func makeRouter(s *Server) http.Handler {
 			w.Header().Set(ContentType, TextPlain)
 			writeResponseData(w, data, status, s.Logger)
 		})
-		r.Post("/api/user/register", func(w http.ResponseWriter, r *http.Request) {
+		r.Post("/api/registration", func(w http.ResponseWriter, r *http.Request) {
 			loginRegistrationCommon(w, r, s, "registration", Register)
 		})
-		r.Post("/api/user/login", func(w http.ResponseWriter, r *http.Request) {
+		r.Post("/api/login", func(w http.ResponseWriter, r *http.Request) {
 			loginRegistrationCommon(w, r, s, "login", Login)
 		})
 	})

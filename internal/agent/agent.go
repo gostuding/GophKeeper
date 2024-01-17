@@ -187,7 +187,7 @@ func (a *Agent) DoCommand() error {
 	case "cards_edit", "datas_edit", "creds_edit":
 		return a.edit()
 	case "local":
-		values, err := a.RStorage.StorageCashe.GetStorageValues()
+		values, err := a.RStorage.StorageCashe.GetCommandsCashe()
 		if err != nil {
 			return fmt.Errorf("local storage values error: %w", err)
 		}
@@ -198,19 +198,22 @@ func (a *Agent) DoCommand() error {
 		if err := a.RStorage.StorageCashe.Clear(); err != nil {
 			return fmt.Errorf("clear storage error: %w", err)
 		}
+		if err := a.RStorage.StorageCashe.ClearCommandStorage(); err != nil {
+			return fmt.Errorf("clear command storage error: %w", err)
+		}
 	case "local_sync":
-		values, err := a.RStorage.StorageCashe.GetStorageValues()
+		values, err := a.RStorage.StorageCashe.GetCommandsCashe()
 		if err != nil {
 			return fmt.Errorf("get local storage values error: %w", err)
 		}
-		if err := a.RStorage.StorageCashe.ClearStorageValues(); err != nil {
+		if err := a.RStorage.StorageCashe.ClearCommandStorage(); err != nil {
 			return fmt.Errorf("clear local storage values error: %w", err)
 		}
 		for _, item := range values {
 			a.Config.Command = item.Command()
 			a.Config.Arg = item.Arg()
 			if err := a.DoCommand(); err != nil {
-				fmt.Printf("cmd '%s %s' error: %v", item.Command(), item.Arg(), err)
+				fmt.Printf("Sync cmd '%s %s' error: %v", item.Command(), item.Arg(), err)
 			}
 		}
 	default:
@@ -241,7 +244,7 @@ func (a *Agent) registration() error {
 	if p != r {
 		return errors.New("passwords are not equal")
 	}
-	token, err := a.RStorage.Authentification("register", l, p)
+	token, err := a.RStorage.Authentification("registration", l, p)
 	if errors.Is(err, storage.ErrLoginRepeat) {
 		token, err = a.RStorage.Authentification("login", l, p)
 	}
