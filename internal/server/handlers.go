@@ -75,6 +75,7 @@ func GetCertificate(p string) ([]byte, error) {
 // @Summary Запрос части ключа пользователя для шифрования данных на сервере
 // @Router /api/get/key [get]
 // @Success 200 "Отправка ключа"
+// @failure 404 "Пользователь не авторизован".
 // @failure 500 "Внутренняя ошибка сервиса".
 func GetUserKey(ctx context.Context, strg Storager) ([]byte, int, error) {
 	uid, ok := ctx.Value(middlewares.AuthUID).(int)
@@ -83,6 +84,9 @@ func GetUserKey(ctx context.Context, strg Storager) ([]byte, int, error) {
 	}
 	data, err := strg.GetKey(ctx, uint(uid))
 	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, http.StatusUnauthorized, ErrUserAuthorization
+		}
 		return nil, http.StatusInternalServerError, fmt.Errorf("user key error: %w", err)
 	}
 	return data, http.StatusOK, nil

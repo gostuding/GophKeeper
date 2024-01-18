@@ -89,10 +89,14 @@ func randomString(length int) string {
 	return string(b)
 }
 
+// GetKey sends part or the key to user.
 func (s *Storage) GetKey(ctx context.Context, uid uint) ([]byte, error) {
 	var usr Users
 	res := s.con.WithContext(ctx).Where("id = ?", uid).First(&usr)
 	if res.Error != nil {
+		if errors.Is(res.Error, gorm.ErrRecordNotFound) {
+			return nil, gorm.ErrRecordNotFound
+		}
 		return nil, fmt.Errorf("get key error: %w: %w", ErrDB, res.Error)
 	}
 	if res.RowsAffected == 0 {
