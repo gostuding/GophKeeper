@@ -37,7 +37,7 @@ func createUsers() ([]byte, []byte, error) {
 
 func TestRegister(t *testing.T) {
 	ctrl := gomock.NewController(t)
-	storage := mocks.NewMockStorage(ctrl)
+	storage := mocks.NewMockStorager(ctrl)
 	errUniq := errors.New("unique error")
 	storage.EXPECT().IsUniqueViolation(makeError(GormGetError, errUniq)).Return(true)
 	storage.EXPECT().Registration(ctx, "login", "password").Return("key", 1, nil)
@@ -75,7 +75,7 @@ func TestRegister(t *testing.T) {
 
 func TestLogin(t *testing.T) {
 	ctrl := gomock.NewController(t)
-	storage := mocks.NewMockStorage(ctrl)
+	storage := mocks.NewMockStorager(ctrl)
 	storage.EXPECT().Login(ctx, "login", "password").Return("key", 1, nil)
 	storage.EXPECT().Login(ctx, "repeat", "pwd").Return("", 0, gorm.ErrRecordNotFound)
 	key := []byte("token key")
@@ -113,7 +113,7 @@ func getListCommonTest(t *testing.T, obj, e string) {
 	t.Helper()
 	r := []byte("[]")
 	ctrl := gomock.NewController(t)
-	strg := mocks.NewMockStorage(ctrl)
+	strg := mocks.NewMockStorager(ctrl)
 	strg.EXPECT().GetTextValues(ctx, obj, uint(uid)).Return(r, nil)
 	strg.EXPECT().GetTextValues(ctx, e, uint(uid)).Return(nil, storage.ErrDB)
 	t.Run("Ошибка авторизации", func(t *testing.T) {
@@ -180,7 +180,7 @@ func TestGetCredsList(t *testing.T) {
 func delCommonTest(t *testing.T, obj, e, n any) {
 	t.Helper()
 	ctrl := gomock.NewController(t)
-	strg := mocks.NewMockStorage(ctrl)
+	strg := mocks.NewMockStorager(ctrl)
 	strg.EXPECT().DeleteValue(ctx, obj).Return(nil)
 	strg.EXPECT().DeleteValue(ctx, e).Return(storage.ErrDB)
 	strg.EXPECT().DeleteValue(ctx, n).Return(gorm.ErrRecordNotFound)
@@ -256,7 +256,7 @@ func TestDeleteFile(t *testing.T) {
 
 func TestAddFile(t *testing.T) {
 	ctrl := gomock.NewController(t)
-	storage := mocks.NewMockStorage(ctrl)
+	storage := mocks.NewMockStorager(ctrl)
 	d := []byte("success")
 	b := []byte("bad")
 	storage.EXPECT().AddFile(ctx, uint(uid), d).Return(d, nil)
@@ -292,7 +292,7 @@ func TestAddFile(t *testing.T) {
 
 func TestAddFileData(t *testing.T) {
 	ctrl := gomock.NewController(t)
-	storage := mocks.NewMockStorage(ctrl)
+	storage := mocks.NewMockStorager(ctrl)
 	fid := 1
 	b := []byte("body")
 	e := []byte("bad")
@@ -372,7 +372,7 @@ func TestAddFileData(t *testing.T) {
 
 func TestAddFileFinish(t *testing.T) {
 	ctrl := gomock.NewController(t)
-	storage := mocks.NewMockStorage(ctrl)
+	storage := mocks.NewMockStorager(ctrl)
 	f := uint(1)
 	e := uint(2)
 	n := uint(3)
@@ -406,7 +406,7 @@ func TestAddFileFinish(t *testing.T) {
 
 func TestGetPreloadFileInfo(t *testing.T) {
 	ctrl := gomock.NewController(t)
-	storage := mocks.NewMockStorage(ctrl)
+	storage := mocks.NewMockStorager(ctrl)
 	f := uint(1)
 	e := uint(2)
 	n := uint(3)
@@ -458,7 +458,7 @@ func TestGetPreloadFileInfo(t *testing.T) {
 func updateCommonTest(t *testing.T, obj any) {
 	t.Helper()
 	ctrl := gomock.NewController(t)
-	strg := mocks.NewMockStorage(ctrl)
+	strg := mocks.NewMockStorager(ctrl)
 	strg.EXPECT().UpdateTextValue(ctx, obj, uint(1), uint(uid), "success", "info").Return(nil)
 	strg.EXPECT().UpdateTextValue(ctx, obj, uint(1), uint(uid), "", "").Return(storage.ErrDB)
 	t.Run("Ошибка авторизации", func(t *testing.T) {
@@ -508,7 +508,7 @@ func getCommonTest(t *testing.T, obj, e, n string) {
 	t.Helper()
 	r := []byte("[]")
 	ctrl := gomock.NewController(t)
-	strg := mocks.NewMockStorage(ctrl)
+	strg := mocks.NewMockStorager(ctrl)
 	strg.EXPECT().GetValue(ctx, obj, uint(uid), uint(uid)).Return(r, nil)
 	strg.EXPECT().GetValue(ctx, e, uint(uid), uint(uid)).Return(nil, storage.ErrDB)
 	strg.EXPECT().GetValue(ctx, n, uint(uid), uint(uid)).Return(nil, gorm.ErrRecordNotFound)
@@ -585,7 +585,7 @@ func TestGetCredInfo(t *testing.T) {
 func addCommonTest(t *testing.T, obj any) {
 	t.Helper()
 	ctrl := gomock.NewController(t)
-	strg := mocks.NewMockStorage(ctrl)
+	strg := mocks.NewMockStorager(ctrl)
 	strg.EXPECT().AddTextValue(ctx, obj, uint(uid), "success", "info").Return(nil)
 	strg.EXPECT().AddTextValue(ctx, obj, uint(uid), "error", "error").Return(storage.ErrDB)
 	t.Run("Ошибка авторизации", func(t *testing.T) {

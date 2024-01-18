@@ -4,7 +4,9 @@ import (
 	"bufio"
 	"crypto/aes"
 	"crypto/cipher"
+	"crypto/md5"
 	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -34,7 +36,7 @@ var (
 	ErrUserNotFound   = errors.New("login or password incorrect")
 	ErrLoginRepeat    = errors.New("such login already exist")
 	ErrJSON           = errors.New("json error")
-	ErrNotFound       = errors.New("not found. Check id and repeat")
+	ErrNotFound       = errors.New("request path not found")
 	ErrDublicateError = errors.New("values dublicate error")
 	ErrDecryptError   = errors.New("decrypt error")
 )
@@ -137,4 +139,26 @@ func scanValue(text string, to *string) error {
 		return fmt.Errorf("scan value error: %w", scanner.Err())
 	}
 	return nil
+}
+
+func CheckUserKey(userKey, checkString string, serverKey []byte) bool {
+	k, _ := hex.DecodeString(userKey)
+	k, err := decryptAES(serverKey, k)
+	if err != nil {
+		fmt.Println(userKey, err.Error())
+		return false
+	}
+	fmt.Println(userKey, checkString, hex.EncodeToString(k), hex.EncodeToString(serverKey))
+	// k, err := hex.DecodeString(userKey)
+	// if err != nil {
+	// 	return false
+	// }
+	h := md5.New()
+	h.Write(k)
+	userKey = hex.EncodeToString(h.Sum(nil))
+	fmt.Println(checkString, userKey)
+	if userKey != checkString {
+		return false
+	}
+	return false
 }

@@ -14,7 +14,9 @@ const (
 )
 
 var (
-	ErrDB = errors.New("database error")
+	ErrDB             = errors.New("database error")
+	ErrKeysNotEqual   = errors.New("keys not equal error")
+	ErrUndefindedType = errors.New("undefined object type")
 )
 
 func makeError(t ErrType, err error) error {

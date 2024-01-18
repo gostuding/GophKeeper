@@ -210,6 +210,17 @@ func makeRouter(s *Server) http.Handler {
 			w.Header().Set(ContentType, TextPlain)
 			writeResponseData(w, data, status, s.Logger)
 		})
+		r.Put("/api/set/key", func(w http.ResponseWriter, r *http.Request) {
+			body, err := readRequestBody(w, r, s.Logger)
+			if err != nil {
+				return
+			}
+			status, err := SetUserKey(r.Context(), s.Storage, body)
+			if err != nil {
+				s.Logger.Warnf(fmt.Errorf("set key error: %w", err).Error())
+			}
+			writeResponseData(w, nil, status, s.Logger)
+		})
 
 		r.Get("/ver/{cmd}/{id}", func(w http.ResponseWriter, r *http.Request) {
 			data, status, err := GetVersion(r.Context(), s.Storage, chi.URLParam(r, "cmd"),

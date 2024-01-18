@@ -17,11 +17,6 @@ import (
 type errType int
 
 const (
-	// cards      = "cards"
-	// files      = "files"
-	// datas      = "data"
-	// creds      = "creds"
-	// timeFormat = "02.01.2006 15:04:05"
 	yes = "Yes"
 
 	IDConverError errType = iota
@@ -246,15 +241,30 @@ func (a *Agent) registration() error {
 	}
 	token, err := a.RStorage.Authentification("registration", l, p)
 	if errors.Is(err, storage.ErrLoginRepeat) {
-		token, err = a.RStorage.Authentification("login", l, p)
+		return fmt.Errorf("user already exist: %w", err)
 	}
 	if err != nil {
 		return fmt.Errorf("registration error: %w", err)
 	}
-	if err := scanStdin("Введите ключ шифрования Ваших приватных данных: ", &a.Config.Key); err != nil {
-		return err
+	a.Config.Key = ""
+	for len(a.Config.Key) < 2 {
+		if err := scanStdin("Введите ключ шифрования Ваших приватных данных: ", &a.Config.Key); err != nil {
+			return err
+		}
 	}
-	key, err := storage.EncryptAES(a.RStorage.ServerAESKey(), []byte(a.Config.Key))
+	uKey, err := hex.DecodeString(a.Config.Key)
+	if err != nil {
+		return fmt.Errorf("user key decode error: %w", err)
+	}
+	nsKey, err := storage.EncryptAES(uKey, a.RStorage.ServerAESKey())
+	if err != nil {
+		return fmt.Errorf("server aes key encrypt error: %w", err)
+	}
+	fmt.Println(a.Config.Key, hex.EncodeToString(nsKey))
+	if err := a.RStorage.SetNewServerKey(nsKey, uKey, ""); err != nil {
+		return fmt.Errorf("set server key error: %w", err)
+	}
+	key, err := storage.EncryptAES(nsKey, uKey)
 	if err != nil {
 		return fmt.Errorf("user aes key encrypt error: %w", err)
 	}
@@ -290,16 +300,26 @@ func (a *Agent) login() error {
 		return fmt.Errorf("login error: %w", err)
 	}
 	a.Config.Token = token
-	if a.Config.Key == "" {
+	c, err := a.RStorage.GetKeyCheckString()
+	if err != nil {
+		return fmt.Errorf("get server key error: %w", err)
+	}
+	for !storage.CheckUserKey(a.Config.Key, c, a.RStorage.ServerAESKey()) {
 		if err := scanStdin("Введите ключ шифрования приватных данных: ", &a.Config.Key); err != nil {
 			return err
 		}
-		key, err := storage.EncryptAES(a.RStorage.ServerAESKey(), []byte(a.Config.Key))
-		if err != nil {
-			return fmt.Errorf("encrypt user AES key error: %w", err)
-		}
-		a.Config.Key = hex.EncodeToString(key)
 	}
+	// if a.Config.Key == "" {
+	// 	if err := scanStdin("Введите ключ шифрования приватных данных: ", &a.Config.Key); err != nil {
+	// 		return err
+	// 	}
+	key, err := storage.EncryptAES(a.RStorage.ServerAESKey(), []byte(a.Config.Key))
+	if err != nil {
+		return fmt.Errorf("encrypt user AES key error: %w", err)
+	}
+	a.Config.Key = hex.EncodeToString(key)
+	// }
+
 	if err = a.Config.Save(); err != nil {
 		return fmt.Errorf("save token in config error: %w", err)
 	}

@@ -71,13 +71,13 @@ func GetCertificate(p string) ([]byte, error) {
 }
 
 // GetUserKey handler returns server's part of key.
-// @Tags Авторизация
+// @Tags Ключи приложения
 // @Summary Запрос части ключа пользователя для шифрования данных на сервере
 // @Router /api/get/key [get]
 // @Success 200 "Отправка ключа"
 // @failure 404 "Пользователь не авторизован".
 // @failure 500 "Внутренняя ошибка сервиса".
-func GetUserKey(ctx context.Context, strg Storager) ([]byte, int, error) {
+func GetUserKey(ctx context.Context, strg Keyer) ([]byte, int, error) {
 	uid, ok := ctx.Value(middlewares.AuthUID).(int)
 	if !ok {
 		return nil, http.StatusUnauthorized, ErrUserAuthorization
@@ -90,6 +90,34 @@ func GetUserKey(ctx context.Context, strg Storager) ([]byte, int, error) {
 		return nil, http.StatusInternalServerError, fmt.Errorf("user key error: %w", err)
 	}
 	return data, http.StatusOK, nil
+}
+
+// SetUserKey handler sets new server's part of key.
+// @Tags Ключи приложения
+// @Summary Установка новой части ключа пользователя для шифрования данных на сервере
+// @Accept json
+// @Param params body storage.userKeyData true "Серверная часть ключа и значения для проверки ключа в формате json"
+// @Router /api/set/key [put]
+// @Success 200 ""
+// @failure 401 "Пользователь не авторизован".
+// @failure 403 "Ошибка значения для проверки ключа".
+// @failure 500 "Внутренняя ошибка сервиса".
+func SetUserKey(ctx context.Context, strg Keyer, data []byte) (int, error) {
+	uid, ok := ctx.Value(middlewares.AuthUID).(int)
+	if !ok {
+		return http.StatusUnauthorized, ErrUserAuthorization
+	}
+	err := strg.SetKey(ctx, uint(uid), data)
+	if err != nil {
+		if errors.Is(err, storage.ErrKeysNotEqual) {
+			return http.StatusForbidden, err
+		}
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return http.StatusUnauthorized, ErrUserAuthorization
+		}
+		return http.StatusInternalServerError, fmt.Errorf("set key error: %w", err)
+	}
+	return http.StatusOK, nil
 }
 
 // GetVersion handler returns user's data version.

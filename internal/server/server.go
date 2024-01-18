@@ -34,11 +34,17 @@ type (
 		mutex   sync.Mutex
 		isRun   bool // flag to check is server run
 	}
+
+	Keyer interface {
+		GetKey(ctx context.Context, uid uint) ([]byte, error)
+		SetKey(ctx context.Context, uid uint, data []byte) error
+	}
+
 	// Storager for server.
 	Storager interface {
+		Keyer
 		Registration(context.Context, string, string) (string, int, error)
 		Login(context.Context, string, string) (string, int, error)
-		GetKey(context.Context, uint) ([]byte, error)
 		GetTextValues(ctx context.Context, obj_type string, uid uint) ([]byte, error)
 		GetValue(ctx context.Context, obj_type string, id, uid uint) ([]byte, error)
 		AddTextValue(ctx context.Context, obj any, uid uint, label, value string) error

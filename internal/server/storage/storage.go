@@ -30,10 +30,6 @@ const (
 	fileMode   = 0740
 )
 
-var (
-	ErrUndefindedType = errors.New("undefined object type")
-)
-
 type (
 	// Storage is struct for Gorm connection to database.
 	Storage struct {
@@ -41,8 +37,9 @@ type (
 		Path string   // file storage path
 	}
 	userKeyData struct {
-		Key     string `json:"key"`          // Server's part of user's encrypt key.
-		Checker string `json:"check_string"` // Check string for user's path of key.
+		Key         string `json:"key"`            // Server's part of user's encrypt key.
+		Checker     string `json:"checker_string"` // Check string for user's path of key.
+		InitChecker string `json:"checker_old"`    //
 	}
 )
 
@@ -89,7 +86,7 @@ func randomString(length int) string {
 	return string(b)
 }
 
-// GetKey sends part or the key to user.
+// GetKey sends part of the key to user.
 func (s *Storage) GetKey(ctx context.Context, uid uint) ([]byte, error) {
 	var usr Users
 	res := s.con.WithContext(ctx).Where("id = ?", uid).First(&usr)
@@ -110,6 +107,33 @@ func (s *Storage) GetKey(ctx context.Context, uid uint) ([]byte, error) {
 	return data, nil
 }
 
+// SetKey checks data and sets part of the key to user.
+func (s *Storage) SetKey(ctx context.Context, uid uint, data []byte) error {
+	var usr Users
+	res := s.con.WithContext(ctx).Where("id = ?", uid).First(&usr)
+	if res.Error != nil {
+		if errors.Is(res.Error, gorm.ErrRecordNotFound) {
+			return gorm.ErrRecordNotFound
+		}
+		return makeError(ErrDatabase, res.Error)
+	}
+	if res.RowsAffected == 0 {
+		return gorm.ErrRecordNotFound
+	}
+	var k userKeyData
+	if err := json.Unmarshal(data, &k); err != nil {
+		return makeError(ErrJSONUnmarshal, err)
+	}
+	if usr.CheckKey != k.InitChecker {
+		return ErrKeysNotEqual
+	}
+	r := s.con.WithContext(ctx).Where(&Users{ID: usr.ID}).Updates(Users{Key: k.Key, CheckKey: k.Checker})
+	if r.Error != nil {
+		return makeError(ErrDatabase, r.Error)
+	}
+	return nil
+}
+
 // Registration new users and returns it's id in database.
 func (s *Storage) Registration(
 	ctx context.Context,
@@ -121,14 +145,15 @@ func (s *Storage) Registration(
 	if err != nil {
 		return "", 0, err
 	}
-	h := md5.New()
-	h.Write([]byte(randomString(r)))
-	user := Users{Login: login, Pwd: string(passwd), Key: hex.EncodeToString(h.Sum(nil))}
+	// user := Users{Login: login, Pwd: string(passwd), Key: hex.EncodeToString(h.Sum(nil))}
+	user := Users{Login: login, Pwd: string(passwd)}
 	result := s.con.WithContext(ctx).Create(&user)
 	if result.Error != nil {
 		return "", 0, makeError(ErrDatabase, result.Error)
 	}
-	return user.Key, int(user.ID), nil
+	h := md5.New()
+	h.Write([]byte(randomString(r)))
+	return hex.EncodeToString(h.Sum(nil)), int(user.ID), nil
 }
 
 // hashPassword creates hash from password string.

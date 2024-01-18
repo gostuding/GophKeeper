@@ -2,6 +2,7 @@ package storage
 
 import (
 	"bytes"
+	"crypto/md5"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/hex"
@@ -51,8 +52,9 @@ type (
 		ServerAddress string
 	}
 	keyCheck struct {
-		Key     string `json:"key"`
-		Checker string `json:"check_string"`
+		Key         string `json:"key"`
+		Checker     string `json:"checker_string"`
+		InitChecker string `json:"checker_old"`
 	}
 )
 
@@ -141,10 +143,11 @@ func (ns *NetStorage) Authentification(action string, l, p string) (string, erro
 		return "", makeError(ErrJSONUnmarshal, err)
 	}
 	ns.JWTToken = t.Token
-	ns.serverAESKey = []byte(t.Key)
+	// ns.serverAESKey = []byte(t.Key)
 	return t.Token, nil
 }
 
+// SaveInLocal writes command in local storage.
 func (ns *NetStorage) SaveInLocal(cmd, arg string) error {
 	return ns.StorageCashe.AddCommandValue(&Command{Cmd: cmd, Value: arg})
 }
@@ -195,6 +198,49 @@ func (ns *NetStorage) getAESKey() error {
 		return makeError(ErrDecryptMessage, "check key error", err)
 	}
 	ns.Key = k
+	return nil
+}
+
+// GetAESKey decripts user key.
+func (ns *NetStorage) GetKeyCheckString() (string, error) {
+	res, err := ns.doRequest(nil, fmt.Sprintf("%s/api/get/key", ns.ServerAddress), http.MethodGet)
+	if err != nil {
+		return "", err
+	}
+	defer res.Body.Close() //nolint:errcheck //<-
+	data, err := io.ReadAll(res.Body)
+	if err != nil {
+		return "", makeError(ErrResponseRead, err)
+	}
+	var k keyCheck
+	if err := json.Unmarshal(data, &k); err != nil {
+		return "", makeError(ErrJSONUnmarshal, err)
+	}
+	ns.serverAESKey, _ = hex.DecodeString(k.Key)
+	return k.Checker, nil
+}
+
+// SetNewServerKey sends request to server for set new key data.
+func (ns *NetStorage) SetNewServerKey(serverKey, userKey []byte, checkerOld string) error {
+	k, err := EncryptAES(userKey, serverKey)
+	if err != nil {
+		return makeError(ErrEncrypt, err)
+	}
+	h := md5.New()
+	h.Write(userKey)
+	keyData := keyCheck{Key: hex.EncodeToString(k), Checker: hex.EncodeToString(h.Sum(nil)), InitChecker: checkerOld}
+	data, err := json.Marshal(keyData)
+	if err != nil {
+		return makeError(ErrJSONMarshal, err)
+	}
+	res, err := ns.doRequest(data, fmt.Sprintf("%s/api/set/key", ns.ServerAddress), http.MethodPut)
+	if err != nil {
+		return err
+	}
+	if err := res.Body.Close(); err != nil {
+		return makeError(ErrResponse, err)
+	}
+	ns.serverAESKey = serverKey
 	return nil
 }
 

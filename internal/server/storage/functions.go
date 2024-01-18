@@ -21,7 +21,7 @@ type (
 		UpdatedAt time.Time
 		Login     string `gorm:"unique"`
 		Pwd       string `gorm:"type:varchar(255)"`
-		Key       string `gorm:"type:varchar(32)"`
+		Key       string `gorm:"type:varchar(255)"`
 		CheckKey  string `gorm:"type:varchar(255)"`
 		ID        uint   `gorm:"primarykey"`
 	}

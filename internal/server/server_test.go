@@ -80,7 +80,7 @@ func hlp(t *testing.T, keyPath, certPath string) error {
 
 func TestServer_RunServer(t *testing.T) {
 	ctrl := gomock.NewController(t)
-	storage := mocks.NewMockStorage(ctrl)
+	storage := mocks.NewMockStorager(ctrl)
 	cfg := Config{
 		KeyPath:  path.Join(t.TempDir(), "server_key.pem"),
 		CertPath: path.Join(t.TempDir(), "cert.pem"),
@@ -115,7 +115,7 @@ func TestServer_RunServer(t *testing.T) {
 func TestServer_StopServer(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	t.Run("Запущенный сервер", func(t *testing.T) {
-		storage := mocks.NewMockStorage(ctrl)
+		storage := mocks.NewMockStorager(ctrl)
 		storage.EXPECT().Close().Return(nil)
 		cfg := Config{
 			KeyPath:  path.Join(t.TempDir(), "server_key.pem"),
