@@ -27,16 +27,6 @@ const (
 	writeFileMode     = 0600
 	urlSD             = "%s/%d"
 	fileAddUrl        = "/api/files/add"
-
-	CardsType = "cards"
-	DatasType = "datas"
-	CredsType = "creds"
-	FilesType = "files"
-)
-
-var (
-	ErrConnection = errors.New("connection error")
-	ErrItemType   = errors.New("unexpected object type")
 )
 
 type (
@@ -45,16 +35,14 @@ type (
 		Client        *http.Client // http client for work with server
 		Pwd           string       // user password
 		JWTToken      string       // authorization token
-		UserKeyPart   string
-		Key           []byte // user pasphrace to encrypt and decrypt stored data
-		serverAESKey  []byte // server's key to encrypt or decrypt user pashprace
-		StorageCashe  *Cashe //
 		ServerAddress string
+		Key           []byte // user pasphrace to encrypt and decrypt stored data
+		StorageCashe  *Cashe //
 	}
 	keyCheck struct {
-		Key         string `json:"key"`
-		Checker     string `json:"checker_string"`
-		InitChecker string `json:"checker_old"`
+		Key        string `json:"key"`
+		OldChecker string `json:"old_checker"`
+		NewChecker string `json:"new_checker"`
 	}
 )
 
@@ -109,6 +97,8 @@ func (ns *NetStorage) doRequest(msg []byte, url string, method string) (*http.Re
 	switch res.StatusCode {
 	case http.StatusUnauthorized:
 		return nil, ErrAuthorization
+	case http.StatusBadRequest:
+		return nil, ErrItemType
 	case http.StatusNotFound:
 		return nil, ErrNotFound
 	case http.StatusConflict:
@@ -117,23 +107,81 @@ func (ns *NetStorage) doRequest(msg []byte, url string, method string) (*http.Re
 	return nil, makeError(ErrResponseStatusCode, res.StatusCode)
 }
 
-func (ns *NetStorage) ServerAESKey() []byte {
-	return ns.serverAESKey
+// SetNewServerKey sends request to server for set new key data.
+func (ns *NetStorage) SetNewServerKey(serverKey, newUserKey, oldUserKey string) error {
+	oldChecker := ""
+	if oldUserKey != "" {
+		h := md5.New()
+		h.Write([]byte(oldUserKey))
+		oldChecker = hex.EncodeToString(h.Sum(nil))
+	}
+	h := md5.New()
+	h.Write([]byte(newUserKey))
+	newChecker := hex.EncodeToString(h.Sum(nil))
+
+	sKey, err := hex.DecodeString(serverKey)
+	if err != nil {
+		return fmt.Errorf("server decode key error: %w", err)
+	}
+	key, err := EncryptAES([]byte(newUserKey), sKey)
+	if err != nil {
+		return makeError(ErrEncrypt, err)
+	}
+	keyData := keyCheck{Key: hex.EncodeToString(key), OldChecker: oldChecker, NewChecker: newChecker}
+	data, err := json.Marshal(keyData)
+	if err != nil {
+		return makeError(ErrJSONMarshal, err)
+	}
+	res, err := ns.doRequest(data, fmt.Sprintf("%s/api/set/key", ns.ServerAddress), http.MethodPut)
+	if err != nil {
+		return err
+	}
+	if err := res.Body.Close(); err != nil {
+		return makeError(ErrResponse, err)
+	}
+
+	return nil
+}
+
+// GetAESKey decripts user key.
+func (ns *NetStorage) GetServerKey(userKey string) (key string, err error) {
+	h := md5.New()
+	h.Write([]byte(userKey))
+	res, err := ns.doRequest([]byte(hex.EncodeToString(h.Sum(nil))), fmt.Sprintf("%s/api/get/key", ns.ServerAddress), http.MethodPost)
+	if err != nil {
+		if errors.Is(err, ErrItemType) {
+			return "", fmt.Errorf("user key error: %w", ErrKeyIncorrect)
+		}
+		return "", err
+	}
+	defer res.Body.Close() //nolint:errcheck //<-
+	data, err := io.ReadAll(res.Body)
+	if err != nil {
+		return "", makeError(ErrResponseRead, err)
+	}
+	data, err = hex.DecodeString(string(data))
+	if err != nil {
+		return "", fmt.Errorf("key response error: %w", err)
+	}
+	k, err := decryptAES([]byte(userKey), data)
+	if err != nil {
+		return "", makeError(ErrDecryptMessage, err)
+	}
+	return hex.EncodeToString(k), nil
 }
 
 // Authentification is register or login in server.
-func (ns *NetStorage) Authentification(action string, l, p string) (string, error) {
-	user := loginPwd{Login: l, Pwd: p}
+func (ns *NetStorage) Registration(login string, pwd string, userKey string) (token string, err error) {
+	user := loginPwd{Login: login, Pwd: pwd}
 	data, err := json.Marshal(user)
 	if err != nil {
 		return "", makeError(ErrJSONMarshal, err)
 	}
-	res, err := ns.doRequest(data, fmt.Sprintf("%s/api/%s", ns.ServerAddress, action), http.MethodPost)
+	res, err := ns.doRequest(data, fmt.Sprintf("%s/api/registration", ns.ServerAddress), http.MethodPost)
 	if err != nil {
 		return "", err
 	}
 	defer res.Body.Close() //nolint:errcheck //<-senselessly
-	ns.Pwd = user.Pwd
 	data, err = io.ReadAll(res.Body)
 	if err != nil {
 		return "", makeError(ErrResponseRead, err)
@@ -143,13 +191,33 @@ func (ns *NetStorage) Authentification(action string, l, p string) (string, erro
 		return "", makeError(ErrJSONUnmarshal, err)
 	}
 	ns.JWTToken = t.Token
-	// ns.serverAESKey = []byte(t.Key)
+	if err = ns.SetNewServerKey(t.Key, userKey, ""); err != nil {
+		return "", fmt.Errorf("set user key error: %w", err)
+	}
 	return t.Token, nil
 }
 
-// SaveInLocal writes command in local storage.
-func (ns *NetStorage) SaveInLocal(cmd, arg string) error {
-	return ns.StorageCashe.AddCommandValue(&Command{Cmd: cmd, Value: arg})
+// Authentification is register or login in server.
+func (ns *NetStorage) Login(login string, pwd string) (string, error) {
+	user := loginPwd{Login: login, Pwd: pwd}
+	data, err := json.Marshal(user)
+	if err != nil {
+		return "", makeError(ErrJSONMarshal, err)
+	}
+	res, err := ns.doRequest(data, fmt.Sprintf("%s/api/login", ns.ServerAddress), http.MethodPost)
+	if err != nil {
+		return "", err
+	}
+	defer res.Body.Close() //nolint:errcheck //<-senselessly
+	data, err = io.ReadAll(res.Body)
+	if err != nil {
+		return "", makeError(ErrResponseRead, err)
+	}
+	var t tokenKey
+	if err = json.Unmarshal(data, &t); err != nil {
+		return "", makeError(ErrJSONUnmarshal, err)
+	}
+	return t.Token, nil
 }
 
 // getVersion requests data version from server.
@@ -164,84 +232,6 @@ func (ns *NetStorage) getVersion(cmd, id string) (string, error) {
 		return "", fmt.Errorf("read request body error: %w", err)
 	}
 	return hex.EncodeToString(version), nil
-}
-
-// GetAESKey decripts user key.
-func (ns *NetStorage) getAESKey() error {
-	res, err := ns.doRequest(nil, fmt.Sprintf("%s/api/get/key", ns.ServerAddress), http.MethodGet)
-	if err != nil {
-		return err
-	}
-	defer res.Body.Close() //nolint:errcheck //<-
-	data, err := io.ReadAll(res.Body)
-	if err != nil {
-		return makeError(ErrResponseRead, err)
-	}
-	var keyData keyCheck
-	if err := json.Unmarshal(data, &keyData); err != nil {
-		return makeError(ErrJSONUnmarshal, err)
-	}
-	ns.serverAESKey = []byte(keyData.Key)
-	k, err := hex.DecodeString(ns.StorageCashe.Key)
-	if err != nil {
-		return makeError(ErrDecode, err)
-	}
-	k, err = decryptAES(ns.serverAESKey, k)
-	if err != nil {
-		return makeError(ErrDecryptMessage, err)
-	}
-	i, err := decryptAES(k, []byte(keyData.Checker))
-	if err != nil {
-		return makeError(ErrDecryptMessage, "decript check key string error", err)
-	}
-	if _, err = strconv.Atoi(string(i)); err != nil {
-		return makeError(ErrDecryptMessage, "check key error", err)
-	}
-	ns.Key = k
-	return nil
-}
-
-// GetAESKey decripts user key.
-func (ns *NetStorage) GetKeyCheckString() (string, error) {
-	res, err := ns.doRequest(nil, fmt.Sprintf("%s/api/get/key", ns.ServerAddress), http.MethodGet)
-	if err != nil {
-		return "", err
-	}
-	defer res.Body.Close() //nolint:errcheck //<-
-	data, err := io.ReadAll(res.Body)
-	if err != nil {
-		return "", makeError(ErrResponseRead, err)
-	}
-	var k keyCheck
-	if err := json.Unmarshal(data, &k); err != nil {
-		return "", makeError(ErrJSONUnmarshal, err)
-	}
-	ns.serverAESKey, _ = hex.DecodeString(k.Key)
-	return k.Checker, nil
-}
-
-// SetNewServerKey sends request to server for set new key data.
-func (ns *NetStorage) SetNewServerKey(serverKey, userKey []byte, checkerOld string) error {
-	k, err := EncryptAES(userKey, serverKey)
-	if err != nil {
-		return makeError(ErrEncrypt, err)
-	}
-	h := md5.New()
-	h.Write(userKey)
-	keyData := keyCheck{Key: hex.EncodeToString(k), Checker: hex.EncodeToString(h.Sum(nil)), InitChecker: checkerOld}
-	data, err := json.Marshal(keyData)
-	if err != nil {
-		return makeError(ErrJSONMarshal, err)
-	}
-	res, err := ns.doRequest(data, fmt.Sprintf("%s/api/set/key", ns.ServerAddress), http.MethodPut)
-	if err != nil {
-		return err
-	}
-	if err := res.Body.Close(); err != nil {
-		return makeError(ErrResponse, err)
-	}
-	ns.serverAESKey = serverKey
-	return nil
 }
 
 // GetTextList requests lists of texts values from server.
@@ -286,36 +276,42 @@ func (ns *NetStorage) GetTextList(cmd string) (string, error) {
 	return value, nil
 }
 
-// GetTextValue requests text values from server.
-func (ns *NetStorage) GetTextValue(cmd, id string) (TextValuer, error) {
-	obj, err := NewTextValuer(cmd)
-	if err != nil {
-		return nil, ErrItemType
+// GetCashTextValue checks value in storage chashe.
+func (ns *NetStorage) GetCashTextValue(cmd, id, version string) (TextValuer, error) {
+	var err error
+	if version == "" {
+		version, err = ns.getVersion(cmd, id)
+		if err != nil && !errors.Is(err, ErrConnection) {
+			return nil, err
+		}
 	}
+	cashCmd := fmt.Sprintf("%s_%s", cmd, id)
+	val, err := ns.StorageCashe.GetValue(cashCmd, version)
+	if err == nil || errors.Is(err, ErrCashedValue) {
+		obj, err := NewTextValuer(cmd)
+		if err != nil {
+			return nil, fmt.Errorf("cashed text item error: %w", err)
+		}
+		if e := obj.FromJSON(val); e != nil {
+			return nil, e
+		}
+		return obj, nil
+	}
+	return nil, err
+}
+
+// GetTextValue requests text values from server.
+func (ns *NetStorage) GetTextValue(cmd, id, key string) (TextValuer, error) {
 	ver, err := ns.getVersion(cmd, id)
 	if err != nil && !errors.Is(err, ErrConnection) {
 		return nil, err
 	}
-	cashCmd := fmt.Sprintf("%s_%s", cmd, id)
-	val, err := ns.StorageCashe.GetValue(cashCmd, ver)
-	if err == nil || errors.Is(err, ErrCashedValue) {
-		var obj TextValuer
-		switch cmd {
-		case CardsType:
-			obj = &CardInfo{}
-		case DatasType:
-			obj = &DataInfo{}
-		case CredsType:
-			obj = &Credent{}
-		default:
-			return nil, ErrItemType
-		}
-		if e := obj.FromJSON(val); e == nil {
-			return obj, err
-		}
+	if obj, err := ns.GetCashTextValue(cmd, id, ver); err == nil {
+		return obj, nil
 	}
-	if err = ns.getAESKey(); err != nil {
-		return nil, err
+	obj, err := NewTextValuer(cmd)
+	if err != nil {
+		return nil, ErrItemType
 	}
 	res, err := ns.doRequest(nil, fmt.Sprintf("%s/api/%s/%s", ns.ServerAddress, cmd, id), http.MethodGet)
 	if err != nil {
@@ -335,7 +331,7 @@ func (ns *NetStorage) GetTextValue(cmd, id string) (TextValuer, error) {
 	if err != nil {
 		return nil, makeError(ErrDecode, err)
 	}
-	info, err := decryptAES(ns.Key, msg)
+	info, err := decryptAES([]byte(key), msg)
 	if err != nil {
 		return nil, makeError(ErrDecryptMessage, err)
 	}
@@ -343,29 +339,23 @@ func (ns *NetStorage) GetTextValue(cmd, id string) (TextValuer, error) {
 		return nil, makeError(ErrJSONMarshal, err)
 	}
 	obj.SetUpdateTime(l.Updated)
-	if err != nil {
-		return nil, makeError(ErrJSONUnmarshal, err)
-	}
 	t, err := obj.ToJSON()
 	if err != nil {
 		return nil, err
 	}
-	if err = ns.StorageCashe.SetValue(cashCmd, ver, string(t)); err != nil {
+	if err = ns.StorageCashe.SetValue(fmt.Sprintf("%s_%s", cmd, id), ver, string(t)); err != nil {
 		return obj, err
 	}
 	return obj, nil
 }
 
 // AddTextValue add's text value to server.
-func (ns *NetStorage) AddTextValue(cmd string, val TextValuer) error {
-	if err := ns.getAESKey(); err != nil {
-		return err
-	}
+func (ns *NetStorage) AddTextValue(cmd, key string, val TextValuer) error {
 	data, err := val.ToJSON()
 	if err != nil {
 		return makeError(ErrJSONMarshal, err)
 	}
-	infoString, err := EncryptAES(ns.Key, data)
+	infoString, err := EncryptAES([]byte(key), data)
 	if err != nil {
 		return makeError(ErrEncrypt, err)
 	}
@@ -375,6 +365,29 @@ func (ns *NetStorage) AddTextValue(cmd string, val TextValuer) error {
 		return makeError(ErrJSONMarshal, err)
 	}
 	res, err := ns.doRequest(data, fmt.Sprintf("%s/api/%s/add", ns.ServerAddress, cmd), http.MethodPost)
+	if err != nil {
+		return err
+	}
+	defer res.Body.Close() //nolint:errcheck //<-senselessly
+	return nil
+}
+
+// UpdateTextValue sends request to update text values.
+func (ns *NetStorage) UpdateTextValue(key string, val TextValuer) error {
+	data, err := val.ToJSON()
+	if err != nil {
+		return makeError(ErrJSONMarshal, err)
+	}
+	infoString, err := EncryptAES([]byte(key), data)
+	if err != nil {
+		return makeError(ErrEncrypt, err)
+	}
+	send := DataInfo{Info: hex.EncodeToString(infoString), Label: val.Meta()}
+	data, err = send.ToJSON()
+	if err != nil {
+		return makeError(ErrJSONMarshal, err)
+	}
+	res, err := ns.doRequest(data, fmt.Sprintf("%s/api/%s/%d", ns.ServerAddress, val.TypeStr(), val.GetID()), http.MethodPut)
 	if err != nil {
 		return err
 	}
@@ -395,37 +408,13 @@ func (ns *NetStorage) DeleteValue(cmd, id string) error {
 	return nil
 }
 
-// UpdateTextValue sends request to update values.
-func (ns *NetStorage) UpdateTextValue(cmd string, val TextValuer) error {
-	if err := ns.getAESKey(); err != nil {
-		return err
-	}
-	data, err := val.ToJSON()
-	if err != nil {
-		return makeError(ErrJSONMarshal, err)
-	}
-	infoString, err := EncryptAES(ns.Key, data)
-	if err != nil {
-		return makeError(ErrEncrypt, err)
-	}
-	send := DataInfo{Info: hex.EncodeToString(infoString), Label: val.Meta()}
-	data, err = send.ToJSON()
-	if err != nil {
-		return makeError(ErrJSONMarshal, err)
-	}
-	res, err := ns.doRequest(data, fmt.Sprintf("%s/api/%s/%d", ns.ServerAddress, cmd, val.GetID()), http.MethodPut)
-	if err != nil {
-		return err
-	}
-	defer res.Body.Close() //nolint:errcheck //<-senselessly
-	return nil
+// SaveInLocal writes command in local storage.
+func (ns *NetStorage) SaveInLocal(cmd, arg string) error {
+	return ns.StorageCashe.AddCommandValue(&Command{Cmd: cmd, Value: arg})
 }
 
 // AddFile adds file to server.
-func (ns *NetStorage) AddFile(filePath string) error {
-	if err := ns.getAESKey(); err != nil {
-		return err
-	}
+func (ns *NetStorage) AddFile(key, filePath string) error {
 	f, err := os.Stat(filePath)
 	if err != nil {
 		return fmt.Errorf("file stat error: %w", err)
@@ -437,7 +426,7 @@ func (ns *NetStorage) AddFile(filePath string) error {
 	if err != nil {
 		return fmt.Errorf("file add init request error: %w", err)
 	}
-	if err = ns.addFileBody(filePath, fid); err != nil {
+	if err = ns.addFileBody(key, filePath, fid); err != nil {
 		return fmt.Errorf("file add error: %w", err)
 	}
 	if err = ns.fihishFileTransfer(fid); err != nil {
@@ -469,7 +458,7 @@ func (ns *NetStorage) getNewFileID(info os.FileInfo) (int, error) {
 }
 
 // AddFileBody sends file's body to server.
-func (ns *NetStorage) addFileBody(filePath string, fid int) error {
+func (ns *NetStorage) addFileBody(key, filePath string, fid int) error {
 	sendChan := make(chan (FileSend), sendThreadCount)
 	errChan := make(chan (error), sendThreadCount)
 	stopChan := make(chan (interface{}))
@@ -496,7 +485,7 @@ func (ns *NetStorage) addFileBody(filePath string, fid int) error {
 					break label
 				}
 				block = block[:n]
-				data, err := EncryptAES(ns.Key, block)
+				data, err := EncryptAES([]byte(key), block)
 				if err != nil {
 					errChan <- makeError(ErrEncrypt, err)
 					return
@@ -586,10 +575,7 @@ func (ns *NetStorage) fihishFileTransfer(fid int) error {
 }
 
 // GetFile loads file from server, decrypts it and saves in path.
-func (ns *NetStorage) GetFile(fid, filePath string) error {
-	if err := ns.getAESKey(); err != nil {
-		return err
-	}
+func (ns *NetStorage) GetFile(key, fid, filePath string) error {
 	resp, err := ns.doRequest(nil, fmt.Sprintf("%s/api/files/preload/%s", ns.ServerAddress, fid),
 		http.MethodGet)
 	if err != nil {
@@ -631,7 +617,7 @@ func (ns *NetStorage) GetFile(fid, filePath string) error {
 			if err != nil {
 				return makeError(ErrResponseRead, err)
 			}
-			body, err = decryptAES(ns.Key, body)
+			body, err = decryptAES([]byte(key), body)
 			if err != nil {
 				return makeError(ErrDecryptMessage, err)
 			}

@@ -1,6 +1,6 @@
 {
     "server_addres": "https://127.0.0.1:8080",
     "login": "3",
-    "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjE3MDU3MDI2MjUsIlVzZXJBZ2VudCI6IkdvLWh0dHAtY2xpZW50LzEuMSIsIkxvZ2luIjoiIiwiSVAiOiIxMjcuMC4wLjEiLCJVSUQiOjN9.qmQE8IqIcSC83eIrDfWlncUo0cS0VcOuNES-wcEpFJc",
-    "key": "c5d327136c2e859e416c97de2f426e2d7b74"
+    "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjE3MDYyOTU0MzcsIlVzZXJBZ2VudCI6IkdvLWh0dHAtY2xpZW50LzEuMSIsIkxvZ2luIjoiIiwiSVAiOiIxMjcuMC4wLjEiLCJVSUQiOjI0fQ.3Zb45akd-_IFzS9IsG-4BYIIIV14mSr8C_XoZoaaQws",
+    "key": "c4ca4238a0b923820dcc509a6f75849b"
 }

@@ -1,7 +1,6 @@
 package agent
 
 import (
-	"bytes"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -40,9 +39,6 @@ func TestAgent_DoCommand(t *testing.T) {
 		if ca.Token != "token" {
 			t.Errorf("unexpected token: %s", ca.Token)
 			return
-		}
-		if !bytes.Equal(strg.ServerAESKey(), []byte("server key")) {
-			t.Errorf("unexpected server key: %s", string(strg.Key))
 		}
 	})
 	strg.ServerAddress = "https://127.0.0.1:0"

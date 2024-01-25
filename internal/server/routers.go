@@ -202,8 +202,12 @@ func makeRouter(s *Server) http.Handler {
 		r.Use(
 			middlewares.AuthMiddleware(s.Logger, redURL, s.Config.TokenKey),
 		)
-		r.Get("/api/get/key", func(w http.ResponseWriter, r *http.Request) {
-			data, status, err := GetUserKey(r.Context(), s.Storage)
+		r.Post("/api/get/key", func(w http.ResponseWriter, r *http.Request) {
+			body, err := readRequestBody(w, r, s.Logger)
+			if err != nil {
+				return
+			}
+			data, status, err := GetUserKey(r.Context(), s.Storage, string(body))
 			if err != nil {
 				s.Logger.Warnf(fmt.Errorf("get key error: %w", err).Error())
 			}

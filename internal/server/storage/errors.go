@@ -17,6 +17,7 @@ var (
 	ErrDB             = errors.New("database error")
 	ErrKeysNotEqual   = errors.New("keys not equal error")
 	ErrUndefindedType = errors.New("undefined object type")
+	ErrKeyCheckError  = errors.New("key checker error")
 )
 
 func makeError(t ErrType, err error) error {

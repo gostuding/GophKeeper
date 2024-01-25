@@ -135,18 +135,18 @@ func (mr *MockStoragerMockRecorder) GetFileData(arg0, arg1, arg2 interface{}) *g
 }
 
 // GetKey mocks base method.
-func (m *MockStorager) GetKey(arg0 context.Context, arg1 uint) ([]byte, error) {
+func (m *MockStorager) GetKey(arg0 context.Context, arg1 uint, arg2 string) ([]byte, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetKey", arg0, arg1)
+	ret := m.ctrl.Call(m, "GetKey", arg0, arg1, arg2)
 	ret0, _ := ret[0].([]byte)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // GetKey indicates an expected call of GetKey.
-func (mr *MockStoragerMockRecorder) GetKey(arg0, arg1 interface{}) *gomock.Call {
+func (mr *MockStoragerMockRecorder) GetKey(arg0, arg1, arg2 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetKey", reflect.TypeOf((*MockStorager)(nil).GetKey), arg0, arg1)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetKey", reflect.TypeOf((*MockStorager)(nil).GetKey), arg0, arg1, arg2)
 }
 
 // GetPreloadFileInfo mocks base method.

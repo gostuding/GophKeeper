@@ -6,6 +6,13 @@ import (
 	"time"
 )
 
+const (
+	CardsType = "cards"
+	DatasType = "datas"
+	CredsType = "creds"
+	FilesType = "files"
+)
+
 type (
 	// LoginPwd internal struct.
 	loginPwd struct {
@@ -24,6 +31,7 @@ type (
 		Label   string    `json:"label"`
 		Info    string    `json:"info,omitempty"`
 		Ver     string    `json:"version"`
+		Type    string    `json:"-"`
 		ID      int       `json:"id,omitempty"`
 	}
 	// Credent is struct for login and password information.
@@ -32,6 +40,7 @@ type (
 		Label   string    `json:"label"`
 		Login   string    `json:"login"`
 		Pwd     string    `json:"pwd"`
+		Type    string    `json:"-"`
 		ID      int       `json:"id,omitempty"`
 	}
 	// CardInfo is struct for card information.
@@ -42,7 +51,8 @@ type (
 		User     string    `json:"user,omitempty"`     // card's holder
 		Duration string    `json:"duration,omitempty"` // card's duration
 		Csv      string    `json:"csv,omitempty"`      // card's csv code
-		ID       int       `json:"id"`                 // card's id in server
+		Type     string    `json:"-"`
+		ID       int       `json:"id"` // card's id in server
 	}
 	// Files is struct for user's files.
 	Files struct {
@@ -68,6 +78,7 @@ type (
 	// TextValuer interfaice for object.
 	TextValuer interface {
 		GetID() int
+		TypeStr() string
 		SetID(id int)
 		FromJSON(txt string) error
 		ToJSON() ([]byte, error)
@@ -85,11 +96,11 @@ type (
 func NewTextValuer(t string) (TextValuer, error) {
 	switch t {
 	case CardsType:
-		return &CardInfo{}, nil
+		return &CardInfo{Type: CardsType}, nil
 	case DatasType:
-		return &DataInfo{}, nil
+		return &DataInfo{Type: DatasType}, nil
 	case CredsType:
-		return &Credent{}, nil
+		return &Credent{Type: CredsType}, nil
 	default:
 		return nil, ErrItemType
 	}
@@ -104,6 +115,7 @@ func (f *Files) Text() string {
 	txt += "\n"
 	return txt
 }
+
 func (d *DataInfo) Text() string {
 	return fmt.Sprintf("ID: %d. '%s'\t'%s'\n", d.ID, d.Label, d.Updated.Format(TimeFormat))
 }
@@ -147,6 +159,10 @@ func (d *DataInfo) SetUpdateTime(t time.Time) {
 func (d *DataInfo) String() string {
 	return fmt.Sprintf("Название: %s\nДанные: %s\nДата изменения: %s",
 		d.Label, d.Info, d.Updated.Format(TimeFormat))
+}
+
+func (d *DataInfo) TypeStr() string {
+	return d.Type
 }
 
 func (d *CardInfo) GetID() int {
@@ -199,6 +215,9 @@ func (d *CardInfo) UpdateTime() time.Time {
 func (d *CardInfo) SetUpdateTime(t time.Time) {
 	d.Updated = t
 }
+func (d *CardInfo) TypeStr() string {
+	return d.Type
+}
 
 func (d *Credent) GetID() int {
 	return d.ID
@@ -243,4 +262,7 @@ func (d *Credent) UpdateTime() time.Time {
 }
 func (d *Credent) SetUpdateTime(t time.Time) {
 	d.Updated = t
+}
+func (d *Credent) TypeStr() string {
+	return d.Type
 }

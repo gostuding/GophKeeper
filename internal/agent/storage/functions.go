@@ -39,6 +39,9 @@ var (
 	ErrNotFound       = errors.New("request path not found")
 	ErrDublicateError = errors.New("values dublicate error")
 	ErrDecryptError   = errors.New("decrypt error")
+	ErrConnection     = errors.New("connection error")
+	ErrItemType       = errors.New("unexpected object type")
+	ErrKeyIncorrect   = errors.New("key incorrect")
 )
 
 func makeError(t ErrType, values ...any) error {
@@ -82,7 +85,8 @@ func aesKey(key []byte) []byte {
 
 // EncryptAES encripts msg with key by AES.
 func EncryptAES(key, msg []byte) ([]byte, error) {
-	block, err := aes.NewCipher(aesKey(key))
+	key = aesKey(key)
+	block, err := aes.NewCipher(key)
 	if err != nil {
 		return nil, fmt.Errorf("create encrypt cipher error: %w", err)
 	}
@@ -98,12 +102,13 @@ func EncryptAES(key, msg []byte) ([]byte, error) {
 
 // decryptAES.
 func decryptAES(key, msg []byte) ([]byte, error) {
-	block, err := aes.NewCipher(aesKey(key))
+	key = aesKey(key)
+	block, err := aes.NewCipher(key)
 	if err != nil {
 		return nil, fmt.Errorf("create decrypt cipher error: %w", err)
 	}
 	if len(msg) < aes.BlockSize {
-		return nil, fmt.Errorf("decrypttion error: message size less then blocksize")
+		return nil, fmt.Errorf("decryption error: message size less then blocksize")
 	}
 	iv := msg[:aes.BlockSize]
 	msg = msg[aes.BlockSize:]

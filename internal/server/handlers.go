@@ -77,15 +77,18 @@ func GetCertificate(p string) ([]byte, error) {
 // @Success 200 "Отправка ключа"
 // @failure 404 "Пользователь не авторизован".
 // @failure 500 "Внутренняя ошибка сервиса".
-func GetUserKey(ctx context.Context, strg Keyer) ([]byte, int, error) {
+func GetUserKey(ctx context.Context, strg Keyer, checker string) ([]byte, int, error) {
 	uid, ok := ctx.Value(middlewares.AuthUID).(int)
 	if !ok {
 		return nil, http.StatusUnauthorized, ErrUserAuthorization
 	}
-	data, err := strg.GetKey(ctx, uint(uid))
+	data, err := strg.GetKey(ctx, uint(uid), checker)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, http.StatusUnauthorized, ErrUserAuthorization
+		}
+		if errors.Is(storage.ErrKeyCheckError, err) {
+			return nil, http.StatusBadRequest, err
 		}
 		return nil, http.StatusInternalServerError, fmt.Errorf("user key error: %w", err)
 	}

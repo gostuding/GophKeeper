@@ -36,7 +36,7 @@ type (
 	}
 
 	Keyer interface {
-		GetKey(ctx context.Context, uid uint) ([]byte, error)
+		GetKey(ctx context.Context, uid uint, checker string) ([]byte, error)
 		SetKey(ctx context.Context, uid uint, data []byte) error
 	}
 

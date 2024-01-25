@@ -37,9 +37,9 @@ type (
 		Path string   // file storage path
 	}
 	userKeyData struct {
-		Key         string `json:"key"`            // Server's part of user's encrypt key.
-		Checker     string `json:"checker_string"` // Check string for user's path of key.
-		InitChecker string `json:"checker_old"`    //
+		Key         string `json:"key"`         // Server's part of user's encrypt key.
+		Checker     string `json:"new_checker"` // Check string for user's path of key.
+		InitChecker string `json:"old_checker"` //
 	}
 )
 
@@ -87,7 +87,7 @@ func randomString(length int) string {
 }
 
 // GetKey sends part of the key to user.
-func (s *Storage) GetKey(ctx context.Context, uid uint) ([]byte, error) {
+func (s *Storage) GetKey(ctx context.Context, uid uint, check string) ([]byte, error) {
 	var usr Users
 	res := s.con.WithContext(ctx).Where("id = ?", uid).First(&usr)
 	if res.Error != nil {
@@ -99,12 +99,10 @@ func (s *Storage) GetKey(ctx context.Context, uid uint) ([]byte, error) {
 	if res.RowsAffected == 0 {
 		return nil, gorm.ErrRecordNotFound
 	}
-	keyData := userKeyData{Key: usr.Key, Checker: usr.CheckKey}
-	data, err := json.Marshal(keyData)
-	if err != nil {
-		return nil, fmt.Errorf("key data marshal error: %w", err)
+	if check != usr.CheckKey {
+		return nil, ErrKeyCheckError
 	}
-	return data, nil
+	return []byte(usr.Key), nil
 }
 
 // SetKey checks data and sets part of the key to user.
