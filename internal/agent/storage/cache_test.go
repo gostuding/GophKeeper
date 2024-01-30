@@ -111,7 +111,7 @@ func TestCashe_GetValue(t *testing.T) {
 func TestCashe_GetCommandsCashe(t *testing.T) {
 	strg := NewCashe("key")
 	t.Run("Path error", func(t *testing.T) {
-		strg.FilePath = ""
+		strg.CommandsPath = ""
 		got, err := strg.GetCommandsCashe()
 		if err != nil {
 			t.Errorf("LocalStorage.Values() error: %v", err)
@@ -135,12 +135,13 @@ func TestCashe_AddCommandValue(t *testing.T) {
 	})
 	t.Run("Success", func(t *testing.T) {
 		strg.FilePath = path.Join(t.TempDir(), "tmp")
+		strg.Key = "key"
 		err := strg.AddCommandValue(&Command{Cmd: "cmd", Value: "v"})
 		if err != nil {
 			t.Errorf("LocalStorage.Add() error: %v", err)
 			return
 		}
-		data, err := os.ReadFile(strg.FilePath)
+		data, err := os.ReadFile(strg.CommandsPath)
 		if err != nil {
 			t.Errorf("read tmp file error: %v", err)
 			return

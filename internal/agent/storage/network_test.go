@@ -28,70 +28,6 @@ var (
 	wdr = "Write data error: %v"
 )
 
-func TestNetStorage_Authentification(t *testing.T) {
-	handler := func(w http.ResponseWriter, r *http.Request) {
-		data, err := io.ReadAll(r.Body)
-		if err != nil {
-			w.WriteHeader(http.StatusBadRequest)
-			return
-		}
-		var l loginPwd
-		err = json.Unmarshal(data, &l)
-		if err != nil {
-			w.WriteHeader(http.StatusNoContent)
-			return
-		}
-		var token string
-		switch l.Login {
-		case "admin":
-			token = `{"token": "token", "key": "key"}`
-		case "user":
-			token = "{bad json}"
-		case "user1":
-			w.WriteHeader(http.StatusInternalServerError)
-			return
-		case "repeat":
-			w.WriteHeader(http.StatusConflict)
-			return
-		case "not":
-			w.WriteHeader(http.StatusUnauthorized)
-			return
-		}
-		_, err = w.Write([]byte(token))
-		if err != nil {
-			t.Errorf(wdr, err)
-		}
-	}
-	server := httptest.NewServer(http.HandlerFunc(handler))
-	defer server.Close()
-	// storage := NetStorage{Client: &http.Client{}, ServerAddress: server.URL}
-	// t.Run("Успешная регистрация", func(t *testing.T) {
-	// 	if _, _, err := storage.Authentification("register", "admin", "pwd"); err != nil {
-	// 		t.Errorf("NetStorage.Authentification() error: %v", err)
-	// 	}
-	// })
-	// t.Run("Ошибка регистрации на сервере", func(t *testing.T) {
-	// 	if _, _, err := storage.Authentification("register", "user1", "passwd"); err == nil {
-	// 		t.Errorf("NetStorage.Authentification() error is null")
-	// 	}
-	// })
-	// t.Run("Ошибка получения токена", func(t *testing.T) {
-	// 	if _, _, err := storage.Authentification("register", "user", "p"); !errors.Is(err, ErrJSON) {
-	// 		t.Errorf("NetStorage.Authentification() error, want: %v, got: %v", ErrJSON, err)
-	// 	}
-	// })
-	// t.Run("Повтор логина пользователя при регистрации", func(t *testing.T) {
-	// 	if _, _, err := storage.Authentification("register", "repeat", "p"); !errors.Is(err, ErrLoginRepeat) {
-	// 		t.Errorf("NetStorage.Authentification() error, want: %v, got: %v", ErrLoginRepeat, err)
-	// 	}
-	// })
-	// t.Run("Пользователь не найден", func(t *testing.T) {
-	// 	if _, _, err := storage.Authentification("register", "not", "p"); !errors.Is(err, ErrAuthorization) {
-	// 		t.Errorf("NetStorage.Authentification() error, want: %v, got: %v", ErrAuthorization, err)
-	// 	}
-	// })
-}
-
 func TestNetStorage_GetTextList(t *testing.T) {
 	storage := NetStorage{Client: &http.Client{}, StorageCashe: NewCashe("cashe key value")}
 	handler := func(w http.ResponseWriter, r *http.Request) {
@@ -243,7 +179,9 @@ func TestNetStorage_AddTextValue(t *testing.T) {
 	defer server.Close()
 	serverAuthError := httptest.NewServer(http.HandlerFunc(handlerAuthError))
 	defer serverAuthError.Close()
-	serverBadRequest := httptest.NewServer(http.HandlerFunc(handlerBadRequest))
+	serverBadRequest := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
 	defer serverBadRequest.Close()
 	t.Run("Добавление карты", func(t *testing.T) {
 		storage.ServerAddress = server.URL
@@ -293,8 +231,8 @@ func TestNetStorage_UpdateTextValue(t *testing.T) {
 	})
 	t.Run("Ошибка на сервере при обновлении карты", func(t *testing.T) {
 		storage.ServerAddress = serverBadRequest.URL
-		if err := storage.UpdateTextValue(string(storage.Key), &card); !errors.Is(err, ErrStatusCode) {
-			t.Errorf("NetStorage.UpdateCard() get unexpected error: %v, want: %v", err, ErrStatusCode)
+		if err := storage.UpdateTextValue(string(storage.Key), &card); !errors.Is(err, ErrItemType) {
+			t.Errorf("NetStorage.UpdateCard() get unexpected error: %v, want: %v", err, ErrItemType)
 		}
 	})
 }

@@ -133,7 +133,7 @@ func Registration(obj Auther, logger *zap.SugaredLogger) (token string, login st
 	return
 }
 
-// Login.
+// Login user in server and return token.
 func Login(obj Auther, logger *zap.SugaredLogger) (token string, login string, err error) {
 	logger.Infoln("Авторизация пользователя на сервере.")
 	logger.Infoln("Введите логин пользователя:")
@@ -168,7 +168,7 @@ func GetServerKey(obj Keyer, logger *zap.SugaredLogger) (key string, userKey str
 	return
 }
 
-// GetTextList prints open users text value.
+// GetTextList returns open users text values.
 func GetTextList(obj Getter, logger *zap.SugaredLogger, valueType string) (string, error) {
 	val, err := obj.GetTextList(valueType)
 	if errors.Is(err, storage.ErrCashedValue) {
@@ -181,7 +181,7 @@ func GetTextList(obj Getter, logger *zap.SugaredLogger, valueType string) (strin
 	return fmt.Sprintf("\n%s\n", val), nil
 }
 
-// GetTextList prints open users text value.
+// GetTextValue returns private users text value.
 func GetTextValue(obj Getter, logger *zap.SugaredLogger, valueType, id, key string) (storage.TextValuer, error) {
 	var err error
 	if id == "" {
@@ -207,6 +207,7 @@ func GetTextValue(obj Getter, logger *zap.SugaredLogger, valueType, id, key stri
 	return obj.GetTextValue(valueType, id, key)
 }
 
+// GetFile gets files from server.
 func GetFile(obj Getter, logger *zap.SugaredLogger) error {
 	i, err := getIdFromUser(logger)
 	if err != nil {
@@ -311,7 +312,7 @@ func EditTextValue(obj Setter, logger *zap.SugaredLogger, value storage.TextValu
 	return fmt.Errorf("update text value error: %w", err)
 }
 
-// UpdateUserKey.
+// UpdateUserKey sets new key in storage.
 func UpdateUserKey(obj Keyer, logger *zap.SugaredLogger) error {
 	key, userKey, err := GetServerKey(obj, logger)
 	if err != nil {
